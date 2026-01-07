@@ -238,7 +238,7 @@ export default function LoginPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => handleDemoLogin("soporteit@cni.hn", "Admin123")}
+                      onClick={() => handleDemoLogin("admin@cni.hn", "Admin123!")}
                       className="btn btn-outline btn-sm border-primary/30 hover:border-primary hover:bg-primary/5 flex-col h-auto py-2 gap-1"
                     >
                       <i className="lni lni-shield text-lg text-primary"></i>
@@ -246,7 +246,7 @@ export default function LoginPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDemoLogin("ygarcia@cni.hn", "RRHH123")}
+                      onClick={() => handleDemoLogin("rrhh@cni.hn", "Admin123!")}
                       className="btn btn-outline btn-sm border-secondary/30 hover:border-secondary hover:bg-secondary/5 flex-col h-auto py-2 gap-1"
                     >
                       <i className="lni lni-users text-lg text-secondary"></i>
@@ -254,7 +254,7 @@ export default function LoginPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDemoLogin("ecarrasco@cni.hn", "Jefe123")}
+                      onClick={() => handleDemoLogin("jefe.tecnologia@cni.hn", "Admin123!")}
                       className="btn btn-outline btn-sm border-info/30 hover:border-info hover:bg-info/5 flex-col h-auto py-2 gap-1"
                     >
                       <i className="lni lni-briefcase text-lg text-info"></i>
@@ -262,7 +262,7 @@ export default function LoginPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDemoLogin("amartinez@cni.hn", "Empleado123")}
+                      onClick={() => handleDemoLogin("empleado@cni.hn", "Admin123!")}
                       className="btn btn-outline btn-sm border-accent/30 hover:border-accent hover:bg-accent/5 flex-col h-auto py-2 gap-1"
                     >
                       <i className="lni lni-user text-lg text-accent"></i>

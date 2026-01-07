@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { obtenerRolesYPermisos } from "@/core/application/rbac/rbac.service";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -45,7 +46,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           .set({ ultimoAcceso: new Date() })
           .where(eq(usuarios.id, usuario.id));
 
-        // Retornar usuario para sesión
+        // 🆕 Obtener roles y permisos RBAC
+        const usuarioConRBAC = await obtenerRolesYPermisos(usuario.id);
+
+        // Retornar usuario para sesión con RBAC
         return {
           id: usuario.id.toString(),
           email: usuario.email,
@@ -57,9 +61,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           departamentoId: usuario.departamentoId,
           departamentoNombre: usuario.departamento?.nombre,
           cargo: usuario.cargo,
-          esJefe: usuario.esJefe,
-          esRrhh: usuario.esRrhh,
-          esAdmin: usuario.esAdmin
+          // 🆕 RBAC
+          roles: usuarioConRBAC?.roles || [],
+          permisos: usuarioConRBAC?.permisos || [],
+          // ⚠️ Legacy (calculado desde roles)
+          esAdmin: usuarioConRBAC?.roles?.some(r => r.codigo === 'ADMIN') || false,
+          esRrhh: usuarioConRBAC?.roles?.some(r => r.codigo === 'RRHH') || false,
+          esJefe: usuarioConRBAC?.roles?.some(r => r.codigo === 'JEFE') || false,
         };
       }
     })
@@ -67,13 +75,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Agregar datos personalizados al token
+        // Agregar datos personalizados al token incluyendo RBAC
         token.id = user.id;
         token.nombre = (user as any).nombre;
         token.apellido = (user as any).apellido;
         token.departamentoId = (user as any).departamentoId;
         token.departamentoNombre = (user as any).departamentoNombre;
         token.cargo = (user as any).cargo;
+        // 🆕 RBAC
+        token.roles = (user as any).roles;
+        token.permisos = (user as any).permisos;
+        // Legacy
         token.esJefe = (user as any).esJefe;
         token.esRrhh = (user as any).esRrhh;
         token.esAdmin = (user as any).esAdmin;
@@ -82,7 +94,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       if (token) {
-        // Agregar datos del token a la sesión
+        // Agregar datos del token a la sesión incluyendo RBAC
         session.user = {
           ...session.user,
           id: Number.parseInt(token.id as string),
@@ -91,6 +103,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           departamentoId: token.departamentoId as number,
           departamentoNombre: token.departamentoNombre as string,
           cargo: token.cargo as string | null,
+          // 🆕 RBAC
+          roles: token.roles as any[],
+          permisos: token.permisos as string[],
+          // Legacy
           esJefe: token.esJefe as boolean,
           esRrhh: token.esRrhh as boolean,
           esAdmin: token.esAdmin as boolean

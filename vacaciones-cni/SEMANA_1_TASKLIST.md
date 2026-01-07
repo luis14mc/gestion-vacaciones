@@ -1,7 +1,7 @@
 # 📋 SEMANA 1 - Integración RBAC en API Routes
 
 **Sistema de Gestión de Vacaciones - CNI Honduras**  
-**Fecha**: 8-14 de enero de 2026 (Miércoles-Martes)  
+**Fecha**: 7-13 de enero de 2026 (Miércoles-Martes)  
 **Prioridad**: 🔴 CRÍTICA  
 **Duración estimada**: 40 horas (5 días laborales)
 
@@ -15,12 +15,12 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ---
 
-## 📅 DÍA 1 (Miércoles 8/01) - Fundamentos de Autenticación RBAC
+## 📅 DÍA 1 (Miércoles 7/01) - Fundamentos de Autenticación RBAC
 
 ### ✅ Tareas
 
 - [ ] **1.1 Actualizar tipo SessionUser** (1h)
-  - **Fecha**: Miércoles 8 enero 2026
+  - **Fecha**: Miércoles 7 enero 2026
   - Abrir: `src/types/index.ts`
   - Agregar campos RBAC:
     ```typescript
@@ -65,7 +65,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ---
 
-## 📅 DÍA 2 (Jueves 9/01) - API de Solicitudes
+## 📅 DÍA 2 (Jueves 8/01) - API de Solicitudes
 
 ### ✅ Tareas
 
@@ -108,7 +108,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ---
 
-## 📅 DÍA 3 (Viernes 10/01) - API de Usuarios
+## 📅 DÍA 3 (Viernes 9/01) - API de Usuarios
 
 ### ✅ Tareas
 
@@ -161,7 +161,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ---
 
-## 📅 DÍA 4 (Lunes 13/01) - APIs de Balances y Reportes
+## 📅 DÍA 4 (Lunes 12/01) - APIs de Balances y Reportes
 
 ### ✅ Tareas
 
@@ -210,7 +210,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ---
 
-## 📅 DÍA 5 (Martes 14/01) - Dashboard, Testing y Documentación
+## 📅 DÍA 5 (Martes 13/01) - Dashboard, Testing y Documentación
 
 ### ✅ Tareas
 
@@ -371,7 +371,7 @@ Si encuentras bloqueadores técnicos:
 
 ---
 
-## ✅ Checklist Final de Martes 14/01
+## ✅ Checklist Final de Martes 13/01
 
 Antes de dar por completada la semana, verificar:
 
@@ -399,9 +399,9 @@ Antes de dar por completada la semana, verificar:
 ---
 
 **Documento creado**: 7 de enero de 2026  
-**Actualizado**: 8 de enero de 2026 (inicio miércoles)  
+**Inicio**: Miércoles 7 de enero de 2026  
 **Responsable**: Equipo de desarrollo CNI  
-**Revisión**: Martes 14 de enero de 2026  
+**Revisión**: Martes 13 de enero de 2026  
 **Próximo milestone**: Semana 2 - Servicios de Negocio
 
 ---

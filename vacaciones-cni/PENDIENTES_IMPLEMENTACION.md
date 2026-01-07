@@ -1587,5 +1587,5 @@ Para preguntas sobre este plan de implementación:
 ---
 
 **Preparado para el Consejo Nacional de Inversiones (CNI)**  
-**Nicaragua, 2026**  
+**Honduras, 2026**  
 **Arquitectura Clean | RBAC Completo | PostgreSQL Optimizado**

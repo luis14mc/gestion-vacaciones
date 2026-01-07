@@ -50,8 +50,8 @@ SELECT COUNT(*) FROM balances_ausencias;
 
 | Email | Contraseña | Roles |
 |-------|-----------|-------|
-| admin@cni.gob.ni | Admin123! | Admin + RRHH + Jefe |
-| rrhh@cni.gob.ni | RRHH123! | RRHH + Jefe |
+| admin@cni.hn | Admin123! | Admin + RRHH + Jefe |
+| rrhh@cni.hn | RRHH123! | RRHH + Jefe |
 
 ## 📊 Estructura
 

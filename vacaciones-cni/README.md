@@ -332,8 +332,8 @@ Después de ejecutar seed data:
 
 | Email | Contraseña | Roles | Permisos |
 |-------|-----------|-------|----------|
-| admin@cni.gob.ni | Admin123! | ADMIN | 24 permisos (acceso total) |
-| rrhh@cni.gob.ni | RRHH123! | RRHH | 11 permisos (aprobación final) |
+| admin@cni.hn | Admin123! | ADMIN | 24 permisos (acceso total) |
+| rrhh@cni.hn | RRHH123! | RRHH | 11 permisos (aprobación final) |
 
 **Nota**: Después de migración, usuarios también tendrán roles del nuevo sistema RBAC.
 
@@ -971,6 +971,6 @@ Para preguntas técnicas o reportar problemas:
 ---
 
 **Desarrollado para el Consejo Nacional de Inversiones (CNI)**  
-**Nicaragua, 2026**  
+**Honduras, 2026**  
 **Stack**: Next.js 16 + TypeScript + PostgreSQL + Drizzle ORM + TailwindCSS  
 **Arquitectura**: Clean Architecture | Domain-Driven Design | RBAC Completo

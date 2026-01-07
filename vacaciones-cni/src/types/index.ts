@@ -118,6 +118,19 @@ export interface PaginatedResponse<T> {
 // =====================================================
 // TIPOS DE SESIÓN Y AUTH
 // =====================================================
+
+/**
+ * Rol del sistema RBAC
+ */
+export interface RolUsuario {
+  codigo: string;
+  nombre: string;
+  nivel: number;
+}
+
+/**
+ * Usuario de sesión con sistema RBAC completo
+ */
 export interface SessionUser {
   id: number;
   email: string;
@@ -126,6 +139,14 @@ export interface SessionUser {
   departamentoId: number;
   departamentoNombre?: string;
   cargo?: string;
+  
+  // 🆕 Sistema RBAC
+  roles: RolUsuario[];
+  permisos: string[];
+  
+  // ⚠️ DEPRECATED - Mantener por compatibilidad legacy
+  // Estos campos se calculan automáticamente desde roles[]
+  // Se eliminarán en versión futura
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;

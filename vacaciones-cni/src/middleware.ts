@@ -7,55 +7,37 @@
  * - Permite rutas públicas sin restricción
  * 
  * Nota: Las APIs manejan su propia autorización con permisos RBAC específicos.
- * Este middleware solo verifica autenticación básica.
+ * Este middleware solo verifica autenticación básica usando NextAuth.
  * 
  * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
-/**
- * Rutas públicas que no requieren autenticación
- */
-const RUTAS_PUBLICAS = [
-  '/login',
-  '/api/auth/login',
-];
-
-/**
- * Rutas que deben ignorarse por el middleware
- * (archivos estáticos, imágenes, health checks)
- */
-const RUTAS_IGNORADAS = [
-  '/_next',
-  '/favicon.ico',
-  '/api/health',
-];
-
-/**
- * Middleware principal
- */
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
   
   // 1️⃣ Ignorar rutas de archivos estáticos y health checks
+  const RUTAS_IGNORADAS = ['/_next', '/favicon.ico', '/api/health'];
   if (RUTAS_IGNORADAS.some(ruta => pathname.startsWith(ruta))) {
     return NextResponse.next();
   }
   
   // 2️⃣ Permitir rutas públicas (login y auth)
+  const RUTAS_PUBLICAS = ['/login', '/api/auth'];
   if (RUTAS_PUBLICAS.some(ruta => pathname === ruta || pathname.startsWith(ruta))) {
     return NextResponse.next();
   }
   
   // 3️⃣ Verificar si hay sesión activa
-  const sessionCookie = request.cookies.get('session');
+  const isLoggedIn = !!req.auth;
   
-  if (!sessionCookie?.value) {
+  if (!isLoggedIn) {
     // No hay sesión - redirigir a login
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = new URL('/login', req.url);
     
-    // Guardar URL original para redirección post-login (opcional)
+    // Guardar URL original para redirección post-login
     if (pathname !== '/' && !pathname.startsWith('/api')) {
       loginUrl.searchParams.set('redirect', pathname);
     }
@@ -71,41 +53,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
   
-  // 4️⃣ Validar que la sesión tenga estructura válida
-  try {
-    const sessionData = JSON.parse(sessionCookie.value);
-    
-    if (!sessionData.id || !sessionData.email) {
-      // Sesión inválida - limpiar cookie
-      const isApi = pathname.startsWith('/api');
-      const response = isApi
-        ? NextResponse.json(
-            { success: false, error: 'Sesión inválida' },
-            { status: 401 }
-          )
-        : NextResponse.redirect(new URL('/login', request.url));
-      
-      response.cookies.delete('session');
-      return response;
-    }
-  } catch (error) {
-    // Error al parsear sesión - limpiar y redirigir
-    const isApi = pathname.startsWith('/api');
-    const response = isApi
-      ? NextResponse.json(
-          { success: false, error: 'Sesión corrupta' },
-          { status: 401 }
-        )
-      : NextResponse.redirect(new URL('/login', request.url));
-    
-    response.cookies.delete('session');
-    return response;
-  }
-  
   // ✅ Sesión válida - permitir acceso
-  // Nota: La autorización por permisos RBAC se maneja en cada API route
   return NextResponse.next();
-}
+});
 
 /**
  * Configuración del matcher
@@ -114,7 +64,9 @@ export function middleware(request: NextRequest) {
  * Incluye:
  * - /dashboard/* (todas las rutas del dashboard)
  * - /solicitudes/* (gestión de solicitudes)
- * - /api/* (todas las APIs excepto /api/auth/login)
+ * - /usuarios/* (gestión de usuarios)
+ * - /reportes/* (reportes)
+ * - /api/* (todas las APIs excepto /api/auth/*)
  * 
  * Excluye automáticamente:
  * - /_next/static (archivos estáticos de Next.js)

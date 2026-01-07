@@ -109,7 +109,9 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
       const res = await fetch("/api/usuarios");
       if (res.ok) {
         const response = await res.json();
-        const data = response.data || response;
+        // El endpoint devuelve { success: true, usuarios: [...] }
+        const data = response.usuarios || response.data || response;
+        console.log("✅ Usuarios cargados:", data?.length || 0);
         setUsuarios(Array.isArray(data) ? data : []);
       }
     } catch (error) {

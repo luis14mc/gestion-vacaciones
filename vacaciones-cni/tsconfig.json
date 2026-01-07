@@ -23,6 +23,18 @@
       }
     ],
     "paths": {
+      "@/core/*": [
+        "./src/core/*"
+      ],
+      "@/features/*": [
+        "./src/features/*"
+      ],
+      "@/shared/*": [
+        "./src/shared/*"
+      ],
+      "@/app/*": [
+        "./src/app/*"
+      ],
       "@/*": [
         "./src/*"
       ]

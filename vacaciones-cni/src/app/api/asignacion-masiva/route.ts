@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
               fechaVencimiento: fechaVencimiento || null,
               notas: notas || null,
               version: balanceActual.version + 1,
-              actualizadoEn: new Date(),
             })
             .where(eq(balancesAusencias.id, balanceActual.id));
           usuariosActualizados++;

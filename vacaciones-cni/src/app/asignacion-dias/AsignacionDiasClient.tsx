@@ -103,9 +103,11 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
       const res = await fetch("/api/usuarios?activo=true");
       const data = await res.json();
       if (data.success) {
-        setUsuarios(data.data);
+        console.log("📦 Usuarios recibidos:", data.usuarios);
+        console.log("👤 Primer usuario ejemplo:", data.usuarios?.[0]);
+        setUsuarios(data.usuarios); // Cambiar de data.data a data.usuarios
         // Cargar balances de todos los usuarios
-        await cargarTodosBalances(data.data.map((u: Usuario) => u.id));
+        await cargarTodosBalances(data.usuarios.map((u: Usuario) => u.id));
       }
     } catch (error) {
       console.error("Error cargando usuarios:", error);
@@ -122,15 +124,25 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
         }).then(r => r.json())
       );
       const resultados = await Promise.all(promesas);
+      
       const todosBalances: Balance[] = [];
       for (const resultado of resultados) {
         if (resultado.success && resultado.data) {
-          todosBalances.push(...resultado.data);
+          // Convertir IDs de string a number
+          const balancesConvertidos = resultado.data.map((b: any) => ({
+            ...b,
+            id: Number(b.id),
+            usuario_id: Number(b.usuario_id),
+            tipo_ausencia_id: Number(b.tipo_ausencia_id),
+            anio: Number(b.anio)
+          }));
+          todosBalances.push(...balancesConvertidos);
         }
       }
-      console.log('Balances cargados:', todosBalances.length, todosBalances);
+      
       // Forzar actualización del estado con spread operator para nueva referencia
       setBalances([...todosBalances]);
+      
       // Incrementar key para forzar re-render de tabla
       setRefreshKey(prev => prev + 1);
     } catch (error) {
@@ -189,7 +201,9 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
   const abrirModalDepartamento = () => {
     setModoModal("departamento");
-    const tipoVacacionesId = tiposAusencia.length > 0 ? tiposAusencia[0].id.toString() : "";
+    // Buscar específicamente el tipo "Vacaciones"
+    const tipoVacaciones = tiposAusencia.find(t => t.tipo === 'vacaciones') || tiposAusencia[0];
+    const tipoVacacionesId = tipoVacaciones ? tipoVacaciones.id.toString() : "";
     setFormData({
       usuarioId: "",
       departamentoId: "",
@@ -502,11 +516,12 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                     </tr>
                   ) : (
                     usuariosFiltrados.map((usuario) => {
-                      // Obtener balance de vacaciones (generalmente el tipo principal)
-                      const balanceVacaciones = tiposAusencia.length > 0 
-                        ? getBalanceUsuario(usuario.id, tiposAusencia[0].id)
+                      // Buscar específicamente el tipo "Vacaciones"
+                      const tipoVacaciones = tiposAusencia.find(t => t.tipo === 'vacaciones') || tiposAusencia[0];
+                      const balanceVacaciones = tipoVacaciones
+                        ? getBalanceUsuario(usuario.id, tipoVacaciones.id)
                         : null;
-
+                      
                       return (
                         <tr key={usuario.id}>
                           <td>
@@ -570,20 +585,38 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
               <div className="space-y-4">
                 {modoModal === "individual" ? (
                   <>
-                    {/* Usuario - Solo lectura */}
+                    {/* Usuario */}
                     <div className="form-control">
                       <label className="label">
-                        <span className="label-text font-semibold">Usuario</span>
+                        <span className="label-text font-semibold">Usuario *</span>
                       </label>
-                      <div className="p-3 bg-base-200 rounded-lg">
-                        <div className="font-medium">
-                          {usuarios.find(u => u.id === Number(formData.usuarioId))?.nombre}{" "}
-                          {usuarios.find(u => u.id === Number(formData.usuarioId))?.apellido}
+                      {formData.usuarioId ? (
+                        // Usuario seleccionado desde la tabla - Solo lectura
+                        <div className="p-3 bg-base-200 rounded-lg">
+                          <div className="font-medium">
+                            {usuarios.find(u => u.id === Number(formData.usuarioId))?.nombre}{" "}
+                            {usuarios.find(u => u.id === Number(formData.usuarioId))?.apellido}
+                          </div>
+                          <div className="text-xs text-base-content/60">
+                            {usuarios.find(u => u.id === Number(formData.usuarioId))?.email}
+                          </div>
                         </div>
-                        <div className="text-xs text-base-content/60">
-                          {usuarios.find(u => u.id === Number(formData.usuarioId))?.email}
-                        </div>
-                      </div>
+                      ) : (
+                        // Usuario no seleccionado - Mostrar dropdown
+                        <select
+                          className="select select-bordered"
+                          value={formData.usuarioId}
+                          onChange={(e) => setFormData({ ...formData, usuarioId: e.target.value })}
+                          required
+                        >
+                          <option value="">Seleccione un usuario</option>
+                          {usuarios.map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.nombre} {user.apellido} - {user.departamento?.nombre || 'Sin depto'}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
 
                     {/* Operación - Solo sumar o restar */}
@@ -643,12 +676,73 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                       </select>
                     </div>
 
-                    {/* Operación - Solo reemplazar para departamentos */}
-                    <div className="alert alert-info">
+                    {/* Operación por Departamento */}
+                    <div className="form-control">
+                      <label className="label">
+                        <span className="label-text">Operación *</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <label className="flex-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="operacion-dept"
+                            value="reemplazar"
+                            checked={formData.operacion === "reemplazar"}
+                            onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
+                            className="hidden peer"
+                          />
+                          <div className="btn btn-outline btn-sm w-full peer-checked:btn-primary peer-checked:btn-active">
+                            🔄 Reemplazar
+                          </div>
+                        </label>
+                        <label className="flex-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="operacion-dept"
+                            value="sumar"
+                            checked={formData.operacion === "sumar"}
+                            onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
+                            className="hidden peer"
+                          />
+                          <div className="btn btn-outline btn-sm w-full peer-checked:btn-success peer-checked:btn-active">
+                            ➕ Sumar
+                          </div>
+                        </label>
+                        <label className="flex-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="operacion-dept"
+                            value="restar"
+                            checked={formData.operacion === "restar"}
+                            onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
+                            className="hidden peer"
+                          />
+                          <div className="btn btn-outline btn-sm w-full peer-checked:btn-error peer-checked:btn-active">
+                            ➖ Restar
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Alerta informativa según operación */}
+                    <div className={`alert ${
+                      formData.operacion === 'reemplazar' ? 'alert-info' :
+                      formData.operacion === 'sumar' ? 'alert-success' : 'alert-warning'
+                    }`}>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                       </svg>
-                      <span className="text-sm">Esta operación <strong>reemplazará</strong> el balance actual de todos los empleados del departamento</span>
+                      <span className="text-sm">
+                        {formData.operacion === 'reemplazar' && 
+                          <>Esta operación <strong>reemplazará</strong> el balance actual de todos los empleados del departamento</>
+                        }
+                        {formData.operacion === 'sumar' && 
+                          <>Esta operación <strong>sumará</strong> días al balance actual de todos los empleados del departamento</>
+                        }
+                        {formData.operacion === 'restar' && 
+                          <>Esta operación <strong>restará</strong> días del balance actual de todos los empleados del departamento</>
+                        }
+                      </span>
                     </div>
                   </>
                 )}

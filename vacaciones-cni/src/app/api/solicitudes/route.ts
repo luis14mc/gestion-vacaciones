@@ -3,6 +3,7 @@ import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
 import type { NuevaSolicitud } from '@/types';
+import { validarSolicitud, registrarDiasPendientes } from '@/services/balance.service';
 
 export const runtime = 'nodejs';
 
@@ -125,8 +126,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 🔐 VALIDAR SOLICITUD CON BALANCE SERVICE
+    const fechaInicioDate = new Date(fechaInicio);
+    const fechaFinDate = new Date(fechaFin);
+    const diasSolicitados = parseFloat(cantidad);
+
+    const validacion = await validarSolicitud(
+      usuarioId,
+      diasSolicitados,
+      fechaInicioDate,
+      fechaFinDate
+    );
+
+    if (!validacion.valido) {
+      console.log(`❌ Validación fallida para usuario ${usuarioId}:`, validacion.error);
+      return NextResponse.json(
+        { success: false, error: validacion.error },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ Validación exitosa para usuario ${usuarioId} - ${diasSolicitados} días`);
+
+    // Generar código de solicitud
+    const codigoSolicitud = `SOL-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`;
+
     // Crear solicitud
     const nuevaSolicitud: NuevaSolicitud = {
+      codigo: codigoSolicitud,
       usuarioId,
       tipoAusenciaId,
       fechaInicio,
@@ -145,6 +172,11 @@ export async function POST(request: NextRequest) {
       .insert(solicitudes)
       .values(nuevaSolicitud)
       .returning();
+
+    // 📝 REGISTRAR DÍAS PENDIENTES EN BALANCE
+    const anio = fechaInicioDate.getFullYear();
+    await registrarDiasPendientes(usuarioId, diasSolicitados, anio);
+    console.log(`📊 Registrados ${diasSolicitados} días pendientes para usuario ${usuarioId}`)
 
     // Obtener solicitud completa con relaciones
     const solicitudCompleta = await db.query.solicitudes.findFirst({

@@ -1,23 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { usuarios } from '@/lib/db/schema';
+import { usuarios, balancesAusencias, solicitudes } from '@/lib/db/schema';
 import bcrypt from 'bcryptjs';
 import type { NuevoUsuario } from '@/types';
+import { auth } from '@/auth';
 
 export const runtime = 'nodejs';
 
 // GET: Listar usuarios con filtros
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    
     const { searchParams } = new URL(request.url);
     const departamentoId = searchParams.get('departamentoId');
     const search = searchParams.get('search');
     const soloActivos = searchParams.get('activo') === 'true';
 
-    const conditions = [isNull(usuarios.deletedAt)];
+    const conditions = [];
 
-    if (departamentoId) {
+    // Si es jefe (y no es admin ni RRHH), solo mostrar su departamento
+    if (session?.user?.esJefe && !session?.user?.esAdmin && !session?.user?.esRrhh) {
+      if (session.user.departamentoId) {
+        conditions.push(eq(usuarios.departamentoId, session.user.departamentoId));
+      }
+    }
+    // Si se especifica departamento en query params
+    else if (departamentoId) {
       conditions.push(eq(usuarios.departamentoId, Number.parseInt(departamentoId)));
     }
 
@@ -42,15 +52,61 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Eliminar password del resultado
-    const usuariosSinPassword = results.map((usuario: any) => {
+    // Obtener balance y solicitudes pendientes para cada usuario
+    const usuariosConBalance = await Promise.all(results.map(async (usuario: any) => {
       const { password, ...resto } = usuario;
-      return resto;
-    });
+      
+      // Obtener balance de días
+      const balance = await db.query.balancesAusencias.findFirst({
+        where: and(
+          eq(balancesAusencias.usuarioId, usuario.id),
+          eq(balancesAusencias.estado, 'activo')
+        )
+      });
+
+      // Calcular días disponibles (asignado - utilizado - pendiente)
+      const diasAsignados = balance ? Number(balance.cantidadAsignada) : 0;
+      const diasUsados = balance ? Number(balance.cantidadUtilizada) : 0;
+      const diasPendientes = balance ? Number(balance.cantidadPendiente) : 0;
+      const diasDisponibles = diasAsignados - diasUsados - diasPendientes;
+
+      // Contar solicitudes pendientes
+      const solicitudesPendientes = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(solicitudes)
+        .where(
+          and(
+            eq(solicitudes.usuarioId, usuario.id),
+            eq(solicitudes.estado, 'pendiente')
+          )
+        );
+
+      // Verificar si está en vacaciones actualmente
+      const hoy = new Date();
+      const enVacaciones = await db.query.solicitudes.findFirst({
+        where: and(
+          eq(solicitudes.usuarioId, usuario.id),
+          eq(solicitudes.estado, 'en_uso'),
+          sql`${solicitudes.fechaInicio} <= ${hoy}`,
+          sql`${solicitudes.fechaFin} >= ${hoy}`
+        )
+      });
+
+      return {
+        ...resto,
+        estado: usuario.activo ? 'activo' : 'inactivo',
+        departamento: usuario.departamento?.nombre || null,
+        diasAsignados: diasAsignados,
+        diasDisponibles: diasDisponibles,
+        diasUsados: diasUsados,
+        solicitudesPendientes: Number(solicitudesPendientes[0]?.count || 0),
+        enVacaciones: !!enVacaciones
+      };
+    }));
 
     return NextResponse.json({
       success: true,
-      data: usuariosSinPassword
+      usuarios: usuariosConBalance
     });
 
   } catch (error) {

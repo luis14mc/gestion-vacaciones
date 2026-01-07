@@ -39,11 +39,10 @@ export async function GET(request: NextRequest) {
         ta.tipo as tipo_codigo,
         ta.color_hex
       FROM balances_ausencias b
-      INNER JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
+      LEFT JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
       WHERE b.usuario_id = ${Number.parseInt(usuarioId)}
         AND b.anio = ${Number.parseInt(anio)}
-        AND ta.activo = true
-      ORDER BY ta.tipo
+      ORDER BY b.tipo_ausencia_id
     `);
 
     return NextResponse.json({

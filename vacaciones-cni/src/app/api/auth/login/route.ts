@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 import { usuarios } from '@/lib/db/schema';
+import { obtenerRolesYPermisos } from '@/core/application/rbac/rbac.service';
 import type { LoginRequest, SessionUser } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -56,7 +57,10 @@ export async function POST(request: NextRequest) {
       .set({ ultimoAcceso: new Date() })
       .where(eq(usuarios.id, usuario.id));
 
-    // Crear objeto de sesión
+    // 🆕 Obtener roles y permisos del usuario
+    const usuarioConRBAC = await obtenerRolesYPermisos(usuario.id);
+
+    // Crear objeto de sesión con RBAC
     const sessionUser: SessionUser = {
       id: usuario.id,
       email: usuario.email,
@@ -65,9 +69,13 @@ export async function POST(request: NextRequest) {
       departamentoId: usuario.departamentoId,
       departamentoNombre: usuario.departamento?.nombre,
       cargo: usuario.cargo || undefined,
-      esJefe: usuario.esJefe,
-      esRrhh: usuario.esRrhh,
-      esAdmin: usuario.esAdmin
+      // 🆕 RBAC: Roles y permisos del sistema
+      roles: usuarioConRBAC?.roles || [],
+      permisos: usuarioConRBAC?.permisos || [],
+      // ⚠️ Legacy: Calculados desde roles para compatibilidad
+      esAdmin: usuarioConRBAC?.roles?.some(r => r.codigo === 'ADMIN') || false,
+      esRrhh: usuarioConRBAC?.roles?.some(r => r.codigo === 'RRHH') || false,
+      esJefe: usuarioConRBAC?.roles?.some(r => r.codigo === 'JEFE') || false,
     };
 
     return NextResponse.json({

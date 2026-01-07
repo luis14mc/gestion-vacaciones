@@ -55,7 +55,7 @@ export async function getSession(): Promise<SessionUser | null> {
       apellido: usuarioConRBAC.apellido,
       departamentoId: usuarioConRBAC.departamentoId,
       departamentoNombre: sessionData.departamentoNombre,
-      cargo: usuarioConRBAC.cargo,
+      cargo: usuarioConRBAC.cargo || undefined,
       
       // 🆕 Sistema RBAC
       roles: usuarioConRBAC.roles || [],

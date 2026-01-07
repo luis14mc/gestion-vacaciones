@@ -14,6 +14,8 @@ export interface UsuarioConRoles {
   email: string;
   nombre: string;
   apellido: string;
+  departamentoId: number;
+  cargo?: string | null;
   roles: RolConPermisos[];
   permisos: string[]; // Array de códigos de permisos
 }
@@ -72,6 +74,8 @@ export async function obtenerRolesYPermisos(usuarioId: number): Promise<UsuarioC
         email: usuario.email,
         nombre: usuario.nombre,
         apellido: usuario.apellido,
+        departamentoId: usuario.departamentoId,
+        cargo: usuario.cargo,
         roles: [],
         permisos: []
       };
@@ -118,6 +122,8 @@ export async function obtenerRolesYPermisos(usuarioId: number): Promise<UsuarioC
       email: usuario.email,
       nombre: usuario.nombre,
       apellido: usuario.apellido,
+      departamentoId: usuario.departamentoId,
+      cargo: usuario.cargo,
       roles: rolesConPermisos,
       permisos: permisosUnicos
     };

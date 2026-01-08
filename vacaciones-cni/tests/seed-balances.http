@@ -1,0 +1,11 @@
+### Crear balances de prueba para Actividad 2.2
+### Endpoint temporal - solo para testing
+
+@baseUrl = http://localhost:3000
+
+### POST - Crear/actualizar balances de prueba
+POST {{baseUrl}}/api/seed-balances-test
+Content-Type: application/json
+
+### GET - Info del endpoint
+GET {{baseUrl}}/api/seed-balances-test

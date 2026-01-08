@@ -89,7 +89,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('aprobada', 'aprobada_jefe', 'en_uso', 'completada')`,
+          sql`${solicitudes.estado} IN ('aprobada', 'aprobada_jefe', 'en_uso')`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )
@@ -102,7 +102,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('rechazada', 'rechazada_jefe')`,
+          sql`${solicitudes.estado} = 'rechazada'`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )

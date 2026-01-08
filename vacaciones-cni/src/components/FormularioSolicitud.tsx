@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import type { TipoAusenciaConfig, BalanceCompleto, NuevaSolicitud } from '@/types';
 
 interface FormularioSolicitudProps {
@@ -67,10 +68,17 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
   useEffect(() => {
     if (formData.tipoAusenciaId) {
       const balance = balances.find(
-        (b: any) => b.tipo_ausencia_id === Number.parseInt(formData.tipoAusenciaId)
+        (b: any) => Number(b.tipo_ausencia_id) === Number.parseInt(formData.tipoAusenciaId)
       );
+      
       setBalanceSeleccionado(balance || null);
-      setDiasDisponibles(balance ? Number.parseFloat(balance.cantidad_disponible) : 0);
+      
+      if (balance) {
+        const disponible = Number.parseFloat(balance.cantidad_disponible);
+        setDiasDisponibles(disponible);
+      } else {
+        setDiasDisponibles(0);
+      }
     }
   }, [formData.tipoAusenciaId, balances]);
 
@@ -82,6 +90,9 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       const diff = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       setDiasSolicitados(diff > 0 ? diff : 0);
       setDiasRestantes(diasDisponibles - (diff > 0 ? diff : 0));
+    } else {
+      setDiasSolicitados(0);
+      setDiasRestantes(diasDisponibles);
     }
   }, [formData.fechaInicio, formData.fechaFin, diasDisponibles]);
 
@@ -139,15 +150,33 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       const data = await response.json();
 
       if (data.success) {
-        alert('Solicitud creada exitosamente');
+        await Swal.fire({
+          icon: 'success',
+          title: '¡Solicitud Enviada!',
+          text: 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación.',
+          confirmButtonText: 'Aceptar',
+          confirmButtonColor: '#10b981'
+        });
         onSuccess?.();
       } else {
-        alert(`Error: ${data.error}`);
+        await Swal.fire({
+          icon: 'error',
+          title: 'Error al Enviar',
+          text: data.error || 'No se pudo crear la solicitud. Intenta de nuevo.',
+          confirmButtonText: 'Cerrar',
+          confirmButtonColor: '#ef4444'
+        });
       }
 
     } catch (error) {
       console.error('Error creando solicitud:', error);
-      alert('Error al crear solicitud');
+      await Swal.fire({
+        icon: 'error',
+        title: 'Error de Conexión',
+        text: 'No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.',
+        confirmButtonText: 'Cerrar',
+        confirmButtonColor: '#ef4444'
+      });
     } finally {
       setSubmitting(false);
     }
@@ -429,7 +458,10 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={submitting || (esVacaciones && diasRestantes < 0)}
+          disabled={
+            submitting || 
+            (esVacaciones && formData.fechaInicio && formData.fechaFin && diasRestantes < 0)
+          }
         >
           {submitting ? (
             <>

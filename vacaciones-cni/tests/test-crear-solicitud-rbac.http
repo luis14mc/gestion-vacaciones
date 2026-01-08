@@ -1,0 +1,197 @@
+### PRUEBAS RBAC - POST /api/solicitudes (Crear Solicitud)
+### Día 2, Actividad 2.2
+
+@baseUrl = http://localhost:3000
+@apiUrl = {{baseUrl}}/api
+
+###############################################
+# 1. EMPLEADO crea su propia solicitud
+###############################################
+
+### 1.1 Login como EMPLEADO
+# @name loginEmpleado
+POST {{apiUrl}}/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "empleado@cni.hn",
+  "password": "Admin123!"
+}
+
+### 1.2 EMPLEADO crea solicitud para sí mismo (DEBE FUNCIONAR ✅)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginEmpleado.response.headers.set-cookie}}
+
+{
+  "usuarioId": 4,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-02-10",
+  "fechaFin": "2026-02-14",
+  "cantidad": "5",
+  "unidad": "dias",
+  "motivo": "Vacaciones familiares"
+}
+
+### 1.3 EMPLEADO intenta crear solicitud para otro usuario (DEBE FALLAR ❌ 403)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginEmpleado.response.headers.set-cookie}}
+
+{
+  "usuarioId": 1,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-02-10",
+  "fechaFin": "2026-02-14",
+  "cantidad": "5",
+  "unidad": "dias",
+  "motivo": "Intento de crear para otro"
+}
+
+###############################################
+# 2. JEFE crea su propia solicitud
+###############################################
+
+### 2.1 Login como JEFE
+# @name loginJefe
+POST {{apiUrl}}/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "jefe.tecnologia@cni.hn",
+  "password": "Admin123!"
+}
+
+### 2.2 JEFE crea solicitud para sí mismo (DEBE FUNCIONAR ✅)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginJefe.response.headers.set-cookie}}
+
+{
+  "usuarioId": 3,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-03-01",
+  "fechaFin": "2026-03-05",
+  "cantidad": "5",
+  "unidad": "dias",
+  "motivo": "Vacaciones personales"
+}
+
+### 2.3 JEFE intenta crear para su equipo (DEBE FALLAR ❌ 403)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginJefe.response.headers.set-cookie}}
+
+{
+  "usuarioId": 4,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-03-10",
+  "fechaFin": "2026-03-12",
+  "cantidad": "3",
+  "unidad": "dias",
+  "motivo": "Intento de crear para empleado"
+}
+
+###############################################
+# 3. RRHH crea solicitudes
+###############################################
+
+### 3.1 Login como RRHH
+# @name loginRrhh
+POST {{apiUrl}}/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "rrhh@cni.hn",
+  "password": "Admin123!"
+}
+
+### 3.2 RRHH crea solicitud para sí mismo (DEBE FUNCIONAR ✅)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginRrhh.response.headers.set-cookie}}
+
+{
+  "usuarioId": 2,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-04-01",
+  "fechaFin": "2026-04-10",
+  "cantidad": "10",
+  "unidad": "dias",
+  "motivo": "Vacaciones anuales"
+}
+
+### 3.3 RRHH crea solicitud para otro usuario (DEBE FUNCIONAR ✅)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginRrhh.response.headers.set-cookie}}
+
+{
+  "usuarioId": 4,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-05-01",
+  "fechaFin": "2026-05-03",
+  "cantidad": "3",
+  "unidad": "dias",
+  "motivo": "Solicitud creada por RRHH"
+}
+
+###############################################
+# 4. ADMIN crea solicitudes
+###############################################
+
+### 4.1 Login como ADMIN
+# @name loginAdmin
+POST {{apiUrl}}/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "admin@cni.hn",
+  "password": "Admin123!"
+}
+
+### 4.2 ADMIN crea solicitud para cualquier usuario (DEBE FUNCIONAR ✅)
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+Cookie: {{loginAdmin.response.headers.set-cookie}}
+
+{
+  "usuarioId": 3,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-06-01",
+  "fechaFin": "2026-06-07",
+  "cantidad": "7",
+  "unidad": "dias",
+  "motivo": "Solicitud creada por ADMIN"
+}
+
+###############################################
+# 5. Usuario sin autenticar (DEBE FALLAR ❌ 401)
+###############################################
+
+### 5.1 Sin sesión
+POST {{apiUrl}}/solicitudes
+Content-Type: application/json
+
+{
+  "usuarioId": 4,
+  "tipoAusenciaId": 1,
+  "fechaInicio": "2026-07-01",
+  "fechaFin": "2026-07-05",
+  "cantidad": "5",
+  "unidad": "dias",
+  "motivo": "Intento sin autenticación"
+}
+
+###############################################
+# RESUMEN DE CASOS ESPERADOS
+###############################################
+
+# ✅ EMPLEADO crea para sí mismo: 200/201
+# ❌ EMPLEADO crea para otro: 403
+# ✅ JEFE crea para sí mismo: 200/201
+# ❌ JEFE crea para otro: 403
+# ✅ RRHH crea para sí mismo: 200/201
+# ✅ RRHH crea para otro: 200/201
+# ✅ ADMIN crea para cualquiera: 200/201
+# ❌ Sin autenticación: 401

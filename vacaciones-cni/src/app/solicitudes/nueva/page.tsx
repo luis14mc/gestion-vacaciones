@@ -2,11 +2,18 @@
 
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { useEffect } from 'react';
 import FormularioSolicitud from '@/components/FormularioSolicitud';
 
 export default function NuevaSolicitudPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status !== 'loading' && !session?.user) {
+      router.push('/login');
+    }
+  }, [status, session, router]);
 
   if (status === 'loading') {
     return (
@@ -17,7 +24,6 @@ export default function NuevaSolicitudPage() {
   }
 
   if (!session?.user) {
-    router.push('/login');
     return null;
   }
 

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Consulta SQL personalizada para obtener cantidad_disponible calculada
+    // Consulta SQL personalizada calculando cantidad_disponible
     const balances = await db.execute(sql`
       SELECT 
         b.id,
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         b.cantidad_asignada,
         b.cantidad_utilizada,
         b.cantidad_pendiente,
-        b.cantidad_disponible,
+        (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente) as cantidad_disponible,
         b.estado,
         b.fecha_vencimiento,
         b.notas,

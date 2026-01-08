@@ -119,6 +119,32 @@ export async function GET(request: NextRequest) {
 
 // POST: Crear nueva solicitud
 export async function POST(request: NextRequest) {
+  // 🔐 1. AUTENTICACIÓN
+  const sessionUser = await getSession();
+  
+  if (!sessionUser) {
+    console.log('❌ POST /api/solicitudes - Sin sesión');
+    return NextResponse.json(
+      { success: false, error: 'No autenticado' },
+      { status: 401 }
+    );
+  }
+
+  console.log(`📝 POST /api/solicitudes - Usuario: ${sessionUser.email}`);
+
+  // 🔐 2. AUTORIZACIÓN - Permiso para crear solicitudes
+  const puedeCrear = tienePermiso(sessionUser, 'vacaciones.solicitudes.crear');
+  
+  if (!puedeCrear) {
+    console.log('❌ Sin permiso para crear solicitudes');
+    return NextResponse.json(
+      { success: false, error: 'No tienes permiso para crear solicitudes' },
+      { status: 403 }
+    );
+  }
+
+  console.log('✅ Permiso: Crear solicitudes');
+
   try {
     const body = await request.json();
     
@@ -142,6 +168,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 🔐 3. VALIDACIÓN DE PROPIEDAD
+    // Solo ADMIN y RRHH pueden crear solicitudes para otros usuarios
+    const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
+    
+    if (!esAdminORrhh && usuarioId !== sessionUser.id) {
+      console.log(`❌ Usuario ${sessionUser.id} intentó crear solicitud para usuario ${usuarioId}`);
+      return NextResponse.json(
+        { success: false, error: 'Solo puedes crear solicitudes para ti mismo' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`✅ Creando solicitud para usuario: ${usuarioId}`);
 
     // Verificar que el usuario existe y está activo
     const usuario = await db.query.usuarios.findFirst({

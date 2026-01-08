@@ -5,12 +5,11 @@
  * @module lib/auth
  */
 
-import { cookies } from 'next/headers';
-import { obtenerRolesYPermisos } from '@/core/application/rbac';
+import { auth } from '@/auth';
 import type { SessionUser, RolUsuario } from '@/types';
 
 /**
- * Obtiene la sesión actual del usuario con roles y permisos RBAC
+ * Obtiene la sesión actual del usuario con roles y permisos RBAC desde NextAuth
  * 
  * @returns SessionUser completo con roles y permisos o null si no hay sesión
  * 
@@ -26,50 +25,36 @@ import type { SessionUser, RolUsuario } from '@/types';
  */
 export async function getSession(): Promise<SessionUser | null> {
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
+    // Obtener sesión de NextAuth
+    const session = await auth();
     
-    if (!sessionCookie?.value) {
+    if (!session?.user) {
       return null;
     }
     
-    // Parsear datos básicos de la cookie
-    const sessionData = JSON.parse(sessionCookie.value);
-    
-    if (!sessionData?.id) {
-      return null;
-    }
-    
-    // Obtener roles y permisos actualizados del sistema RBAC
-    const usuarioConRBAC = await obtenerRolesYPermisos(sessionData.id);
-    
-    if (!usuarioConRBAC) {
-      return null;
-    }
-    
-    // Construir SessionUser completo
+    // La sesión de NextAuth ya tiene roles y permisos porque se agregan en auth.ts
     const sessionUser: SessionUser = {
-      id: usuarioConRBAC.id,
-      email: usuarioConRBAC.email,
-      nombre: usuarioConRBAC.nombre,
-      apellido: usuarioConRBAC.apellido,
-      departamentoId: usuarioConRBAC.departamentoId,
-      departamentoNombre: sessionData.departamentoNombre,
-      cargo: usuarioConRBAC.cargo || undefined,
+      id: parseInt(session.user.id),
+      email: session.user.email!,
+      nombre: session.user.nombre,
+      apellido: session.user.apellido,
+      departamentoId: session.user.departamentoId,
+      departamentoNombre: session.user.departamentoNombre || undefined,
+      cargo: session.user.cargo || undefined,
       
-      // 🆕 Sistema RBAC
-      roles: usuarioConRBAC.roles || [],
-      permisos: usuarioConRBAC.permisos || [],
+      // Sistema RBAC (ya viene en la sesión de NextAuth)
+      roles: session.user.roles || [],
+      permisos: session.user.permisos || [],
       
-      // ⚠️ DEPRECATED - Calcular desde roles[] por compatibilidad
-      esAdmin: usuarioConRBAC.roles?.some(r => r.codigo === 'ADMIN') || false,
-      esRrhh: usuarioConRBAC.roles?.some(r => r.codigo === 'RRHH') || false,
-      esJefe: usuarioConRBAC.roles?.some(r => r.codigo === 'JEFE') || false,
+      // DEPRECATED - Calcular desde roles[] por compatibilidad
+      esAdmin: session.user.esAdmin || false,
+      esRrhh: session.user.esRrhh || false,
+      esJefe: session.user.esJefe || false,
     };
     
     return sessionUser;
   } catch (error) {
-    console.error('Error al obtener sesión:', error);
+    console.error('❌ Error al obtener sesión:', error);
     return null;
   }
 }

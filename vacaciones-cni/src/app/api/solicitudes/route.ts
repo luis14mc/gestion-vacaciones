@@ -1,18 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, desc, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
 import type { NuevaSolicitud } from '@/types';
 import { validarSolicitud, registrarDiasPendientes } from '@/services/balance.service';
+import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
-// GET: Obtener solicitudes con filtros
+// GET: Obtener solicitudes con filtros (con RBAC)
 export async function GET(request: NextRequest) {
   try {
+    // 🔐 1. AUTENTICACIÓN - Obtener sesión del usuario
+    const sessionUser = await getSession();
+    
+    if (!sessionUser) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    console.log('📋 GET /api/solicitudes - Usuario:', sessionUser.email);
+
+    // 🔐 2. AUTORIZACIÓN - Verificar permisos
+    const puedeVerTodas = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_todas');
+    const puedeVerPropias = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_propias');
+
+    if (!puedeVerTodas && !puedeVerPropias) {
+      console.log('❌ Sin permisos para ver solicitudes');
+      return NextResponse.json(
+        { success: false, error: 'No tienes permisos para ver solicitudes' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     
-    const usuarioId = searchParams.get('usuarioId');
+    const usuarioIdParam = searchParams.get('usuarioId');
     const estado = searchParams.get('estado');
     const tipoAusenciaId = searchParams.get('tipoAusenciaId');
     const page = Number.parseInt(searchParams.get('page') || '1');
@@ -20,10 +45,24 @@ export async function GET(request: NextRequest) {
 
     const conditions = [isNull(solicitudes.deletedAt)];
     
-    if (usuarioId) {
-      conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioId)));
+    // 🔐 3. FILTRADO SEGÚN PERMISOS
+    if (puedeVerTodas) {
+      // ADMIN/RRHH → Ver todas las solicitudes
+      console.log('✅ Permiso: Ver todas las solicitudes');
+      
+      // Si se pasa usuarioId como filtro, respetarlo
+      if (usuarioIdParam) {
+        conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioIdParam)));
+      }
+    } else if (puedeVerPropias) {
+      // EMPLEADO/JEFE → Solo sus propias solicitudes
+      console.log('✅ Permiso: Ver solo solicitudes propias');
+      
+      // Forzar filtro por usuario actual (ignorar usuarioIdParam)
+      conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
     }
-    
+
+    // Filtros adicionales
     if (estado) {
       conditions.push(eq(solicitudes.estado, estado as any));
     }
@@ -58,6 +97,8 @@ export async function GET(request: NextRequest) {
       .from(solicitudes)
       .where(and(...conditions));
 
+    console.log(`✅ Retornando ${results.length} solicitudes (total: ${count})`);
+
     return NextResponse.json({
       success: true,
       data: results,
@@ -68,7 +109,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error obteniendo solicitudes:', error);
+    console.error('❌ Error obteniendo solicitudes:', error);
     return NextResponse.json(
       { success: false, error: 'Error al obtener solicitudes' },
       { status: 500 }

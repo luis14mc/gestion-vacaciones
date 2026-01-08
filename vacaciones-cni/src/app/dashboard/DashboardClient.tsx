@@ -24,6 +24,7 @@ import {
   PenLine,
   Clock,
   Check,
+  Plus,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import type { Session } from "next-auth";
@@ -114,20 +115,25 @@ export default function DashboardClient({ session }: DashboardClientProps) {
 
         requests.unshift(fetch(metricsEndpoint));
 
-        const [firstRes, actividadRes, calendarioRes] = await Promise.all(requests);
+        // RRHH también necesita su balance personal
+        if (session.user.esRrhh && !session.user.esAdmin) {
+          requests.push(fetch("/api/dashboard/mi-balance"));
+        }
+
+        const responses = await Promise.all(requests);
         
         // Procesar respuesta según el tipo de usuario
         const isEmpleado = !session.user.esAdmin && !session.user.esJefe && !session.user.esRrhh;
         
         if (isEmpleado) {
-          const balanceData = await firstRes.json();
+          const balanceData = await responses[0].json();
           if (balanceData.success) {
             setBalancePersonal(balanceData.data);
           } else {
             console.error("Error cargando balance personal:", balanceData.error);
           }
         } else {
-          const metricsData = await firstRes.json();
+          const metricsData = await responses[0].json();
           if (metricsData.success) {
             setMetrics(metricsData.data);
           } else {
@@ -139,10 +145,18 @@ export default function DashboardClient({ session }: DashboardClientProps) {
               en_vacaciones: 0,
             });
           }
+          
+          // Si es RRHH, cargar también su balance personal
+          if (session.user.esRrhh && !session.user.esAdmin && responses.length > 3) {
+            const balanceData = await responses[3].json();
+            if (balanceData.success) {
+              setBalancePersonal(balanceData.data);
+            }
+          }
         }
 
-        const actividadData = await actividadRes.json();
-        const calendarioData = await calendarioRes.json();
+        const actividadData = await responses[1].json();
+        const calendarioData = await responses[2].json();
 
         if (actividadData.success) {
           setActividades(actividadData.data);
@@ -598,6 +612,81 @@ export default function DashboardClient({ session }: DashboardClientProps) {
           </div>
         ) : null}
 
+        {/* RRHH - Balance Personal */}
+        {isRrhh && !isAdmin && balancePersonal && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              Mi Balance de Vacaciones
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="card bg-base-100 shadow-xl border-l-4 border-primary">
+                <div className="card-body">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-medium text-base-content/60">Días Asignados</h2>
+                      <p className="text-3xl font-bold text-primary mt-2">{balancePersonal.diasAsignados || 0}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Calendar className="w-6 h-6 text-primary" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-base-content/50 mt-2">Total este año</div>
+                </div>
+              </div>
+
+              <div className="card bg-base-100 shadow-xl border-l-4 border-success">
+                <div className="card-body">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-medium text-base-content/60">Días Disponibles</h2>
+                      <p className="text-3xl font-bold text-success mt-2">{balancePersonal.diasDisponibles || 0}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
+                      <CheckCircle className="w-6 h-6 text-success" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-base-content/50 mt-2">Puedo solicitar</div>
+                </div>
+              </div>
+
+              <div className="card bg-base-100 shadow-xl border-l-4 border-error">
+                <div className="card-body">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-medium text-base-content/60">Días Usados</h2>
+                      <p className="text-3xl font-bold text-error mt-2">{balancePersonal.diasUsados || 0}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
+                      <Car className="w-6 h-6 text-error" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-base-content/50 mt-2">
+                    {balancePersonal.diasAsignados ? 
+                      `${Math.round((balancePersonal.diasUsados / balancePersonal.diasAsignados) * 100)}% utilizado` : 
+                      '0% utilizado'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card bg-base-100 shadow-xl border-l-4 border-warning">
+                <div className="card-body">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-medium text-base-content/60">Mis Solicitudes Pendientes</h2>
+                      <p className="text-3xl font-bold text-warning mt-2">{balancePersonal.solicitudesPendientes || 0}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
+                      <Hourglass className="w-6 h-6 text-warning" />
+                    </div>
+                  </div>
+                  <div className="text-xs text-base-content/50 mt-2">En revisión</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Empleado Alert - Si está de vacaciones */}
         {!isAdmin && !isJefe && !isRrhh && balancePersonal?.enVacaciones && (
           <div className="alert bg-gradient-to-r from-success to-success/80 text-white shadow-lg mb-6">
@@ -697,7 +786,7 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                 <Users className="w-6 h-6 text-accent" />
                 Acciones de Recursos Humanos
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Link href="/solicitudes" className="btn btn-lg bg-gradient-to-r from-purple-600 to-purple-500 text-white hover:scale-105 transition-transform shadow-lg">
                   <FileText className="w-5 h-5" />
                   Gestionar Solicitudes
@@ -722,6 +811,14 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                   <Download className="w-5 h-5" />
                   Exportar Datos
                 </Link>
+                <Link href="/solicitudes" className="btn btn-lg bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:scale-105 transition-transform shadow-lg">
+                  <FileText className="w-5 h-5" />
+                  Mis Solicitudes
+                </Link>
+                <Link href="/solicitudes/nueva" className="btn btn-lg bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:scale-105 transition-transform shadow-lg">
+                  <Plus className="w-5 h-5" />
+                  Nueva Solicitud
+                </Link>
               </div>
             </div>
           </div>
@@ -735,10 +832,14 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                 <Briefcase className="w-6 h-6 text-info" />
                 Acciones de Jefe
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Link href="/aprobar-solicitudes" className="btn btn-lg bg-gradient-to-r from-warning to-warning/80 text-white hover:scale-105 transition-transform shadow-lg">
                   <Clock className="w-5 h-5" />
                   Aprobar Solicitudes
+                </Link>
+                <Link href="/solicitudes" className="btn btn-lg bg-gradient-to-r from-purple-600 to-purple-500 text-white hover:scale-105 transition-transform shadow-lg">
+                  <FileText className="w-5 h-5" />
+                  Mis Solicitudes
                 </Link>
                 <Link href="/mi-equipo" className="btn btn-lg bg-gradient-to-r from-info to-info/80 text-white hover:scale-105 transition-transform shadow-lg">
                   <Users className="w-5 h-5" />
@@ -853,6 +954,10 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                     <Clock className="w-5 h-5" />
                     <span>Aprobar</span>
                   </Link>
+                  <Link href="/solicitudes" className="btn btn-outline btn-purple-600 btn-lg gap-2">
+                    <FileText className="w-5 h-5" />
+                    <span>Mis Solicitudes</span>
+                  </Link>
                   <Link href="/mi-equipo" className="btn btn-outline btn-info btn-lg gap-2">
                     <Users className="w-5 h-5" />
                     <span>Mi Equipo</span>
@@ -886,6 +991,14 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                   <Link href="/reportes" className="btn btn-outline btn-info btn-lg gap-2">
                     <BarChart3 className="w-5 h-5" />
                     <span>Reportes</span>
+                  </Link>
+                  <Link href="/solicitudes" className="btn btn-outline btn-secondary btn-lg gap-2">
+                    <FileText className="w-5 h-5" />
+                    <span>Mis Solicitudes</span>
+                  </Link>
+                  <Link href="/solicitudes/nueva" className="btn btn-success btn-lg gap-2">
+                    <Plus className="w-5 h-5" />
+                    <span>Nueva Solicitud</span>
                   </Link>
                 </div>
               )}

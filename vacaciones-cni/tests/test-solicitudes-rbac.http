@@ -1,0 +1,69 @@
+###
+# 🧪 PRUEBAS RBAC - GET /api/solicitudes
+# Sistema de Gestión de Vacaciones - CNI
+# Día 2, Actividad 2.1
+###
+
+@baseUrl = http://localhost:3000
+@apiUrl = {{baseUrl}}/api
+
+### 1️⃣ Login como ADMIN
+# POST {{apiUrl}}/auth/session
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "admin@cni.hn",
+  "password": "Admin123!"
+}
+
+### 2️⃣ GET Solicitudes como ADMIN (debe ver todas)
+GET {{apiUrl}}/solicitudes
+Cookie: next-auth.session-token=TOKEN_AQUI
+
+### 3️⃣ Login como RRHH
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "rrhh@cni.hn",
+  "password": "Admin123!"
+}
+
+### 4️⃣ GET Solicitudes como RRHH (debe ver todas)
+GET {{apiUrl}}/solicitudes
+Cookie: next-auth.session-token=TOKEN_AQUI
+
+### 5️⃣ Login como JEFE
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "jefe.tecnologia@cni.hn",
+  "password": "Admin123!"
+}
+
+### 6️⃣ GET Solicitudes como JEFE (debe ver solo propias)
+GET {{apiUrl}}/solicitudes
+Cookie: next-auth.session-token=TOKEN_AQUI
+
+### 7️⃣ Login como EMPLEADO
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "empleado@cni.hn",
+  "password": "Admin123!"
+}
+
+### 8️⃣ GET Solicitudes como EMPLEADO (debe ver solo propias)
+GET {{apiUrl}}/solicitudes
+Cookie: next-auth.session-token=TOKEN_AQUI
+
+### 9️⃣ GET con filtro de usuarioId como ADMIN (debe funcionar)
+GET {{apiUrl}}/solicitudes?usuarioId=4
+Cookie: next-auth.session-token=TOKEN_ADMIN
+
+### 🔟 GET con filtro de usuarioId como EMPLEADO (debe ignorar filtro)
+GET {{apiUrl}}/solicitudes?usuarioId=1
+Cookie: next-auth.session-token=TOKEN_EMPLEADO

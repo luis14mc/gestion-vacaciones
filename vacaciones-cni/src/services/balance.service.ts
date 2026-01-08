@@ -14,6 +14,30 @@ export interface BalanceUsuario {
 }
 
 /**
+ * Calcula solo días laborables (Lunes-Viernes) entre dos fechas
+ * Excluye sábados y domingos
+ */
+export function calcularDiasLaborables(fechaInicio: Date, fechaFin: Date): number {
+  let diasLaborables = 0;
+  const fechaActual = new Date(fechaInicio);
+  fechaActual.setHours(0, 0, 0, 0);
+  
+  const fechaFinNormalizada = new Date(fechaFin);
+  fechaFinNormalizada.setHours(0, 0, 0, 0);
+
+  while (fechaActual <= fechaFinNormalizada) {
+    const diaSemana = fechaActual.getDay();
+    // 0 = Domingo, 6 = Sábado - solo contar 1-5 (Lunes-Viernes)
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasLaborables++;
+    }
+    fechaActual.setDate(fechaActual.getDate() + 1);
+  }
+
+  return diasLaborables;
+}
+
+/**
  * Calcula el balance actual de un usuario para un año específico
  */
 export async function calcularBalanceUsuario(

@@ -3,7 +3,7 @@ import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
 import type { NuevaSolicitud } from '@/types';
-import { validarSolicitud, registrarDiasPendientes } from '@/services/balance.service';
+import { validarSolicitud, registrarDiasPendientes, calcularDiasLaborables } from '@/services/balance.service';
 import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';
@@ -21,14 +21,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('📋 GET /api/solicitudes - Usuario:', sessionUser.email);
-
     // 🔐 2. AUTORIZACIÓN - Verificar permisos
     const puedeVerTodas = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_todas');
     const puedeVerPropias = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_propias');
 
     if (!puedeVerTodas && !puedeVerPropias) {
-      console.log('❌ Sin permisos para ver solicitudes');
       return NextResponse.json(
         { success: false, error: 'No tienes permisos para ver solicitudes' },
         { status: 403 }
@@ -40,8 +37,19 @@ export async function GET(request: NextRequest) {
     const usuarioIdParam = searchParams.get('usuarioId');
     const estado = searchParams.get('estado');
     const tipoAusenciaId = searchParams.get('tipoAusenciaId');
+    const paraAprobar = searchParams.get('paraAprobar') === 'true';
     const page = Number.parseInt(searchParams.get('page') || '1');
     const pageSize = Number.parseInt(searchParams.get('pageSize') || '20');
+
+    console.log('📋 GET /api/solicitudes - Usuario:', sessionUser.email);
+    console.log('🔍 Parámetros:', { paraAprobar, estado, page, pageSize });
+    console.log('👤 Usuario info:', { 
+      esJefe: sessionUser.esJefe, 
+      esRrhh: sessionUser.esRrhh, 
+      esAdmin: sessionUser.esAdmin,
+      departamentoId: sessionUser.departamentoId 
+    });
+    console.log('🔐 Permisos:', { puedeVerTodas, puedeVerPropias });
 
     const conditions = [isNull(solicitudes.deletedAt)];
     
@@ -54,12 +62,49 @@ export async function GET(request: NextRequest) {
       if (usuarioIdParam) {
         conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioIdParam)));
       }
-    } else if (puedeVerPropias) {
-      // EMPLEADO/JEFE → Solo sus propias solicitudes
-      console.log('✅ Permiso: Ver solo solicitudes propias');
       
-      // Forzar filtro por usuario actual (ignorar usuarioIdParam)
-      conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
+      // Si es RRHH y busca para aprobar, filtrar por estado aprobada_jefe
+      if (paraAprobar && sessionUser.esRrhh && !estado) {
+        conditions.push(eq(solicitudes.estado, 'aprobada_jefe'));
+        console.log('🔍 Filtrando solicitudes aprobada_jefe para RRHH');
+      }
+    } else if (puedeVerPropias) {
+      // EMPLEADO/JEFE → Depende del contexto
+      
+      if (paraAprobar && sessionUser.esJefe && sessionUser.departamentoId) {
+        // JEFE viendo solicitudes para aprobar → Ver solicitudes pendientes de su departamento
+        console.log('✅ Permiso: Ver solicitudes de departamento para aprobar');
+        
+        // Buscar solicitudes pendientes de usuarios de su departamento (excepto las propias)
+        const usuariosDeptQuery = await db
+          .select({ id: usuarios.id })
+          .from(usuarios)
+          .where(
+            and(
+              eq(usuarios.departamentoId, sessionUser.departamentoId),
+              isNull(usuarios.deletedAt)
+            )
+          );
+        
+        const usuariosDeptIds = usuariosDeptQuery.map(u => u.id);
+        
+        if (usuariosDeptIds.length > 0) {
+          conditions.push(inArray(solicitudes.usuarioId, usuariosDeptIds));
+        } else {
+          // No hay usuarios en el departamento, retornar vacío
+          conditions.push(sql`false`);
+        }
+        
+        // Si no se especifica estado, por defecto filtrar pendientes
+        if (!estado) {
+          conditions.push(eq(solicitudes.estado, 'pendiente'));
+          console.log('🔍 Filtrando solicitudes pendientes para JEFE');
+        }
+      } else {
+        // Solo sus propias solicitudes
+        console.log('✅ Permiso: Ver solo solicitudes propias');
+        conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
+      }
     }
 
     // Filtros adicionales
@@ -210,7 +255,15 @@ export async function POST(request: NextRequest) {
     // 🔐 VALIDAR SOLICITUD CON BALANCE SERVICE
     const fechaInicioDate = new Date(fechaInicio);
     const fechaFinDate = new Date(fechaFin);
-    const diasSolicitados = parseFloat(cantidad);
+    
+    // 📅 CALCULAR DÍAS LABORABLES (excluyendo sábados y domingos)
+    const diasLaborables = calcularDiasLaborables(fechaInicioDate, fechaFinDate);
+    
+    console.log(`📊 Rango: ${fechaInicio} a ${fechaFin}`);
+    console.log(`📊 Días laborables calculados: ${diasLaborables} (excluyendo fines de semana)`);
+    
+    // Usar días laborables en lugar de la cantidad enviada por el frontend
+    const diasSolicitados = diasLaborables;
 
     const validacion = await validarSolicitud(
       usuarioId,
@@ -288,19 +341,37 @@ export async function POST(request: NextRequest) {
 // PATCH: Actualizar estado de solicitud (aprobar/rechazar)
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { solicitudId, accion, usuarioId, motivo } = body;
-
-    if (!solicitudId || !accion || !usuarioId) {
+    // 🔐 1. AUTENTICACIÓN
+    const sessionUser = await getSession();
+    if (!sessionUser) {
+      console.log('❌ PATCH /api/solicitudes - Sin sesión');
       return NextResponse.json(
-        { success: false, error: 'Faltan campos requeridos' },
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    console.log(`🔄 PATCH /api/solicitudes - Usuario: ${sessionUser.email}`);
+
+    const body = await request.json();
+    const { solicitudId, accion, motivo } = body;
+
+    if (!solicitudId || !accion) {
+      return NextResponse.json(
+        { success: false, error: 'Faltan campos requeridos (solicitudId, accion)' },
         { status: 400 }
       );
     }
 
-    // Obtener solicitud actual
+    // Obtener solicitud actual con relaciones
     const solicitud = await db.query.solicitudes.findFirst({
-      where: eq(solicitudes.id, solicitudId)
+      where: eq(solicitudes.id, solicitudId),
+      with: {
+        usuario: {
+          with: { departamento: true }
+        },
+        tipoAusencia: true
+      }
     });
 
     if (!solicitud) {
@@ -310,37 +381,196 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Determinar nuevo estado y campos según la acción
+    console.log(`📋 Solicitud ${solicitud.codigo} - Estado actual: ${solicitud.estado}`);
+    console.log(`🎯 Acción solicitada: ${accion}`);
+
+    // 🔐 2. AUTORIZACIÓN Y VALIDACIÓN SEGÚN LA ACCIÓN
     let nuevoEstado = solicitud.estado;
     let camposActualizar: any = { version: solicitud.version + 1 };
 
     switch (accion) {
-      case 'aprobar_jefe':
+      case 'aprobar_jefe': {
+        // Verificar permiso de aprobar como jefe
+        const puedeAprobarJefe = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_jefe');
+        if (!puedeAprobarJefe) {
+          console.log('❌ Sin permiso para aprobar como jefe');
+          return NextResponse.json(
+            { success: false, error: 'No tienes permiso para aprobar solicitudes como jefe' },
+            { status: 403 }
+          );
+        }
+
+        // JEFE solo puede aprobar de su departamento (a menos que sea ADMIN/RRHH)
+        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
+        if (!esAdminORrhh) {
+          if (!sessionUser.departamentoId || sessionUser.departamentoId !== solicitud.usuario.departamentoId) {
+            console.log(`❌ JEFE ${sessionUser.id} intenta aprobar solicitud de otro departamento`);
+            return NextResponse.json(
+              { success: false, error: 'Solo puedes aprobar solicitudes de tu departamento' },
+              { status: 403 }
+            );
+          }
+        }
+
+        // Validar que la solicitud esté en estado pendiente
+        if (solicitud.estado !== 'pendiente') {
+          return NextResponse.json(
+            { success: false, error: `No se puede aprobar una solicitud en estado: ${solicitud.estado}` },
+            { status: 400 }
+          );
+        }
+
         nuevoEstado = 'aprobada_jefe';
         camposActualizar.estado = nuevoEstado;
-        camposActualizar.aprobadoPor = usuarioId;
+        camposActualizar.aprobadoPor = sessionUser.id;
         camposActualizar.fechaAprobacionJefe = new Date();
+        console.log(`✅ Aprobación de jefe autorizada`);
         break;
+      }
 
-      case 'aprobar_rrhh':
+      case 'aprobar_rrhh': {
+        // Verificar permiso de aprobar como RRHH
+        const puedeAprobarRrhh = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_rrhh');
+        if (!puedeAprobarRrhh) {
+          console.log('❌ Sin permiso para aprobar como RRHH');
+          return NextResponse.json(
+            { success: false, error: 'No tienes permiso para aprobar solicitudes como RRHH' },
+            { status: 403 }
+          );
+        }
+
+        // Validar que la solicitud esté en estado aprobada_jefe
+        if (solicitud.estado !== 'aprobada_jefe') {
+          return NextResponse.json(
+            { success: false, error: `Solo se pueden aprobar solicitudes previamente aprobadas por el jefe (estado actual: ${solicitud.estado})` },
+            { status: 400 }
+          );
+        }
+
         nuevoEstado = 'aprobada';
         camposActualizar.estado = nuevoEstado;
-        camposActualizar.aprobadoRrhhPor = usuarioId;
+        camposActualizar.aprobadoRrhhPor = sessionUser.id;
         camposActualizar.fechaAprobacionRrhh = new Date();
-        break;
+        console.log(`✅ Aprobación de RRHH autorizada`);
 
-      case 'rechazar':
+        // 📊 MOVER DÍAS DE PENDIENTE A UTILIZADA EN BALANCE
+        const anio = new Date(solicitud.fechaInicio).getFullYear();
+        const diasSolicitud = parseFloat(solicitud.cantidad);
+        
+        // Restar de pendientes y sumar a utilizados
+        await db.execute(sql`
+          UPDATE balances_ausencias
+          SET 
+            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
+            cantidad_utilizada = cantidad_utilizada + ${diasSolicitud},
+            updated_at = NOW()
+          WHERE usuario_id = ${solicitud.usuarioId}
+            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
+            AND anio = ${anio}
+        `);
+        
+        console.log(`📊 Balance actualizado: ${diasSolicitud} días movidos de pendiente a utilizada`);
+        break;
+      }
+
+      case 'rechazar': {
+        // Verificar permiso de rechazar
+        const puedeRechazar = tienePermiso(sessionUser, 'vacaciones.solicitudes.rechazar');
+        if (!puedeRechazar) {
+          console.log('❌ Sin permiso para rechazar solicitudes');
+          return NextResponse.json(
+            { success: false, error: 'No tienes permiso para rechazar solicitudes' },
+            { status: 403 }
+          );
+        }
+
+        // JEFE solo puede rechazar de su departamento (a menos que sea ADMIN/RRHH)
+        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
+        if (!esAdminORrhh && !sessionUser.esRrhh) {
+          if (!sessionUser.departamentoId || sessionUser.departamentoId !== solicitud.usuario.departamentoId) {
+            console.log(`❌ JEFE ${sessionUser.id} intenta rechazar solicitud de otro departamento`);
+            return NextResponse.json(
+              { success: false, error: 'Solo puedes rechazar solicitudes de tu departamento' },
+              { status: 403 }
+            );
+          }
+        }
+
+        // Validar que la solicitud esté en estado válido para rechazar
+        if (!['pendiente', 'aprobada_jefe'].includes(solicitud.estado)) {
+          return NextResponse.json(
+            { success: false, error: `No se puede rechazar una solicitud en estado: ${solicitud.estado}` },
+            { status: 400 }
+          );
+        }
+
         nuevoEstado = 'rechazada';
         camposActualizar.estado = nuevoEstado;
-        camposActualizar.rechazadoPor = usuarioId;
+        camposActualizar.rechazadoPor = sessionUser.id;
         camposActualizar.fechaRechazo = new Date();
         camposActualizar.motivoRechazo = motivo || null;
-        break;
+        console.log(`✅ Rechazo autorizado`);
 
-      case 'cancelar':
+        // 📊 DEVOLVER DÍAS PENDIENTES AL BALANCE
+        const anio = new Date(solicitud.fechaInicio).getFullYear();
+        const diasSolicitud = parseFloat(solicitud.cantidad);
+        
+        await db.execute(sql`
+          UPDATE balances_ausencias
+          SET 
+            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
+            updated_at = NOW()
+          WHERE usuario_id = ${solicitud.usuarioId}
+            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
+            AND anio = ${anio}
+        `);
+        
+        console.log(`📊 Balance actualizado: ${diasSolicitud} días liberados de pendiente`);
+        break;
+      }
+
+      case 'cancelar': {
+        // Solo el usuario dueño o ADMIN/RRHH pueden cancelar
+        const esPropietario = solicitud.usuarioId === sessionUser.id;
+        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
+        
+        if (!esPropietario && !esAdminORrhh) {
+          console.log(`❌ Usuario ${sessionUser.id} intenta cancelar solicitud de otro usuario`);
+          return NextResponse.json(
+            { success: false, error: 'Solo puedes cancelar tus propias solicitudes' },
+            { status: 403 }
+          );
+        }
+
+        // Validar que la solicitud esté en estado válido para cancelar
+        if (!['pendiente', 'aprobada_jefe'].includes(solicitud.estado)) {
+          return NextResponse.json(
+            { success: false, error: `No se puede cancelar una solicitud en estado: ${solicitud.estado}` },
+            { status: 400 }
+          );
+        }
+
         nuevoEstado = 'cancelada';
         camposActualizar.estado = nuevoEstado;
+        console.log(`✅ Cancelación autorizada`);
+
+        // 📊 DEVOLVER DÍAS PENDIENTES AL BALANCE
+        const anio = new Date(solicitud.fechaInicio).getFullYear();
+        const diasSolicitud = parseFloat(solicitud.cantidad);
+        
+        await db.execute(sql`
+          UPDATE balances_ausencias
+          SET 
+            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
+            updated_at = NOW()
+          WHERE usuario_id = ${solicitud.usuarioId}
+            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
+            AND anio = ${anio}
+        `);
+        
+        console.log(`📊 Balance actualizado: ${diasSolicitud} días liberados de pendiente`);
         break;
+      }
 
       default:
         return NextResponse.json(
@@ -371,6 +601,8 @@ export async function PATCH(request: NextRequest) {
     else if (accion === 'aprobar_rrhh') mensaje = 'Solicitud aprobada por RRHH';
     else if (accion === 'rechazar') mensaje = 'Solicitud rechazada';
     else if (accion === 'cancelar') mensaje = 'Solicitud cancelada';
+
+    console.log(`✅ ${mensaje} - Nuevo estado: ${nuevoEstado}`);
 
     return NextResponse.json({
       success: true,

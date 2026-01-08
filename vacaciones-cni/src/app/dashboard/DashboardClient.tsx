@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -25,6 +25,7 @@ import {
   Clock,
   Check,
   Plus,
+  X,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import type { Session } from "next-auth";
@@ -35,6 +36,8 @@ interface Metrics {
   solicitudes_pendientes: number;
   en_vacaciones: number;
   nuevos_este_mes?: number;
+  aprobadas_hoy?: number;
+  rechazadas_hoy?: number;
 }
 
 interface BalancePersonal {
@@ -90,14 +93,18 @@ export default function DashboardClient({ session }: DashboardClientProps) {
   const [loading, setLoading] = useState(true);
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Función para forzar recarga (se puede llamar desde cualquier parte)
+  const recargarDatos = () => setRefreshKey(prev => prev + 1);
 
   // Load metrics and activities
   useEffect(() => {
     const cargarDatos = async () => {
       try {
         const requests = [
-          fetch("/api/dashboard/actividad"),
-          fetch(`/api/dashboard/calendario?mes=${mesSeleccionado}&anio=${anioSeleccionado}`),
+          fetch("/api/dashboard/actividad", { cache: 'no-store' }),
+          fetch(`/api/dashboard/calendario?mes=${mesSeleccionado}&anio=${anioSeleccionado}`, { cache: 'no-store' }),
         ];
 
         // Determinar el endpoint correcto según el rol
@@ -113,11 +120,11 @@ export default function DashboardClient({ session }: DashboardClientProps) {
           metricsEndpoint = "/api/dashboard/mi-balance";
         }
 
-        requests.unshift(fetch(metricsEndpoint));
+        requests.unshift(fetch(metricsEndpoint, { cache: 'no-store' }));
 
         // RRHH también necesita su balance personal
         if (session.user.esRrhh && !session.user.esAdmin) {
-          requests.push(fetch("/api/dashboard/mi-balance"));
+          requests.push(fetch("/api/dashboard/mi-balance", { cache: 'no-store' }));
         }
 
         const responses = await Promise.all(requests);
@@ -181,13 +188,36 @@ export default function DashboardClient({ session }: DashboardClientProps) {
     };
 
     cargarDatos();
-  }, []);
+
+    // Recargar datos cuando la ventana recupera el foco
+    const handleFocus = () => {
+      recargarDatos();
+    };
+
+    // Detectar cuando se vuelve visible la página (navegación interna)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        recargarDatos();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshKey]); // Se ejecuta cada vez que refreshKey cambia
 
   // Recargar calendario cuando cambie mes/año
   useEffect(() => {
     const cargarCalendario = async () => {
       try {
-        const res = await fetch(`/api/dashboard/calendario?mes=${mesSeleccionado}&anio=${anioSeleccionado}`);
+        const res = await fetch(
+          `/api/dashboard/calendario?mes=${mesSeleccionado}&anio=${anioSeleccionado}`,
+          { cache: 'no-store' }
+        );
         const data = await res.json();
         if (data.success) {
           setCalendario(data.data);
@@ -299,11 +329,22 @@ export default function DashboardClient({ session }: DashboardClientProps) {
         </div>
 
         {/* Page Title */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-base-content">Dashboard</h1>
-          <p className="text-base-content/60">
-            {isAdmin ? "Control total del sistema de gestión de vacaciones" : "Resumen general del sistema de vacaciones"}
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-base-content">Dashboard</h1>
+            <p className="text-base-content/60">
+              {isAdmin ? "Control total del sistema de gestión de vacaciones" : "Resumen general del sistema de vacaciones"}
+            </p>
+          </div>
+          <button 
+            onClick={recargarDatos} 
+            className="btn btn-circle btn-ghost"
+            title="Recargar datos"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
         </div>
 
         {/* Admin/Jefe/RRHH Banners */}
@@ -417,8 +458,8 @@ export default function DashboardClient({ session }: DashboardClientProps) {
             </div>
           </div>
         ) : isJefe && !isRrhh ? (
-          // JEFE METRICS - Solo 3 tarjetas enfocadas en su departamento
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          // JEFE METRICS - 5 tarjetas enfocadas en su departamento
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
             <div className="card bg-base-100 shadow-xl border-l-4 border-warning hover:shadow-2xl transition-all">
               <div className="card-body">
                 <div className="flex items-center justify-between">
@@ -431,6 +472,36 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                   </div>
                 </div>
                 <div className="text-xs text-base-content/50 mt-2">Requieren tu aprobación</div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl border-l-4 border-success hover:shadow-2xl transition-all">
+              <div className="card-body">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-medium text-base-content/60">Aprobadas Hoy</h2>
+                    <p className="text-4xl font-bold text-success mt-2">{metrics?.aprobadas_hoy || 0}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-success" />
+                  </div>
+                </div>
+                <div className="text-xs text-base-content/50 mt-2">Solicitudes aprobadas</div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl border-l-4 border-error hover:shadow-2xl transition-all">
+              <div className="card-body">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-medium text-base-content/60">Rechazadas Hoy</h2>
+                    <p className="text-4xl font-bold text-error mt-2">{metrics?.rechazadas_hoy || 0}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
+                    <X className="w-6 h-6 text-error" />
+                  </div>
+                </div>
+                <div className="text-xs text-base-content/50 mt-2">Solicitudes rechazadas</div>
               </div>
             </div>
 
@@ -465,8 +536,57 @@ export default function DashboardClient({ session }: DashboardClientProps) {
             </div>
           </div>
         ) : isRrhh && !isAdmin ? (
-          // RRHH METRICS - Similar a Admin, vista global
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          // RRHH METRICS - Similar a Admin, vista global + acciones HOY
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="card bg-base-100 shadow-xl border-l-4 border-warning hover:shadow-2xl transition-all">
+              <div className="card-body">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-warning to-warning/70 rounded-xl flex items-center justify-center shadow-lg">
+                    <Hourglass className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-4xl font-bold text-warning">{metrics?.solicitudes_pendientes}</h3>
+                    <p className="text-sm text-base-content/60 font-medium">Pendientes Aprobación</p>
+                    {metrics?.solicitudes_pendientes ? (
+                      <p className="text-xs text-warning">Requieren tu aprobación</p>
+                    ) : (
+                      <p className="text-xs text-base-content/50">Todo al día</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl border-l-4 border-success hover:shadow-2xl transition-all">
+              <div className="card-body">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-success to-success/70 rounded-xl flex items-center justify-center shadow-lg">
+                    <CheckCircle className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-4xl font-bold text-success">{metrics?.aprobadas_hoy || 0}</h3>
+                    <p className="text-sm text-base-content/60 font-medium">Aprobadas Hoy</p>
+                    <p className="text-xs text-success">Solicitudes finalizadas</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl border-l-4 border-error hover:shadow-2xl transition-all">
+              <div className="card-body">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-error to-error/70 rounded-xl flex items-center justify-center shadow-lg">
+                    <X className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-4xl font-bold text-error">{metrics?.rechazadas_hoy || 0}</h3>
+                    <p className="text-sm text-base-content/60 font-medium">Rechazadas Hoy</p>
+                    <p className="text-xs text-error">Solicitudes denegadas</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="card bg-base-100 shadow-xl border-l-4 border-primary hover:shadow-2xl transition-all">
               <div className="card-body">
                 <div className="flex items-center gap-4">
@@ -498,25 +618,6 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                         {Math.round((metrics.usuarios_activos / metrics.usuarios_totales) * 100)}% activos
                       </p>
                     ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl border-l-4 border-warning hover:shadow-2xl transition-all">
-              <div className="card-body">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-warning to-warning/70 rounded-xl flex items-center justify-center shadow-lg">
-                    <Hourglass className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-4xl font-bold text-warning">{metrics?.solicitudes_pendientes}</h3>
-                    <p className="text-sm text-base-content/60 font-medium">Pendientes</p>
-                    {metrics?.solicitudes_pendientes ? (
-                      <p className="text-xs text-warning">Requieren acción</p>
-                    ) : (
-                      <p className="text-xs text-base-content/50">Todo al día</p>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1099,14 +1200,14 @@ export default function DashboardClient({ session }: DashboardClientProps) {
         {/* Calendario */}
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
               <h2 className="card-title flex items-center gap-2">
                 <Calendar className="w-6 h-6 text-primary" />
-                <span>Calendario - {calendario?.nombreMes || "..."} {anioSeleccionado}</span>
+                <span className="text-base sm:text-lg">Calendario - {calendario?.nombreMes || "..."} {anioSeleccionado}</span>
               </h2>
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto">
                 <select
-                  className="select select-bordered select-sm"
+                  className="select select-bordered select-sm flex-1 sm:flex-none"
                   value={mesSeleccionado}
                   onChange={(e) => setMesSeleccionado(Number(e.target.value))}
                 >
@@ -1117,7 +1218,7 @@ export default function DashboardClient({ session }: DashboardClientProps) {
                   ))}
                 </select>
                 <select
-                  className="select select-bordered select-sm"
+                  className="select select-bordered select-sm flex-1 sm:flex-none"
                   value={anioSeleccionado}
                   onChange={(e) => setAnioSeleccionado(Number(e.target.value))}
                 >
@@ -1141,65 +1242,87 @@ export default function DashboardClient({ session }: DashboardClientProps) {
               <>
                 {/* Estadísticas del mes */}
                 {calendario.estadisticas.totalSolicitudes > 0 && (
-                  <div className="flex gap-3 mb-4">
+                  <div className="flex flex-wrap gap-2 mb-4">
                     <div className="badge badge-primary gap-2">
                       <Calendar className="w-4 h-4" />
-                      {calendario.estadisticas.totalDiasConVacaciones} días con vacaciones
+                      <span className="text-xs sm:text-sm">{calendario.estadisticas.totalDiasConVacaciones} días</span>
                     </div>
                     <div className="badge badge-secondary gap-2">
                       <Users className="w-4 h-4" />
-                      {calendario.estadisticas.usuariosEnVacaciones} usuarios
+                      <span className="text-xs sm:text-sm">{calendario.estadisticas.usuariosEnVacaciones} usuarios</span>
                     </div>
                   </div>
                 )}
 
-                {/* Calendario */}
-                <div className="grid grid-cols-7 gap-2">
-                  {/* Headers */}
-                  {["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"].map((dia, i) => (
-                    <div key={dia} className={`text-center font-bold text-sm py-2 ${i === 0 || i === 6 ? "text-error" : "text-base-content/70"}`}>
-                      {dia}
-                    </div>
-                  ))}
-
-                  {/* Días vacíos al inicio */}
-                  {calendario.dias.length > 0 && Array.from({ length: calendario.dias[0].diaSemana }).map((_, i) => (
-                    <div key={`empty-${i}`}></div>
-                  ))}
-
-                  {/* Días del mes */}
-                  {calendario.dias.map((dia) => (
-                    <div
-                      key={dia.fecha}
-                      className={`
-                        h-14 rounded-lg flex flex-col items-center justify-center border-2 cursor-default
-                        ${dia.tieneVacaciones ? "border-primary bg-primary/20 font-bold shadow-md" : "border-base-300"}
-                        ${dia.esFinde ? "bg-base-200/70" : ""}
-                        ${dia.solicitudes.length > 0 ? "cursor-pointer hover:border-primary hover:shadow-lg transition-all" : ""}
-                      `}
-                      title={dia.solicitudes.length > 0 ? dia.solicitudes.map(s => s.usuario).join("\n") : ""}
-                    >
-                      <div className={`text-base font-semibold ${dia.esFinde ? "text-error" : ""} ${dia.tieneVacaciones ? "text-primary font-bold" : ""}`}>
-                        {dia.dia}
-                      </div>
-                      {dia.solicitudes.length > 0 && (
-                        <div className="text-xs text-primary font-semibold mt-1">
-                          {dia.solicitudes.length} 👤
+                {/* Calendario - Solo días laborables (L-V) */}
+                <div className="overflow-x-auto -mx-2 sm:mx-0">
+                  <div className="inline-block min-w-full">
+                    <div className="grid grid-cols-5 gap-1 sm:gap-2 min-w-[280px]">
+                      {/* Headers - Solo días laborables */}
+                      {[
+                        { corto: "L", largo: "Lunes" },
+                        { corto: "M", largo: "Martes" },
+                        { corto: "M", largo: "Miércoles" },
+                        { corto: "J", largo: "Jueves" },
+                        { corto: "V", largo: "Viernes" }
+                      ].map((dia, i) => (
+                        <div 
+                          key={i} 
+                          className="text-center font-bold text-xs sm:text-sm py-1 sm:py-2 text-base-content/70"
+                        >
+                          <span className="sm:hidden">{dia.corto}</span>
+                          <span className="hidden sm:inline">{dia.largo}</span>
                         </div>
-                      )}
+                      ))}
+
+                      {/* Días del mes - Solo laborables */}
+                      {calendario.dias
+                        .filter(dia => !dia.esFinde) // Filtrar fines de semana
+                        .map((dia, index) => {
+                          // Calcular posición en la grilla (0-4 para L-V)
+                          const diaSemana = dia.diaSemana === 0 ? 6 : dia.diaSemana - 1; // Convertir domingo=0 a formato L=0, V=4
+                          const esPrimerDia = index === 0;
+                          
+                          return (
+                            <React.Fragment key={dia.fecha}>
+                              {/* Agregar espacios vacíos al inicio si el mes no empieza en lunes */}
+                              {esPrimerDia && diaSemana > 0 && Array.from({ length: diaSemana }).map((_, i) => (
+                                <div key={`empty-${i}`}></div>
+                              ))}
+                              
+                              <div
+                                className={`
+                                  h-12 sm:h-16 rounded-md sm:rounded-lg flex flex-col items-center justify-center border-2 cursor-default
+                                  ${dia.tieneVacaciones ? "border-primary bg-primary/20 font-bold shadow-md" : "border-base-300"}
+                                  ${dia.solicitudes.length > 0 ? "cursor-pointer hover:border-primary hover:shadow-lg transition-all" : ""}
+                                `}
+                                title={dia.solicitudes.length > 0 ? dia.solicitudes.map(s => s.usuario).join("\n") : ""}
+                              >
+                                <div className={`text-sm sm:text-lg font-semibold ${dia.tieneVacaciones ? "text-primary font-bold" : ""}`}>
+                                  {dia.dia}
+                                </div>
+                                {dia.solicitudes.length > 0 && (
+                                  <div className="text-[10px] sm:text-xs text-primary font-semibold mt-0.5 sm:mt-1">
+                                    {dia.solicitudes.length} 👤
+                                  </div>
+                                )}
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
                     </div>
-                  ))}
+                  </div>
                 </div>
 
-                {/* Leyenda */}
-                <div className="flex gap-6 mt-4 text-sm justify-center text-base-content/60">
+                {/* Leyenda - Responsive */}
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mt-4 text-xs sm:text-sm justify-center text-base-content/60">
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-primary bg-primary/20 rounded"></div>
                     <span>Días con vacaciones</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-base-200/70 border-2 border-base-300 rounded"></div>
-                    <span>Fin de semana</span>
+                    <div className="w-3 h-3 rounded-full bg-base-content/20"></div>
+                    <span>Solo días laborables (L-V)</span>
                   </div>
                 </div>
               </>

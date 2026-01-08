@@ -66,12 +66,46 @@ export async function GET() {
         )
       );
 
+    // Solicitudes aprobadas HOY por este RRHH (aprobación final)
+    const hoyInicio = new Date();
+    hoyInicio.setHours(0, 0, 0, 0);
+    const hoyFin = new Date();
+    hoyFin.setHours(23, 59, 59, 999);
+
+    const [aprobadasHoy] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(solicitudes)
+      .where(
+        and(
+          eq(solicitudes.aprobadoRrhhPor, session.user.id),
+          sql`${solicitudes.fechaAprobacionRrhh} >= ${hoyInicio}`,
+          sql`${solicitudes.fechaAprobacionRrhh} <= ${hoyFin}`,
+          isNull(solicitudes.deletedAt)
+        )
+      );
+
+    // Solicitudes rechazadas HOY por este RRHH
+    const [rechazadasHoy] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(solicitudes)
+      .where(
+        and(
+          eq(solicitudes.estado, "rechazada"),
+          eq(solicitudes.aprobadoRrhhPor, session.user.id),
+          sql`${solicitudes.updatedAt} >= ${hoyInicio}`,
+          sql`${solicitudes.updatedAt} <= ${hoyFin}`,
+          isNull(solicitudes.deletedAt)
+        )
+      );
+
     const metricas = {
       usuarios_totales: Number(totalUsuarios?.count || 0),
       usuarios_activos: Number(usuariosActivos?.count || 0),
       solicitudes_pendientes: Number(solicitudesPendientes?.count || 0),
       en_vacaciones: Number(enVacaciones?.count || 0),
       nuevos_este_mes: Number(nuevosEsteMes?.count || 0),
+      aprobadas_hoy: Number(aprobadasHoy?.count || 0),
+      rechazadas_hoy: Number(rechazadasHoy?.count || 0),
     };
 
     console.log('✅ RRHH métricas:', metricas);

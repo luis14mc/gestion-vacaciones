@@ -19,21 +19,37 @@ import {
   Info
 } from "lucide-react";
 import Swal from "sweetalert2";
+import type { Session } from "next-auth";
 
 interface Solicitud {
   id: number;
+  codigo: string;
   usuarioId: number;
   tipoAusenciaId: number;
   fechaInicio: string;
   fechaFin: string;
-  dias: number;
+  cantidad: string;
+  unidad: string;
   motivo: string | null;
   estado: string;
   comentariosJefe: string | null;
   comentariosRrhh: string | null;
-  fechaCreacion: string;
-  usuario: string;
-  tipoAusencia: string;
+  createdAt: string;
+  usuario: {
+    id: number;
+    nombre: string;
+    apellido: string;
+    email: string;
+    departamento?: {
+      id: number;
+      nombre: string;
+    };
+  };
+  tipoAusencia: {
+    id: number;
+    nombre: string;
+    tipo: string;
+  };
 }
 
 interface Stats {
@@ -43,7 +59,11 @@ interface Stats {
   rechazadas_hoy: number;
 }
 
-export default function AprobarSolicitudesClient() {
+interface AprobarSolicitudesClientProps {
+  session: Session;
+}
+
+export default function AprobarSolicitudesClient({ session }: AprobarSolicitudesClientProps) {
   const router = useRouter();
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, pendientes: 0, aprobadas_hoy: 0, rechazadas_hoy: 0 });
@@ -68,27 +88,46 @@ export default function AprobarSolicitudesClient() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        pagina: paginaActual.toString(),
-        limite: itemsPorPagina.toString(),
-        estado: "pendiente", // Solo solicitudes pendientes
+        page: paginaActual.toString(),
+        pageSize: itemsPorPagina.toString(),
+        paraAprobar: "true", // Indica que es para aprobar
+        _t: Date.now().toString() // Evitar caché
       });
 
-      const response = await fetch(`/api/solicitudes?${params}`);
+      const response = await fetch(`/api/solicitudes?${params}`, {
+        cache: 'no-store' // Forzar sin caché
+      });
       const data = await response.json();
 
+      console.log('📊 Respuesta de solicitudes:', data);
+      console.log('📋 Solicitudes recibidas:', data.data?.map((s: any) => ({ 
+        id: s.id, 
+        codigo: s.codigo, 
+        estado: s.estado,
+        usuario: s.usuario?.nombre 
+      })));
+
       if (data.success) {
-        setSolicitudes(data.solicitudes || []);
+        setSolicitudes(data.data || []);
         setStats({
           total: data.total || 0,
-          pendientes: data.stats?.pendientes || 0,
+          pendientes: data.total || 0,
           aprobadas_hoy: 0,
           rechazadas_hoy: 0,
         });
-        setTotalPaginas(Math.ceil((data.total || 0) / itemsPorPagina));
+        setTotalPaginas(data.totalPages || 1);
+      } else {
+        console.error('Error en respuesta:', data.error);
       }
     } catch (error) {
       console.error("Error al cargar solicitudes:", error);
-      Swal.fire("Error", "No se pudieron cargar las solicitudes", "error");
+      await Swal.fire({
+        icon: "error",
+        title: "Error al Cargar",
+        text: "No se pudieron cargar las solicitudes. Intenta refrescar la página.",
+        confirmButtonText: "Cerrar",
+        confirmButtonColor: "#ef4444"
+      });
     } finally {
       setLoading(false);
     }
@@ -105,41 +144,84 @@ export default function AprobarSolicitudesClient() {
     if (!solicitudSeleccionada || !accion) return;
 
     if (accion === "rechazar" && !comentarios.trim()) {
-      Swal.fire("Campo requerido", "Debes proporcionar un motivo para rechazar", "warning");
+      await Swal.fire({
+        icon: "warning",
+        title: "Campo Requerido",
+        text: "Debes proporcionar un motivo para rechazar la solicitud",
+        confirmButtonText: "Entendido",
+        confirmButtonColor: "#f59e0b"
+      });
       return;
     }
 
     try {
-      const response = await fetch(`/api/solicitudes/${solicitudSeleccionada.id}`, {
+      // Determinar acción según el rol del usuario
+      let accionBackend: string;
+      
+      if (accion === "rechazar") {
+        accionBackend = "rechazar";
+      } else {
+        // accion === "aprobar"
+        if (session.user.esRrhh) {
+          accionBackend = "aprobar_rrhh";
+        } else {
+          accionBackend = "aprobar_jefe";
+        }
+      }
+      
+      const response = await fetch(`/api/solicitudes`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accion: accion === "aprobar" ? "aprobar_jefe" : "rechazar_jefe",
-          comentarios: comentarios.trim() || null,
+          solicitudId: solicitudSeleccionada.id,
+          accion: accionBackend,
+          motivo: comentarios.trim() || null,
         }),
       });
 
       const data = await response.json();
 
+      console.log('📊 Respuesta del servidor:', data);
+
       if (data.success) {
-        Swal.fire({
-          title: "¡Éxito!",
-          text: `Solicitud ${accion === "aprobar" ? "aprobada" : "rechazada"} correctamente`,
-          icon: "success",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        // Cerrar modal antes de mostrar alerta
         setMostrarModal(false);
         setSolicitudSeleccionada(null);
         setAccion(null);
         setComentarios("");
-        cargarSolicitudes();
+        
+        // Mostrar alerta de éxito
+        await Swal.fire({
+          icon: "success",
+          title: accion === "aprobar" ? "¡Solicitud Aprobada!" : "Solicitud Rechazada",
+          text: data.message || `La solicitud ha sido ${accion === "aprobar" ? "aprobada" : "rechazada"} correctamente`,
+          confirmButtonText: "Aceptar",
+          confirmButtonColor: accion === "aprobar" ? "#10b981" : "#ef4444",
+          timer: 3000,
+          timerProgressBar: true
+        });
+        
+        // Recargar lista de solicitudes
+        console.log('🔄 Recargando solicitudes...');
+        await cargarSolicitudes();
       } else {
-        Swal.fire("Error", data.error || "No se pudo procesar la solicitud", "error");
+        await Swal.fire({
+          icon: "error",
+          title: "Error al Procesar",
+          text: data.error || "No se pudo procesar la solicitud. Intenta de nuevo.",
+          confirmButtonText: "Cerrar",
+          confirmButtonColor: "#ef4444"
+        });
       }
     } catch (error) {
       console.error("Error al procesar solicitud:", error);
-      Swal.fire("Error", "No se pudo procesar la solicitud", "error");
+      await Swal.fire({
+        icon: "error",
+        title: "Error de Conexión",
+        text: "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.",
+        confirmButtonText: "Cerrar",
+        confirmButtonColor: "#ef4444"
+      });
     }
   };
 
@@ -226,7 +308,8 @@ export default function AprobarSolicitudesClient() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Vista Desktop - Tabla */}
+                <div className="hidden lg:block overflow-x-auto">
                   <table className="table table-zebra">
                     <thead>
                       <tr>
@@ -244,11 +327,15 @@ export default function AprobarSolicitudesClient() {
                           <td>
                             <div className="flex items-center gap-2">
                               <User className="w-4 h-4 text-base-content/50" />
-                              <span className="font-medium">{sol.usuario}</span>
+                              <span className="font-medium">
+                                {sol.usuario?.nombre} {sol.usuario?.apellido}
+                              </span>
                             </div>
                           </td>
                           <td>
-                            <div className="badge badge-outline">{sol.tipoAusencia}</div>
+                            <div className="badge badge-outline">
+                              {sol.tipoAusencia?.nombre || 'N/A'}
+                            </div>
                           </td>
                           <td>
                             <div className="text-sm">
@@ -263,11 +350,11 @@ export default function AprobarSolicitudesClient() {
                             </div>
                           </td>
                           <td>
-                            <div className="badge badge-primary">{sol.dias} días</div>
+                            <div className="badge badge-primary">{sol.cantidad} días</div>
                           </td>
                           <td>
                             <div className="text-xs text-base-content/60">
-                              {calcularDiasDesde(sol.fechaCreacion)}
+                              {calcularDiasDesde(sol.createdAt)}
                             </div>
                           </td>
                           <td>
@@ -305,6 +392,77 @@ export default function AprobarSolicitudesClient() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Vista Mobile - Tarjetas */}
+                <div className="lg:hidden space-y-4">
+                  {solicitudes.map((sol) => (
+                    <div key={sol.id} className="card bg-base-200 shadow-md">
+                      <div className="card-body p-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <User className="w-4 h-4 text-base-content/50" />
+                              <span className="font-bold text-base">
+                                {sol.usuario?.nombre} {sol.usuario?.apellido}
+                              </span>
+                            </div>
+                            <div className="badge badge-outline badge-sm">
+                              {sol.tipoAusencia?.nombre || 'N/A'}
+                            </div>
+                          </div>
+                          <div className="badge badge-primary">{sol.cantidad} días</div>
+                        </div>
+
+                        {/* Fechas */}
+                        <div className="space-y-1 mb-3">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="w-3 h-3 text-base-content/50" />
+                            <span className="text-base-content/70">Inicio:</span>
+                            <span className="font-medium">{formatearFecha(sol.fechaInicio)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="w-3 h-3 text-base-content/50" />
+                            <span className="text-base-content/70">Fin:</span>
+                            <span className="font-medium">{formatearFecha(sol.fechaFin)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-base-content/60">
+                            <Clock className="w-3 h-3" />
+                            Solicitado {calcularDiasDesde(sol.createdAt)}
+                          </div>
+                        </div>
+
+                        {/* Acciones */}
+                        <div className="flex gap-2">
+                          <button
+                            className="btn btn-success btn-sm flex-1 gap-1"
+                            onClick={() => abrirModalAprobacion(sol, "aprobar")}
+                          >
+                            <Check className="w-4 h-4" />
+                            Aprobar
+                          </button>
+                          <button
+                            className="btn btn-error btn-sm flex-1 gap-1"
+                            onClick={() => abrirModalAprobacion(sol, "rechazar")}
+                          >
+                            <X className="w-4 h-4" />
+                            Rechazar
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              setSolicitudSeleccionada(sol);
+                              setMostrarModal(true);
+                              setAccion(null);
+                            }}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Paginación */}
@@ -366,11 +524,13 @@ export default function AprobarSolicitudesClient() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="label label-text font-semibold">Colaborador</label>
-                    <p className="text-base-content">{solicitudSeleccionada.usuario}</p>
+                    <p className="text-base-content">
+                      {solicitudSeleccionada.usuario?.nombre} {solicitudSeleccionada.usuario?.apellido}
+                    </p>
                   </div>
                   <div>
                     <label className="label label-text font-semibold">Tipo de ausencia</label>
-                    <p className="text-base-content">{solicitudSeleccionada.tipoAusencia}</p>
+                    <p className="text-base-content">{solicitudSeleccionada.tipoAusencia?.nombre}</p>
                   </div>
                   <div>
                     <label className="label label-text font-semibold">Fecha inicio</label>
@@ -382,12 +542,12 @@ export default function AprobarSolicitudesClient() {
                   </div>
                   <div>
                     <label className="label label-text font-semibold">Días solicitados</label>
-                    <p className="text-base-content font-bold">{solicitudSeleccionada.dias} días</p>
+                    <p className="text-base-content font-bold">{solicitudSeleccionada.cantidad} días</p>
                   </div>
                   <div>
                     <label className="label label-text font-semibold">Fecha de solicitud</label>
                     <p className="text-sm text-base-content/60">
-                      {formatearFecha(solicitudSeleccionada.fechaCreacion)}
+                      {formatearFecha(solicitudSeleccionada.createdAt)}
                     </p>
                   </div>
                 </div>

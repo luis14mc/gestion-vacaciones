@@ -14,5 +14,5 @@ export default async function AprobarSolicitudesPage() {
     redirect("/dashboard");
   }
 
-  return <AprobarSolicitudesClient />;
+  return <AprobarSolicitudesClient session={session} />;
 }

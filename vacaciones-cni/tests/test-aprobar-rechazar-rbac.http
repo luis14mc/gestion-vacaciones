@@ -1,0 +1,178 @@
+### ====================================
+### TESTS: Actividad 2.3 - RBAC en PATCH /api/solicitudes
+### Aprobar/Rechazar solicitudes con permisos
+### ====================================
+
+@baseUrl = http://localhost:3000
+@solicitudId = 1
+
+### ====================================
+### CASO 1: JEFE aprueba solicitud de su departamento (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_JEFE
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "aprobar_jefe"
+}
+
+### ====================================
+### CASO 2: JEFE intenta aprobar solicitud de otro departamento (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_JEFE
+
+{
+  "solicitudId": 99,
+  "accion": "aprobar_jefe"
+}
+
+### ====================================
+### CASO 3: EMPLEADO intenta aprobar como jefe (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_EMPLEADO
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "aprobar_jefe"
+}
+
+### ====================================
+### CASO 4: RRHH aprueba solicitud ya aprobada por jefe (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_RRHH
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "aprobar_rrhh"
+}
+
+### ====================================
+### CASO 5: RRHH intenta aprobar solicitud aún pendiente (❌ DEBE FALLAR 400)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_RRHH
+
+{
+  "solicitudId": 2,
+  "accion": "aprobar_rrhh"
+}
+
+### ====================================
+### CASO 6: EMPLEADO intenta aprobar como RRHH (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_EMPLEADO
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "aprobar_rrhh"
+}
+
+### ====================================
+### CASO 7: JEFE rechaza solicitud de su departamento (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_JEFE
+
+{
+  "solicitudId": 3,
+  "accion": "rechazar",
+  "motivo": "Fechas no disponibles por carga de trabajo"
+}
+
+### ====================================
+### CASO 8: JEFE intenta rechazar solicitud de otro departamento (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_JEFE
+
+{
+  "solicitudId": 99,
+  "accion": "rechazar",
+  "motivo": "Rechazo no autorizado"
+}
+
+### ====================================
+### CASO 9: RRHH rechaza solicitud de cualquier departamento (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_RRHH
+
+{
+  "solicitudId": 4,
+  "accion": "rechazar",
+  "motivo": "No cumple con política de vacaciones"
+}
+
+### ====================================
+### CASO 10: EMPLEADO intenta rechazar solicitud (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_EMPLEADO
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "rechazar",
+  "motivo": "Intento no autorizado"
+}
+
+### ====================================
+### CASO 11: EMPLEADO cancela su propia solicitud (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_EMPLEADO
+
+{
+  "solicitudId": 5,
+  "accion": "cancelar"
+}
+
+### ====================================
+### CASO 12: EMPLEADO intenta cancelar solicitud de otro (❌ DEBE FALLAR 403)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_EMPLEADO
+
+{
+  "solicitudId": 99,
+  "accion": "cancelar"
+}
+
+### ====================================
+### CASO 13: ADMIN puede aprobar como jefe cualquier solicitud (✅ DEBE PASAR)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+Cookie: next-auth.session-token=TOKEN_ADMIN
+
+{
+  "solicitudId": 6,
+  "accion": "aprobar_jefe"
+}
+
+### ====================================
+### CASO 14: Sin autenticación (❌ DEBE FALLAR 401)
+### ====================================
+PATCH {{baseUrl}}/api/solicitudes
+Content-Type: application/json
+
+{
+  "solicitudId": {{solicitudId}},
+  "accion": "aprobar_jefe"
+}

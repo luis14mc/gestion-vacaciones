@@ -149,7 +149,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: Admin asignando rol JEFE a usuario
   - Commit: `feat(api): Crear endpoint para asignar roles`
 
-- [ ] **3.6 Crear endpoint DELETE /api/usuarios/roles** (1h)
+- [x] **3.6 Crear endpoint DELETE /api/usuarios/roles** (1h) ✅ COMPLETADO
   - En mismo archivo de 3.5
   - Endpoint para remover rol de usuario
   - Usar `removerRolDeUsuario()` del servicio RBAC

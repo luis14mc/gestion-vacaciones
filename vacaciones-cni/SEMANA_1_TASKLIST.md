@@ -133,7 +133,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: RRHH editando datos de empleado
   - Commit: `feat(api): RBAC en PATCH /api/usuarios`
 
-- [ ] **3.4 Integrar RBAC en DELETE /api/usuarios** (1h)
+- [x] **3.4 Integrar RBAC en DELETE /api/usuarios** (1h) ✅ COMPLETADO
   - Verificar permiso `usuarios.eliminar`
   - Soft delete (marcar como inactivo)
   - Desactivar roles del usuario

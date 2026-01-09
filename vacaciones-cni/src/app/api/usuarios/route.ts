@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { usuarios, balancesAusencias, solicitudes } from '@/lib/db/schema';
+import { usuarios, balancesAusencias, solicitudes, usuariosRoles } from '@/lib/db/schema';
 import bcrypt from 'bcryptjs';
 import type { NuevoUsuario } from '@/types';
 import { auth } from '@/auth';
@@ -340,6 +340,24 @@ export async function PATCH(request: NextRequest) {
 // DELETE: Eliminar usuario (soft delete)
 export async function DELETE(request: NextRequest) {
   try {
+    // 🔐 RBAC: Verificar autenticación y permiso usuarios.eliminar
+    const session = await getSession();
+    
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    if (!tienePermiso(session, 'usuarios.eliminar')) {
+      console.log(`❌ Usuario ${session.email} sin permiso usuarios.eliminar`);
+      return NextResponse.json(
+        { success: false, error: 'Sin permiso para eliminar usuarios' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -351,6 +369,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const usuarioId = Number.parseInt(id);
+
+    console.log(`✅ Usuario ${session.email} eliminando usuario ID ${usuarioId}`);
 
     // Verificar que el usuario existe
     const usuario = await db.query.usuarios.findFirst({
@@ -367,11 +387,22 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Soft delete: actualizar deletedAt
+    // Soft delete: marcar como inactivo y establecer deletedAt
     await db
       .update(usuarios)
-      .set({ deletedAt: new Date() })
+      .set({ 
+        activo: false,
+        deletedAt: new Date() 
+      })
       .where(eq(usuarios.id, usuarioId));
+
+    // Desactivar todos los roles del usuario
+    await db
+      .update(usuariosRoles)
+      .set({ activo: false })
+      .where(eq(usuariosRoles.usuarioId, usuarioId));
+
+    console.log(`✅ Usuario ${usuarioId} y sus roles desactivados exitosamente`);
 
     return NextResponse.json({
       success: true,

@@ -140,7 +140,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: Admin desactivando usuario
   - Commit: `feat(api): RBAC en DELETE /api/usuarios`
 
-- [ ] **3.5 Crear endpoint POST /api/usuarios/roles** (2h)
+- [x] **3.5 Crear endpoint POST /api/usuarios/roles** (2h) ✅ COMPLETADO
   - Crear archivo: `src/app/api/usuarios/roles/route.ts`
   - Endpoint para asignar rol a usuario
   - Verificar permiso `usuarios.editar`

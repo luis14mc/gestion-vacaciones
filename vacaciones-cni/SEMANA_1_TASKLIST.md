@@ -119,14 +119,14 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: Admin, RRHH y Jefe consultando usuarios
   - Commit: `feat(api): RBAC en GET /api/usuarios`
 
-- [ ] **3.2 Integrar RBAC en POST /api/usuarios** (1.5h)
+- [x] **3.2 Integrar RBAC en POST /api/usuarios** (1.5h) ✅ COMPLETADO
   - Verificar permiso `usuarios.crear`
   - Validar que email sea único
   - Crear usuario con rol por defecto EMPLEADO
   - Testing: Admin creando usuario nuevo
   - Commit: `feat(api): RBAC en POST /api/usuarios`
 
-- [ ] **3.3 Integrar RBAC en PATCH /api/usuarios** (1h)
+- [x] **3.3 Integrar RBAC en PATCH /api/usuarios** (1h) ✅ COMPLETADO
   - Verificar permiso `usuarios.editar`
   - Validar que usuario existe
   - Actualizar datos

@@ -264,6 +264,24 @@ export async function POST(request: NextRequest) {
 // PATCH: Actualizar usuario
 export async function PATCH(request: NextRequest) {
   try {
+    // 🔐 RBAC: Verificar autenticación y permiso usuarios.editar
+    const session = await getSession();
+    
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    if (!tienePermiso(session, 'usuarios.editar')) {
+      console.log(`❌ Usuario ${session.email} sin permiso usuarios.editar`);
+      return NextResponse.json(
+        { success: false, error: 'Sin permiso para editar usuarios' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { id, password, ...camposActualizar } = body;
 
@@ -273,6 +291,8 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(`✅ Usuario ${session.email} editando usuario ID ${id}`);
 
     // Si se proporciona password, hashearlo
     if (password) {

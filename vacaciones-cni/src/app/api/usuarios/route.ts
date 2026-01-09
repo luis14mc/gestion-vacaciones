@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import type { NuevoUsuario } from '@/types';
 import { auth } from '@/auth';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { asignarRolAUsuario } from '@/core/application/rbac/rbac.service';
 
 export const runtime = 'nodejs';
 
@@ -116,6 +117,7 @@ export async function GET(request: NextRequest) {
         ...resto,
         estado: usuario.activo ? 'activo' : 'inactivo',
         departamento: usuario.departamento?.nombre || null,
+        departamentoId: usuario.departamentoId,
         diasAsignados: diasAsignados,
         diasDisponibles: diasDisponibles,
         diasUsados: diasUsados,
@@ -141,6 +143,26 @@ export async function GET(request: NextRequest) {
 // POST: Crear nuevo usuario
 export async function POST(request: NextRequest) {
   try {
+    // 🔐 RBAC: Verificar autenticación y permiso usuarios.crear
+    const session = await getSession();
+    
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    if (!tienePermiso(session, 'usuarios.crear')) {
+      console.log(`❌ Usuario ${session.email} sin permiso usuarios.crear`);
+      return NextResponse.json(
+        { success: false, error: 'Sin permiso para crear usuarios' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`✅ Usuario ${session.email} creando nuevo usuario`);
+
     const body = await request.json();
     
     const {
@@ -198,6 +220,20 @@ export async function POST(request: NextRequest) {
       .insert(usuarios)
       .values(nuevoUsuario)
       .returning();
+
+    // 🎯 Asignar rol EMPLEADO por defecto
+    const resultadoRol = await asignarRolAUsuario(
+      usuarioCreado.id,
+      'EMPLEADO',
+      departamentoId
+    );
+
+    if (!resultadoRol.success) {
+      console.error(`⚠️ No se pudo asignar rol EMPLEADO a usuario ${usuarioCreado.id}: ${resultadoRol.error}`);
+      // No fallar la creación del usuario, solo loguear la advertencia
+    } else {
+      console.log(`✅ Rol EMPLEADO asignado a usuario ${usuarioCreado.email}`);
+    }
 
     // Obtener usuario con relaciones
     const usuarioCompleto = await db.query.usuarios.findFirst({

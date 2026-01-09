@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Briefcase,
   Calendar,
+  Plus,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import Swal from "sweetalert2";
@@ -332,25 +333,24 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
         {/* Barra de búsqueda y filtros */}
         <div className="card bg-base-100 shadow-xl mb-6">
           <div className="card-body">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+            <div className="grid grid-cols-1 gap-4">
               {/* Búsqueda */}
-              <div className="lg:col-span-5">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                    <Search className="w-5 h-5 text-base-content/50" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre, apellido o email..."
-                    className="input input-bordered w-full pl-12"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                  <Search className="w-5 h-5 text-base-content/50" />
                 </div>
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre, apellido o email..."
+                  className="input input-bordered w-full pl-12"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
 
-              {/* Filtro por rol */}
-              <div className="lg:col-span-3">
+              {/* Filtros y Botón */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Filtro por rol */}
                 <select
                   className="select select-bordered w-full"
                   value={filtroRol}
@@ -362,10 +362,8 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                   <option value="jefe">Jefes</option>
                   <option value="empleado">Empleados</option>
                 </select>
-              </div>
 
-              {/* Filtro por estado */}
-              <div className="lg:col-span-2">
+                {/* Filtro por estado */}
                 <select
                   className="select select-bordered w-full"
                   value={filtroEstado}
@@ -375,16 +373,15 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                   <option value="activos">Activos</option>
                   <option value="inactivos">Inactivos</option>
                 </select>
-              </div>
 
-              {/* Botón nuevo usuario */}
-              <div className="lg:col-span-2">
+                {/* Botón nuevo usuario */}
                 <button
                   onClick={abrirModalNuevo}
-                  className="btn btn-primary gap-2 w-full"
+                  className="btn btn-primary gap-2 w-full sm:w-auto"
                 >
-                  <UserPlus className="w-5 h-5" />
-                  Nuevo
+                  <Plus className="w-5 h-5" />
+                  <span className="hidden sm:inline">Nuevo Usuario</span>
+                  <span className="sm:hidden">Nuevo</span>
                 </button>
               </div>
             </div>
@@ -433,105 +430,199 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                 <span className="loading loading-spinner loading-lg"></span>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-zebra">
-                  <thead>
-                    <tr>
-                      <th>Usuario</th>
-                      <th>Email</th>
-                      <th>Rol</th>
-                      <th>Departamento</th>
-                      <th>Estado</th>
-                      <th>Días Disponibles</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usuariosFiltrados.map((usuario) => (
-                      <tr key={usuario.id}>
-                        <td>
-                          <div className="font-semibold">
-                            {usuario.nombre} {usuario.apellido}
-                          </div>
-                        </td>
-                        <td>{usuario.email}</td>
-                        <td>
-                          <div className="flex flex-wrap gap-1">
-                            {usuario.esAdmin && (
-                              <span className="badge badge-error gap-1">
-                                <ShieldCheck className="w-3 h-3" />
-                                Admin
-                              </span>
-                            )}
-                            {usuario.esRrhh && (
-                              <span className="badge badge-warning gap-1">
-                                <Users className="w-3 h-3" />
-                                RRHH
-                              </span>
-                            )}
-                            {usuario.esJefe && (
-                              <span className="badge badge-info gap-1">
-                                <Briefcase className="w-3 h-3" />
-                                Jefe
-                              </span>
-                            )}
-                            {!usuario.esAdmin &&
-                              !usuario.esRrhh &&
-                              !usuario.esJefe && (
-                                <span className="badge badge-ghost">
-                                  Empleado
+              <>
+                {/* Vista Desktop/Tablet - Tabla */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="table table-zebra">
+                    <thead>
+                      <tr>
+                        <th>Usuario</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Departamento</th>
+                        <th>Estado</th>
+                        <th>Días Disponibles</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usuariosFiltrados.map((usuario) => (
+                        <tr key={usuario.id}>
+                          <td>
+                            <div className="font-semibold">
+                              {usuario.nombre} {usuario.apellido}
+                            </div>
+                          </td>
+                          <td>{usuario.email}</td>
+                          <td>
+                            <div className="flex flex-wrap gap-1">
+                              {usuario.esAdmin && (
+                                <span className="badge badge-error gap-1">
+                                  <ShieldCheck className="w-3 h-3" />
+                                  Admin
                                 </span>
                               )}
+                              {usuario.esRrhh && (
+                                <span className="badge badge-warning gap-1">
+                                  <Users className="w-3 h-3" />
+                                  RRHH
+                                </span>
+                              )}
+                              {usuario.esJefe && (
+                                <span className="badge badge-info gap-1">
+                                  <Briefcase className="w-3 h-3" />
+                                  Jefe
+                                </span>
+                              )}
+                              {!usuario.esAdmin &&
+                                !usuario.esRrhh &&
+                                !usuario.esJefe && (
+                                  <span className="badge badge-ghost">
+                                    Empleado
+                                  </span>
+                                )}
+                            </div>
+                          </td>
+                          <td>
+                            {usuario.departamento || (
+                              <span className="text-base-content/50">
+                                Sin departamento
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {usuario.activo ? (
+                              <span className="badge badge-success">Activo</span>
+                            ) : (
+                              <span className="badge badge-error">Inactivo</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className="font-semibold">
+                              {usuario.diasDisponibles !== undefined
+                                ? usuario.diasDisponibles
+                                : "-"}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => abrirModalEditar(usuario)}
+                                className="btn btn-sm btn-ghost"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(usuario.id)}
+                                className="btn btn-sm btn-ghost text-error"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Vista Mobile - Cards */}
+                <div className="lg:hidden space-y-4">
+                  {usuariosFiltrados.map((usuario) => (
+                    <div key={usuario.id} className="card bg-base-100 border border-base-300">
+                      <div className="card-body p-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="font-bold text-base">
+                              {usuario.nombre} {usuario.apellido}
+                            </div>
+                            <div className="text-sm text-base-content/70">
+                              {usuario.email}
+                            </div>
                           </div>
-                        </td>
-                        <td>
-                          {usuario.departamento?.nombre || (
-                            <span className="text-base-content/50">
-                              Sin departamento
+                          {usuario.activo ? (
+                            <span className="badge badge-success badge-sm">Activo</span>
+                          ) : (
+                            <span className="badge badge-error badge-sm">Inactivo</span>
+                          )}
+                        </div>
+
+                        {/* Info */}
+                        <div className="space-y-2 text-sm">
+                          <div>
+                            <span className="text-base-content/60">Departamento:</span>{" "}
+                            <span className="font-medium">
+                              {usuario.departamento || "Sin departamento"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-base-content/60">Días disponibles:</span>{" "}
+                            <span className="font-bold">
+                              {usuario.diasDisponibles !== undefined
+                                ? usuario.diasDisponibles
+                                : "-"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Roles */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {usuario.esAdmin && (
+                            <span className="badge badge-error badge-sm gap-1">
+                              <ShieldCheck className="w-3 h-3" />
+                              Admin
                             </span>
                           )}
-                        </td>
-                        <td>
-                          {usuario.activo ? (
-                            <span className="badge badge-success">Activo</span>
-                          ) : (
-                            <span className="badge badge-error">Inactivo</span>
+                          {usuario.esRrhh && (
+                            <span className="badge badge-warning badge-sm gap-1">
+                              <Users className="w-3 h-3" />
+                              RRHH
+                            </span>
                           )}
-                        </td>
-                        <td>
-                          <span className="font-semibold">
-                            {usuario.diasDisponibles !== undefined
-                              ? usuario.diasDisponibles
-                              : "-"}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => abrirModalEditar(usuario)}
-                              className="btn btn-sm btn-ghost"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(usuario.id)}
-                              className="btn btn-sm btn-ghost text-error"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          {usuario.esJefe && (
+                            <span className="badge badge-info badge-sm gap-1">
+                              <Briefcase className="w-3 h-3" />
+                              Jefe
+                            </span>
+                          )}
+                          {!usuario.esAdmin &&
+                            !usuario.esRrhh &&
+                            !usuario.esJefe && (
+                              <span className="badge badge-ghost badge-sm">
+                                Empleado
+                              </span>
+                            )}
+                        </div>
+
+                        {/* Acciones */}
+                        <div className="flex gap-2 mt-4 pt-3 border-t border-base-300">
+                          <button
+                            onClick={() => abrirModalEditar(usuario)}
+                            className="btn btn-sm btn-primary flex-1 gap-2"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleDelete(usuario.id)}
+                            className="btn btn-sm btn-error flex-1 gap-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
                 {usuariosFiltrados.length === 0 && (
                   <div className="text-center py-12 text-base-content/70">
                     No se encontraron usuarios
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -540,13 +631,13 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
       {/* Modal Crear/Editar Usuario */}
       {modalOpen && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-2xl">
+          <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-lg mb-4">
               {editingUser ? "Editar Usuario" : "Nuevo Usuario"}
             </h3>
 
             <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 {/* Email */}
                 <div className="form-control">
                   <label className="label">
@@ -554,7 +645,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                   </label>
                   <input
                     type="email"
-                    className="input input-bordered"
+                    className="input input-bordered w-full"
                     value={formData.email}
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
@@ -594,81 +685,83 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                   </div>
                 </div>
 
-                {/* Nombre */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Nombre *</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={formData.nombre}
-                    onChange={(e) =>
-                      setFormData({ ...formData, nombre: e.target.value })
-                    }
-                    required
-                  />
+                {/* Nombre y Apellido - Grid en desktop */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Nombre *</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered"
+                      value={formData.nombre}
+                      onChange={(e) =>
+                        setFormData({ ...formData, nombre: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Apellido *</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered"
+                      value={formData.apellido}
+                      onChange={(e) =>
+                        setFormData({ ...formData, apellido: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
                 </div>
 
-                {/* Apellido */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Apellido *</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={formData.apellido}
-                    onChange={(e) =>
-                      setFormData({ ...formData, apellido: e.target.value })
-                    }
-                    required
-                  />
-                </div>
+                {/* Departamento y Cargo - Grid en desktop */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Departamento *</span>
+                    </label>
+                    <select
+                      className="select select-bordered"
+                      value={formData.departamento_id}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          departamento_id: e.target.value,
+                        })
+                      }
+                      required
+                    >
+                      <option value="">Seleccione un departamento</option>
+                      {departamentos.map((dept) => (
+                        <option key={dept.id} value={dept.id}>
+                          {dept.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Departamento */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Departamento *</span>
-                  </label>
-                  <select
-                    className="select select-bordered"
-                    value={formData.departamento_id}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        departamento_id: e.target.value,
-                      })
-                    }
-                    required
-                  >
-                    <option value="">Seleccione un departamento</option>
-                    {departamentos.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        {dept.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Cargo */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Cargo</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={formData.cargo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, cargo: e.target.value })
-                    }
-                    placeholder="Ej: Desarrollador"
-                  />
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Cargo</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered"
+                      value={formData.cargo}
+                      onChange={(e) =>
+                        setFormData({ ...formData, cargo: e.target.value })
+                      }
+                      placeholder="Ej: Desarrollador"
+                    />
+                  </div>
                 </div>
 
                 {/* Fecha de Ingreso */}
-                <div className="form-control md:col-span-2">
+                <div className="form-control">
                   <label className="label">
                     <span className="label-text">Fecha de Ingreso</span>
                   </label>
@@ -700,7 +793,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
 
               {/* Roles (Checkboxes) */}
               <div className="divider">Roles y Permisos</div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="form-control">
                   <label className="label cursor-pointer justify-start gap-3">
                     <input
@@ -762,16 +855,16 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
               </div>
 
               {/* Botones */}
-              <div className="modal-action">
+              <div className="modal-action flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={cerrarModal}
-                  className="btn btn-ghost gap-2"
+                  className="btn btn-ghost gap-2 w-full sm:w-auto"
                 >
                   <X className="w-4 h-4" />
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn-primary gap-2">
+                <button type="submit" className="btn btn-primary gap-2 w-full sm:w-auto">
                   <Save className="w-4 h-4" />
                   Guardar
                 </button>

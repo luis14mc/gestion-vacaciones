@@ -112,7 +112,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ### ✅ Tareas
 
-- [ ] **3.1 Integrar RBAC en GET /api/usuarios** (1h)
+- [x] **3.1 Integrar RBAC en GET /api/usuarios** (1h) ✅ COMPLETADO
   - Verificar permiso `usuarios.ver`
   - Retornar 403 si no tiene permiso
   - Opcionalmente filtrar por departamento si es jefe

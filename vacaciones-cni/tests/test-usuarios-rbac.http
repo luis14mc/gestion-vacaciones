@@ -1,0 +1,137 @@
+### ================================================================
+### TEST: Actividad 3.1 - RBAC en GET /api/usuarios
+### Descripción: Verificar que el permiso usuarios.ver funciona correctamente
+### Fecha: 9 de enero de 2026
+### ================================================================
+
+@baseUrl = http://localhost:3000
+@adminEmail = admin@cni.hn
+@adminPassword = Admin123!
+@rrhhEmail = rrhh@cni.hn
+@rrhhPassword = RRHH123!
+@jefeEmail = jefe.tecnologia@cni.hn
+@jefePassword = Jefe123!
+@empleadoEmail = juan.perez@cni.hn
+@empleadoPassword = Emp123!
+
+### ================================================================
+### CASO 1: Login ADMIN
+### ================================================================
+# @name loginAdmin
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+### ================================================================
+### CASO 2: GET /api/usuarios como ADMIN (debe funcionar)
+### Expected: 200 OK con todos los usuarios
+### ================================================================
+GET {{baseUrl}}/api/usuarios
+Cookie: {{loginAdmin.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 3: Login RRHH
+### ================================================================
+# @name loginRrhh
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "{{rrhhEmail}}",
+  "password": "{{rrhhPassword}}"
+}
+
+### ================================================================
+### CASO 4: GET /api/usuarios como RRHH (debe funcionar)
+### Expected: 200 OK con todos los usuarios
+### ================================================================
+GET {{baseUrl}}/api/usuarios
+Cookie: {{loginRrhh.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 5: Login JEFE
+### ================================================================
+# @name loginJefe
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "{{jefeEmail}}",
+  "password": "{{jefePassword}}"
+}
+
+### ================================================================
+### CASO 6: GET /api/usuarios como JEFE (solo su departamento)
+### Expected: 200 OK con usuarios solo de su departamento
+### ================================================================
+GET {{baseUrl}}/api/usuarios
+Cookie: {{loginJefe.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 7: Login EMPLEADO
+### ================================================================
+# @name loginEmpleado
+POST {{baseUrl}}/api/auth/callback/credentials
+Content-Type: application/json
+
+{
+  "email": "{{empleadoEmail}}",
+  "password": "{{empleadoPassword}}"
+}
+
+### ================================================================
+### CASO 8: GET /api/usuarios como EMPLEADO (debe fallar)
+### Expected: 403 Forbidden - Sin permiso para ver usuarios
+### ================================================================
+GET {{baseUrl}}/api/usuarios
+Cookie: {{loginEmpleado.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 9: GET /api/usuarios sin autenticación (debe fallar)
+### Expected: 401 Unauthorized
+### ================================================================
+GET {{baseUrl}}/api/usuarios
+
+### ================================================================
+### CASO 10: GET /api/usuarios con filtro de departamento como ADMIN
+### Expected: 200 OK con usuarios del departamento 1
+### ================================================================
+GET {{baseUrl}}/api/usuarios?departamentoId=1
+Cookie: {{loginAdmin.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 11: GET /api/usuarios con búsqueda como ADMIN
+### Expected: 200 OK con usuarios que coincidan con "juan"
+### ================================================================
+GET {{baseUrl}}/api/usuarios?search=juan
+Cookie: {{loginAdmin.response.headers.set-cookie}}
+
+### ================================================================
+### CASO 12: GET /api/usuarios solo activos como ADMIN
+### Expected: 200 OK con solo usuarios activos
+### ================================================================
+GET {{baseUrl}}/api/usuarios?activo=true
+Cookie: {{loginAdmin.response.headers.set-cookie}}
+
+### ================================================================
+### RESUMEN DE CASOS
+### ================================================================
+# ✅ CASO 1-2: ADMIN puede ver todos los usuarios
+# ✅ CASO 3-4: RRHH puede ver todos los usuarios  
+# ✅ CASO 5-6: JEFE solo ve usuarios de su departamento
+# ❌ CASO 7-8: EMPLEADO NO puede ver usuarios (403)
+# ❌ CASO 9: Sin autenticación devuelve 401
+# ✅ CASO 10-12: Filtros funcionan correctamente
+
+### ================================================================
+### VERIFICACIÓN POST-TEST
+### ================================================================
+# Después de ejecutar los tests, verificar en logs del servidor:
+# - ✅ "Usuario admin@cni.hn consultando usuarios"
+# - ✅ "Usuario rrhh@cni.hn consultando usuarios"
+# - ✅ "JEFE jefe.tecnologia@cni.hn - Filtrando departamento X"
+# - ❌ "Usuario juan.perez@cni.hn sin permiso usuarios.ver"

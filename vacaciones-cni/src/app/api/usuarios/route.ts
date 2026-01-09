@@ -5,13 +5,32 @@ import { usuarios, balancesAusencias, solicitudes } from '@/lib/db/schema';
 import bcrypt from 'bcryptjs';
 import type { NuevoUsuario } from '@/types';
 import { auth } from '@/auth';
+import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
 // GET: Listar usuarios con filtros
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
+    // 🔐 RBAC: Verificar autenticación y permiso usuarios.ver
+    const session = await getSession();
+    
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    if (!tienePermiso(session, 'usuarios.ver')) {
+      console.log(`❌ Usuario ${session.email} sin permiso usuarios.ver`);
+      return NextResponse.json(
+        { success: false, error: 'Sin permiso para ver usuarios' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`✅ Usuario ${session.email} consultando usuarios`);
     
     const { searchParams } = new URL(request.url);
     const departamentoId = searchParams.get('departamentoId');
@@ -20,13 +39,14 @@ export async function GET(request: NextRequest) {
 
     const conditions = [];
 
-    // Si es jefe (y no es admin ni RRHH), solo mostrar su departamento
-    if (session?.user?.esJefe && !session?.user?.esAdmin && !session?.user?.esRrhh) {
-      if (session.user.departamentoId) {
-        conditions.push(eq(usuarios.departamentoId, session.user.departamentoId));
+    // 🔒 SCOPE: Si es JEFE (y no ADMIN/RRHH), filtrar solo su departamento
+    if (session.esJefe && !session.esAdmin && !session.esRrhh) {
+      if (session.departamentoId) {
+        console.log(`🔍 JEFE ${session.email} - Filtrando por departamento ${session.departamentoId}`);
+        conditions.push(eq(usuarios.departamentoId, session.departamentoId));
       }
     }
-    // Si se especifica departamento en query params
+    // Si se especifica departamento en query params (y tiene permiso completo)
     else if (departamentoId) {
       conditions.push(eq(usuarios.departamentoId, Number.parseInt(departamentoId)));
     }

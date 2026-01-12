@@ -98,6 +98,24 @@ export async function GET(request: NextRequest) {
 // POST: Crear o actualizar balance de un usuario
 export async function POST(request: NextRequest) {
   try {
+    // 1. Verificar autenticación
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Verificar permiso para editar balances
+    if (!tienePermiso(session, 'balances.editar')) {
+      console.log(`❌ Usuario ${session.email} sin permiso balances.editar`);
+      return NextResponse.json(
+        { error: 'No tienes permiso para editar balances' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { usuarioId, tipoAusenciaId, anio, cantidadAsignada } = body;
 
@@ -107,6 +125,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(`✅ Usuario ${session.email} editando balance de usuario ${usuarioId}`);
 
     // Verificar si ya existe el balance
     const balanceExistente = await db.query.balancesAusencias.findFirst({

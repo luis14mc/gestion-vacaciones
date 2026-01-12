@@ -176,7 +176,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
     * RRHH viendo balance de cualquiera ✅
   - Commit: `feat(api): RBAC en GET /api/balances`
 
-- [ ] **4.2 Integrar RBAC en PATCH /api/balances** (1.5h)
+- [x] **4.2 Integrar RBAC en PATCH /api/balances** (1.5h) ✅ COMPLETADO
   - Endpoint para ajustes manuales de balance (solo RRHH)
   - Verificar permiso `balances.editar`
   - Body: `{ balanceId, cantidadAsignada, motivo }`

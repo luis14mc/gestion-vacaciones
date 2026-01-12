@@ -165,7 +165,7 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
 
 ### ✅ Tareas
 
-- [ ] **4.1 Integrar RBAC en GET /api/balances** (2h)
+- [x] **4.1 Integrar RBAC en GET /api/balances** (2h) ✅ COMPLETADO
   - Abrir: `src/app/api/balances/route.ts`
   - Si `usuarioId` === usuario actual → verificar `balances.ver_propios`
   - Si `usuarioId` !== usuario actual → verificar `balances.ver_todos`

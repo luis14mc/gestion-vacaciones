@@ -2,12 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { balancesAusencias } from '@/lib/db/schema';
+import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
 // GET: Obtener balances de un usuario
 export async function GET(request: NextRequest) {
   try {
+    // 1. Verificar autenticación
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autenticado' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const usuarioId = searchParams.get('usuarioId');
     const anio = searchParams.get('anio') || new Date().getFullYear().toString();
@@ -17,6 +27,32 @@ export async function GET(request: NextRequest) {
         { success: false, error: 'Usuario ID es requerido' },
         { status: 400 }
       );
+    }
+
+    const usuarioIdNum = Number.parseInt(usuarioId);
+    const esPropio = usuarioIdNum === session.id;
+
+    // 2. Verificar permisos según el caso
+    if (esPropio) {
+      // Viendo su propio balance
+      if (!tienePermiso(session, 'balances.ver_propios')) {
+        console.log(`❌ Usuario ${session.email} sin permiso balances.ver_propios`);
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver balances' },
+          { status: 403 }
+        );
+      }
+      console.log(`✅ Usuario ${session.email} consultando su propio balance`);
+    } else {
+      // Viendo balance de otro usuario
+      if (!tienePermiso(session, 'balances.ver_todos')) {
+        console.log(`❌ Usuario ${session.email} sin permiso balances.ver_todos para ver balance de usuario ${usuarioId}`);
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver balances de otros usuarios' },
+          { status: 403 }
+        );
+      }
+      console.log(`✅ Usuario ${session.email} consultando balance de usuario ${usuarioId}`);
     }
 
     // Consulta SQL personalizada calculando cantidad_disponible

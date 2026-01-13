@@ -11,8 +11,12 @@ export const runtime = 'nodejs';
 // GET: Obtener solicitudes con filtros (con RBAC)
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔵 Iniciando GET /api/solicitudes');
+    
     // 🔐 1. AUTENTICACIÓN - Obtener sesión del usuario
     const sessionUser = await getSession();
+    
+    console.log('🔵 SessionUser obtenido:', sessionUser ? 'OK' : 'NULL');
     
     if (!sessionUser) {
       return NextResponse.json(
@@ -20,6 +24,13 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    console.log('🔵 Usuario autenticado:', { 
+      id: sessionUser.id, 
+      email: sessionUser.email,
+      roles: sessionUser.roles?.map(r => r.codigo),
+      permisos: sessionUser.permisos?.length 
+    });
 
     // 🔐 2. AUTORIZACIÓN - Verificar permisos
     const puedeVerTodas = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_todas');
@@ -38,15 +49,21 @@ export async function GET(request: NextRequest) {
     const estado = searchParams.get('estado');
     const tipoAusenciaId = searchParams.get('tipoAusenciaId');
     const paraAprobar = searchParams.get('paraAprobar') === 'true';
-    const page = Number.parseInt(searchParams.get('page') || '1');
-    const pageSize = Number.parseInt(searchParams.get('pageSize') || '20');
+    // Soportar ambos formatos: page/pageSize y pagina/limite
+    const page = Number.parseInt(searchParams.get('page') || searchParams.get('pagina') || '1');
+    const pageSize = Number.parseInt(searchParams.get('pageSize') || searchParams.get('limite') || '20');
+
+    // Determinar roles usando RBAC
+    const esAdmin = sessionUser.roles?.some(r => r.codigo === 'ADMIN') || false;
+    const esRrhh = sessionUser.roles?.some(r => r.codigo === 'RRHH') || false;
+    const esJefe = sessionUser.roles?.some(r => r.codigo === 'JEFE') || false;
 
     console.log('📋 GET /api/solicitudes - Usuario:', sessionUser.email);
     console.log('🔍 Parámetros:', { paraAprobar, estado, page, pageSize });
     console.log('👤 Usuario info:', { 
-      esJefe: sessionUser.esJefe, 
-      esRrhh: sessionUser.esRrhh, 
-      esAdmin: sessionUser.esAdmin,
+      esAdmin,
+      esJefe, 
+      esRrhh,
       departamentoId: sessionUser.departamentoId 
     });
     console.log('🔐 Permisos:', { puedeVerTodas, puedeVerPropias });
@@ -64,14 +81,14 @@ export async function GET(request: NextRequest) {
       }
       
       // Si es RRHH y busca para aprobar, filtrar por estado aprobada_jefe
-      if (paraAprobar && sessionUser.esRrhh && !estado) {
+      if (paraAprobar && esRrhh && !estado) {
         conditions.push(eq(solicitudes.estado, 'aprobada_jefe'));
         console.log('🔍 Filtrando solicitudes aprobada_jefe para RRHH');
       }
     } else if (puedeVerPropias) {
       // EMPLEADO/JEFE → Depende del contexto
       
-      if (paraAprobar && sessionUser.esJefe && sessionUser.departamentoId) {
+      if (paraAprobar && esJefe && sessionUser.departamentoId) {
         // JEFE viendo solicitudes para aprobar → Ver solicitudes pendientes de su departamento
         console.log('✅ Permiso: Ver solicitudes de departamento para aprobar');
         
@@ -142,12 +159,52 @@ export async function GET(request: NextRequest) {
       .from(solicitudes)
       .where(and(...conditions));
 
+    // Calcular estadísticas para el frontend
+    const [stats] = await db
+      .select({
+        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente', 'aprobada_jefe'))::int`,
+        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} = 'aprobada')::int`,
+        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} = 'rechazada')::int`,
+      })
+      .from(solicitudes)
+      .where(and(...conditions));
+
+    // Formatear resultados para el frontend
+    const solicitudesFormateadas = results.map((sol: any) => ({
+      id: sol.id,
+      usuarioId: sol.usuarioId,
+      tipoAusenciaId: sol.tipoAusenciaId,
+      fechaInicio: sol.fechaInicio,
+      fechaFin: sol.fechaFin,
+      dias: sol.cantidad,
+      motivo: sol.motivo,
+      estado: sol.estado,
+      comentariosJefe: sol.comentariosJefe,
+      comentariosRrhh: sol.comentariosRrhh,
+      aprobadoPorJefeId: sol.aprobadoPorJefeId,
+      aprobadoPorRrhhId: sol.aprobadoPorRrhhId,
+      fechaAprobacionJefe: sol.fechaAprobacionJefe,
+      fechaAprobacionRrhh: sol.fechaAprobacionRrhh,
+      fechaCreacion: sol.createdAt,
+      usuario: sol.usuario ? `${sol.usuario.nombre} ${sol.usuario.apellido}` : 'Desconocido',
+      tipoAusencia: sol.tipoAusencia?.nombre || 'Desconocido',
+      aprobadorJefe: sol.aprobador ? `${sol.aprobador.nombre} ${sol.aprobador.apellido}` : null,
+      aprobadorRrhh: sol.aprobadorRrhh ? `${sol.aprobadorRrhh.nombre} ${sol.aprobadorRrhh.apellido}` : null,
+    }));
+
     console.log(`✅ Retornando ${results.length} solicitudes (total: ${count})`);
 
     return NextResponse.json({
       success: true,
-      data: results,
+      solicitudes: solicitudesFormateadas,
       total: count,
+      stats: {
+        pendientes: stats?.pendientes || 0,
+        aprobadas: stats?.aprobadas || 0,
+        rechazadas: stats?.rechazadas || 0,
+      },
+      // Mantener compatibilidad con formato viejo
+      data: results,
       page,
       pageSize,
       totalPages: Math.ceil(count / pageSize)
@@ -155,8 +212,13 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('❌ Error obteniendo solicitudes:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { success: false, error: 'Error al obtener solicitudes' },
+      { 
+        success: false, 
+        error: 'Error al obtener solicitudes',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }

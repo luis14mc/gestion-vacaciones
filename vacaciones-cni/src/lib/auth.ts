@@ -31,10 +31,22 @@ export async function getSession(): Promise<SessionUser | null> {
     if (!session?.user) {
       return null;
     }
+
+    // Validar que el ID existe y es válido
+    if (!session.user.id) {
+      console.error('❌ Sesión sin ID de usuario');
+      return null;
+    }
+    
+    const userId = parseInt(session.user.id);
+    if (isNaN(userId)) {
+      console.error('❌ ID de usuario inválido:', session.user.id);
+      return null;
+    }
     
     // La sesión de NextAuth ya tiene roles y permisos porque se agregan en auth.ts
     const sessionUser: SessionUser = {
-      id: parseInt(session.user.id),
+      id: userId,
       email: session.user.email!,
       nombre: session.user.nombre,
       apellido: session.user.apellido,

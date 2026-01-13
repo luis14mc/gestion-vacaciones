@@ -239,20 +239,20 @@ export default function ReportesDepartamentoClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <div className="bg-gradient-to-br from-secondary to-secondary/70 p-4 rounded-2xl shadow-lg">
-            <BarChart3 className="w-8 h-8 text-white" />
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+          <div className="bg-gradient-to-br from-secondary to-secondary/70 p-3 md:p-4 rounded-2xl shadow-lg">
+            <BarChart3 className="w-6 h-6 md:w-8 md:h-8 text-white" />
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-base-content">Reportes del Departamento</h1>
-            <p className="text-base-content/70">Estadísticas y análisis de uso de vacaciones</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-base-content">Reportes del Departamento</h1>
+            <p className="text-sm md:text-base text-base-content/70">Estadísticas y análisis de uso de vacaciones</p>
           </div>
           <button
             onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost gap-2"
+            className="btn btn-ghost btn-sm gap-2 self-start md:self-auto"
           >
             ← Volver
           </button>
@@ -260,15 +260,15 @@ export default function ReportesDepartamentoClient() {
 
         {/* Filtros de período */}
         <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="flex items-center justify-between">
-              <h2 className="card-title">
-                <Filter className="w-5 h-5" />
+          <div className="card-body p-4 md:p-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <h2 className="card-title text-base md:text-lg">
+                <Filter className="w-4 h-4 md:w-5 md:h-5" />
                 Período de análisis
               </h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
                 <select
-                  className="select select-bordered select-sm"
+                  className="select select-bordered select-sm flex-1 min-w-[140px]"
                   value={mesSeleccionado}
                   onChange={(e) => setMesSeleccionado(Number(e.target.value))}
                 >
@@ -279,7 +279,7 @@ export default function ReportesDepartamentoClient() {
                   ))}
                 </select>
                 <select
-                  className="select select-bordered select-sm"
+                  className="select select-bordered select-sm w-24"
                   value={anioSeleccionado}
                   onChange={(e) => setAnioSeleccionado(Number(e.target.value))}
                 >
@@ -322,51 +322,51 @@ export default function ReportesDepartamentoClient() {
         ) : (
           <>
             {/* Métricas principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="stat bg-base-100 rounded-lg shadow">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <div className="stat bg-base-100 rounded-lg shadow p-4">
                 <div className="stat-figure text-info">
-                  <Users className="w-8 h-8" />
+                  <Users className="w-6 h-6 md:w-8 md:h-8" />
                 </div>
-                <div className="stat-title">Total Equipo</div>
-                <div className="stat-value text-info">{reporte.totalColaboradores}</div>
-                <div className="stat-desc">{reporte.colaboradoresActivos} activos</div>
+                <div className="stat-title text-xs md:text-sm">Total Equipo</div>
+                <div className="stat-value text-2xl md:text-3xl text-info">{reporte.totalColaboradores}</div>
+                <div className="stat-desc text-xs">{reporte.colaboradoresActivos} activos</div>
               </div>
 
-              <div className="stat bg-base-100 rounded-lg shadow">
+              <div className="stat bg-base-100 rounded-lg shadow p-4">
                 <div className="stat-figure text-accent">
-                  <Activity className="w-8 h-8" />
+                  <Activity className="w-6 h-6 md:w-8 md:h-8" />
                 </div>
-                <div className="stat-title">De Vacaciones</div>
-                <div className="stat-value text-accent">{reporte.enVacacionesHoy}</div>
-                <div className="stat-desc">Actualmente ausentes</div>
+                <div className="stat-title text-xs md:text-sm">De Vacaciones</div>
+                <div className="stat-value text-2xl md:text-3xl text-accent">{reporte.enVacacionesHoy}</div>
+                <div className="stat-desc text-xs">Actualmente ausentes</div>
               </div>
 
-              <div className="stat bg-base-100 rounded-lg shadow">
+              <div className="stat bg-base-100 rounded-lg shadow p-4">
                 <div className="stat-figure text-warning">
-                  <Clock className="w-8 h-8" />
+                  <Clock className="w-6 h-6 md:w-8 md:h-8" />
                 </div>
-                <div className="stat-title">Pendientes</div>
-                <div className="stat-value text-warning">{reporte.solicitudesPendientes}</div>
-                <div className="stat-desc">Por aprobar</div>
+                <div className="stat-title text-xs md:text-sm">Pendientes</div>
+                <div className="stat-value text-2xl md:text-3xl text-warning">{reporte.solicitudesPendientes}</div>
+                <div className="stat-desc text-xs">Por aprobar</div>
               </div>
 
-              <div className="stat bg-base-100 rounded-lg shadow">
+              <div className="stat bg-base-100 rounded-lg shadow p-4">
                 <div className="stat-figure text-primary">
-                  <TrendingUp className="w-8 h-8" />
+                  <TrendingUp className="w-6 h-6 md:w-8 md:h-8" />
                 </div>
-                <div className="stat-title">Uso Promedio</div>
-                <div className="stat-value text-primary">{reporte.promedioUsoPorPersona}%</div>
-                <div className="stat-desc">Por colaborador</div>
+                <div className="stat-title text-xs md:text-sm">Uso Promedio</div>
+                <div className="stat-value text-2xl md:text-3xl text-primary">{reporte.promedioUsoPorPersona}%</div>
+                <div className="stat-desc text-xs">Por colaborador</div>
               </div>
             </div>
 
             {/* Gráficos de uso */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
               {/* Balance total de días */}
               <div className="card bg-base-100 shadow-xl">
-                <div className="card-body">
-                  <h2 className="card-title">
-                    <PieChart className="w-5 h-5" />
+                <div className="card-body p-4 md:p-6">
+                  <h2 className="card-title text-base md:text-lg">
+                    <PieChart className="w-4 h-4 md:w-5 md:h-5" />
                     Balance Total de Días
                   </h2>
                   
@@ -414,35 +414,35 @@ export default function ReportesDepartamentoClient() {
 
               {/* Estado de solicitudes */}
               <div className="card bg-base-100 shadow-xl">
-                <div className="card-body">
-                  <h2 className="card-title">
-                    <BarChart3 className="w-5 h-5" />
+                <div className="card-body p-4 md:p-6">
+                  <h2 className="card-title text-base md:text-lg">
+                    <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
                     Estado de Solicitudes
                   </h2>
 
-                  <div className="grid grid-cols-3 gap-4 mt-4">
-                    <div className="stat bg-base-200 rounded p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4">
+                    <div className="stat bg-base-200 rounded p-3 md:p-4">
                       <div className="stat-figure text-warning">
-                        <Clock className="w-6 h-6" />
+                        <Clock className="w-5 h-5 md:w-6 md:h-6" />
                       </div>
                       <div className="stat-title text-xs">Pendientes</div>
-                      <div className="stat-value text-2xl text-warning">{reporte.solicitudesPendientes}</div>
+                      <div className="stat-value text-xl md:text-2xl text-warning">{reporte.solicitudesPendientes}</div>
                     </div>
 
-                    <div className="stat bg-base-200 rounded p-4">
+                    <div className="stat bg-base-200 rounded p-3 md:p-4">
                       <div className="stat-figure text-success">
-                        <CheckCircle className="w-6 h-6" />
+                        <CheckCircle className="w-5 h-5 md:w-6 md:h-6" />
                       </div>
                       <div className="stat-title text-xs">Aprobadas</div>
-                      <div className="stat-value text-2xl text-success">{reporte.solicitudesAprobadas}</div>
+                      <div className="stat-value text-xl md:text-2xl text-success">{reporte.solicitudesAprobadas}</div>
                     </div>
 
-                    <div className="stat bg-base-200 rounded p-4">
+                    <div className="stat bg-base-200 rounded p-3 md:p-4">
                       <div className="stat-figure text-error">
-                        <XCircle className="w-6 h-6" />
+                        <XCircle className="w-5 h-5 md:w-6 md:h-6" />
                       </div>
                       <div className="stat-title text-xs">Rechazadas</div>
-                      <div className="stat-value text-2xl text-error">{reporte.solicitudesRechazadas}</div>
+                      <div className="stat-value text-xl md:text-2xl text-error">{reporte.solicitudesRechazadas}</div>
                     </div>
                   </div>
 
@@ -464,12 +464,12 @@ export default function ReportesDepartamentoClient() {
             </div>
 
             {/* Tablas */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
               {/* Próximas vacaciones */}
               <div className="card bg-base-100 shadow-xl">
-                <div className="card-body">
-                  <h2 className="card-title">
-                    <Calendar className="w-5 h-5" />
+                <div className="card-body p-4 md:p-6">
+                  <h2 className="card-title text-base md:text-lg">
+                    <Calendar className="w-4 h-4 md:w-5 md:h-5" />
                     Próximas Vacaciones
                   </h2>
 
@@ -479,8 +479,8 @@ export default function ReportesDepartamentoClient() {
                       <p className="text-sm">No hay vacaciones programadas</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="table table-sm">
+                    <div className="overflow-x-auto -mx-4 md:mx-0 mt-4">
+                      <table className="table table-xs md:table-sm">
                         <thead>
                           <tr>
                             <th>Colaborador</th>
@@ -509,9 +509,9 @@ export default function ReportesDepartamentoClient() {
 
               {/* Top colaboradores por uso */}
               <div className="card bg-base-100 shadow-xl">
-                <div className="card-body">
-                  <h2 className="card-title">
-                    <TrendingUp className="w-5 h-5" />
+                <div className="card-body p-4 md:p-6">
+                  <h2 className="card-title text-base md:text-lg">
+                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" />
                     Mayor Uso de Días
                   </h2>
 
@@ -521,15 +521,15 @@ export default function ReportesDepartamentoClient() {
                       <p className="text-sm">No hay datos disponibles</p>
                     </div>
                   ) : (
-                    <div className="space-y-3 mt-4">
+                    <div className="space-y-2 md:space-y-3 mt-4">
                       {reporte.topUsuarios.map((usuario, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 bg-base-200 rounded">
-                          <div className="flex items-center gap-3">
-                            <div className="badge badge-neutral">{i + 1}</div>
-                            <span className="font-medium">{usuario.usuario}</span>
+                        <div key={i} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-base-200 rounded gap-2">
+                          <div className="flex items-center gap-2 md:gap-3">
+                            <div className="badge badge-neutral badge-sm">{i + 1}</div>
+                            <span className="font-medium text-sm md:text-base">{usuario.usuario}</span>
                           </div>
-                          <div className="text-right">
-                            <p className="font-bold text-error">{usuario.diasUsados} usados</p>
+                          <div className="text-left sm:text-right">
+                            <p className="font-bold text-error text-sm md:text-base">{usuario.diasUsados} usados</p>
                             <p className="text-xs text-base-content/60">{usuario.diasDisponibles} disponibles</p>
                           </div>
                         </div>

@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balancesAusencias, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    // 1. Verificar autenticación
+    const session = await getSession();
 
-    if (!session?.user?.id) {
+    if (!session?.id) {
       return NextResponse.json(
         { success: false, error: "No autenticado" },
         { status: 401 }
       );
     }
 
-    const usuarioId = session.user.id;
+    // 2. Este endpoint SIEMPRE retorna el balance del usuario actual (propio)
+    // No necesita permiso especial, todos pueden ver su propio balance
+    const usuarioId = session.id;
     const anioActual = new Date().getFullYear();
     console.log('🔍 Buscando balance para usuario ID:', usuarioId, 'Año:', anioActual);
 

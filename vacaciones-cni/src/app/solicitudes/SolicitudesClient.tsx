@@ -152,69 +152,70 @@ export default function SolicitudesClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-2 sm:p-4 md:p-6">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <div className="bg-gradient-to-br from-primary to-secondary p-4 rounded-2xl shadow-lg">
-            <FileText className="w-8 h-8 text-primary-content" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          <div className="bg-gradient-to-br from-primary to-secondary p-3 sm:p-4 rounded-2xl shadow-lg">
+            <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-primary-content" />
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-base-content">Solicitudes de Vacaciones</h1>
-            <p className="text-base-content/70">Gestión y seguimiento de todas las solicitudes</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Solicitudes de Vacaciones</h1>
+            <p className="text-sm sm:text-base text-base-content/70">Gestión y seguimiento de todas las solicitudes</p>
           </div>
           <button
             onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost gap-2"
+            className="btn btn-sm sm:btn-md btn-ghost gap-2 self-start sm:self-auto"
           >
             ← Volver
           </button>
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-primary">
-              <FileText className="w-8 h-8" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
+            <div className="stat-figure text-primary hidden sm:block">
+              <FileText className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
-            <div className="stat-title">Total</div>
-            <div className="stat-value text-primary">{stats.total}</div>
-            <div className="stat-desc">Todas las solicitudes</div>
+            <div className="stat-title text-xs sm:text-sm">Total</div>
+            <div className="stat-value text-primary text-2xl sm:text-3xl">{stats.total}</div>
+            <div className="stat-desc text-xs hidden sm:block">Todas las solicitudes</div>
           </div>
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-warning">
-              <Clock className="w-8 h-8" />
+          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
+            <div className="stat-figure text-warning hidden sm:block">
+              <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
-            <div className="stat-title">Pendientes</div>
-            <div className="stat-value text-warning">{stats.pendientes}</div>
-            <div className="stat-desc">En revisión</div>
+            <div className="stat-title text-xs sm:text-sm">Pendientes</div>
+            <div className="stat-value text-warning text-2xl sm:text-3xl">{stats.pendientes}</div>
+            <div className="stat-desc text-xs hidden sm:block">En revisión</div>
           </div>
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-success">
-              <Check className="w-8 h-8" />
+          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
+            <div className="stat-figure text-success hidden sm:block">
+              <Check className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
-            <div className="stat-title">Aprobadas</div>
-            <div className="stat-value text-success">{stats.aprobadas}</div>
-            <div className="stat-desc">Confirmadas</div>
+            <div className="stat-title text-xs sm:text-sm">Aprobadas</div>
+            <div className="stat-value text-success text-2xl sm:text-3xl">{stats.aprobadas}</div>
+            <div className="stat-desc text-xs hidden sm:block">Confirmadas</div>
           </div>
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-error">
-              <X className="w-8 h-8" />
+          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
+            <div className="stat-figure text-error hidden sm:block">
+              <X className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
-            <div className="stat-title">Rechazadas</div>
-            <div className="stat-value text-error">{stats.rechazadas}</div>
-            <div className="stat-desc">Denegadas</div>
+            <div className="stat-title text-xs sm:text-sm">Rechazadas</div>
+            <div className="stat-value text-error text-2xl sm:text-3xl">{stats.rechazadas}</div>
+            <div className="stat-desc text-xs hidden sm:block">Denegadas</div>
           </div>
         </div>
 
         {/* Filtros */}
         <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-lg mb-4">
-              <Filter className="w-5 h-5" />
-              Filtros de búsqueda
+          <div className="card-body p-3 sm:p-6">
+            <h2 className="card-title text-base sm:text-lg mb-3 sm:mb-4">
+              <Filter className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Filtros de búsqueda</span>
+              <span className="sm:hidden">Filtros</span>
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
               <div className="form-control">
                 <label className="label">
                   <span className="label-text">Buscar (presiona Enter)</span>
@@ -327,7 +328,61 @@ export default function SolicitudesClient() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Vista Mobile - Cards */}
+                <div className="block lg:hidden space-y-3">
+                  {solicitudesFiltradas.map((sol) => (
+                    <div 
+                      key={sol.id} 
+                      className="card bg-base-100 shadow-md hover:shadow-lg transition-shadow"
+                    >
+                      <div className="card-body p-4">
+                        {/* Header de la card */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <User className="w-4 h-4 text-primary flex-shrink-0" />
+                            <span className="font-semibold text-sm truncate">{sol.usuario}</span>
+                          </div>
+                          {getEstadoBadge(sol.estado)}
+                        </div>
+
+                        {/* Tipo y días */}
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="badge badge-outline badge-sm">{sol.tipoAusencia}</div>
+                          <div className="badge badge-primary badge-sm">{sol.dias} días</div>
+                        </div>
+
+                        {/* Período */}
+                        <div className="bg-base-200 rounded-lg p-2 mb-2">
+                          <div className="text-xs text-base-content/70 mb-1">Período:</div>
+                          <div className="flex items-center gap-1 text-sm">
+                            <Calendar className="w-3 h-3" />
+                            <span>{formatearFecha(sol.fechaInicio)}</span>
+                            <span className="text-base-content/50">→</span>
+                            <span>{formatearFecha(sol.fechaFin)}</span>
+                          </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-base-300">
+                          <div className="text-xs text-base-content/60">
+                            <Clock className="w-3 h-3 inline mr-1" />
+                            {calcularDiasDesde(sol.fechaCreacion)}
+                          </div>
+                          <button
+                            className="btn btn-ghost btn-xs gap-1"
+                            onClick={() => setSolicitudSeleccionada(sol)}
+                          >
+                            <Eye className="w-3 h-3" />
+                            Ver
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Vista Desktop - Tabla */}
+                <div className="hidden lg:block overflow-x-auto">
                   <table className="table table-zebra">
                     <thead>
                       <tr>
@@ -389,23 +444,23 @@ export default function SolicitudesClient() {
                 </div>
 
                 {/* Paginación */}
-                <div className="flex justify-center items-center gap-2 mt-6">
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-2 mt-4 sm:mt-6">
                   <button
-                    className="btn btn-sm"
+                    className="btn btn-xs sm:btn-sm"
                     onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
                     disabled={paginaActual === 1}
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
-                  <span className="text-sm">
+                  <span className="text-xs sm:text-sm">
                     Página {paginaActual} de {totalPaginas}
                   </span>
                   <button
-                    className="btn btn-sm"
+                    className="btn btn-xs sm:btn-sm"
                     onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
                     disabled={paginaActual === totalPaginas}
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
                 </div>
               </>

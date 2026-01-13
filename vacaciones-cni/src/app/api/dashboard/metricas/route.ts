@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    // 1. Verificar autenticación
+    const session = await getSession();
 
     if (!session) {
       return NextResponse.json(
@@ -15,12 +16,17 @@ export async function GET() {
       );
     }
 
+    // 2. Determinar scope según permisos
+    const puedeVerTodo = tienePermiso(session, 'usuarios.ver_todos') || 
+                         tienePermiso(session, 'reportes.general');
+    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
+    const departamentoId = session.departamentoId;
+
     // Determinar si es jefe (y no admin/RRHH) para filtrar por departamento
-    const esJefe = session.user?.esJefe && !session.user?.esAdmin && !session.user?.esRrhh;
-    const departamentoId = session.user?.departamentoId;
+    const debeFiltrarpDepartamento = esJefe && !puedeVerTodo && departamentoId;
 
     // Condición base para usuarios
-    const baseConditionUsuarios = esJefe && departamentoId
+    const baseConditionUsuarios = debeFiltrarpDepartamento
       ? and(eq(usuarios.departamentoId, departamentoId), isNull(usuarios.deletedAt))
       : isNull(usuarios.deletedAt);
 
@@ -35,13 +41,14 @@ export async function GET() {
       .select({ count: sql<number>`count(*)` })
       .from(usuarios)
       .where(
-        esJefe && departamentoId
+        debeFiltrarpDepartamento
           ? and(eq(usuarios.activo, true), eq(usuarios.departamentoId, departamentoId), isNull(usuarios.deletedAt))
           : and(eq(usuarios.activo, true), isNull(usuarios.deletedAt))
       );
 
     // Obtener IDs de usuarios del departamento (si es jefe)
     let usuariosIds: number[] = [];
+    if (debeFiltrarpDepartamento) {
     if (esJefe && departamentoId) {
       const usuariosDept = await db
         .select({ id: usuarios.id })
@@ -51,13 +58,13 @@ export async function GET() {
     }
 
     // Obtener solicitudes pendientes (filtrado por departamento si es jefe)
-    const solicitudesPendientesCondition = esJefe && usuariosIds.length > 0
+    const solicitudesPendientesCondition = debeFiltrarpDepartamento && usuariosIds.length > 0
       ? and(
           sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
           inArray(solicitudes.usuarioId, usuariosIds),
           isNull(solicitudes.deletedAt)
         )
-      : esJefe && usuariosIds.length === 0
+      : debeFiltrarpDepartamento && usuariosIds.length === 0
       ? sql`1=0` // No hay usuarios, retornar 0
       : and(
           sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
@@ -70,13 +77,13 @@ export async function GET() {
       .where(solicitudesPendientesCondition);
 
     // Obtener usuarios en vacaciones (filtrado por departamento si es jefe)
-    const enVacacionesCondition = esJefe && usuariosIds.length > 0
+    const enVacacionesCondition = debeFiltrarpDepartamento && usuariosIds.length > 0
       ? and(
           eq(solicitudes.estado, "en_uso"),
           inArray(solicitudes.usuarioId, usuariosIds),
           isNull(solicitudes.deletedAt)
         )
-      : esJefe && usuariosIds.length === 0
+      : debeFiltrarpDepartamento && usuariosIds.length === 0
       ? sql`1=0` // No hay usuarios, retornar 0
       : and(
           eq(solicitudes.estado, "en_uso"),
@@ -97,7 +104,7 @@ export async function GET() {
       .select({ count: sql<number>`count(*)` })
       .from(usuarios)
       .where(
-        esJefe && departamentoId
+        debeFiltrarpDepartamento
           ? and(
               sql`${usuarios.createdAt} >= ${primerDiaMes}`,
               eq(usuarios.departamentoId, departamentoId),

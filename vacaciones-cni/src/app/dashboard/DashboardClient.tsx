@@ -299,16 +299,10 @@ export default function DashboardClient({ session }: DashboardClientProps) {
             <ul tabIndex={0} className="mt-3 z-[1] p-2 shadow menu menu-sm dropdown-content bg-base-100 rounded-box w-52">
               <li className="menu-title">{session.user.nombre} {session.user.apellido}</li>
               <li>
-                <button className="flex items-center gap-2">
+                <Link href="/mi-perfil" className="flex items-center gap-2">
                   <User className="w-4 h-4" />
                   <span>Mi Perfil</span>
-                </button>
-              </li>
-              <li>
-                <button className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  <span>Configuración</span>
-                </button>
+                </Link>
               </li>
               <li>
                 <LogoutButton className="" />

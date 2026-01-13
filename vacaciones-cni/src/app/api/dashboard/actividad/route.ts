@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
-import { desc, isNull, or, eq, and } from "drizzle-orm";
+import { desc, isNull, or, eq, and, inArray } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    // 1. Verificar autenticación
+    const session = await getSession();
 
     if (!session) {
       return NextResponse.json(
@@ -15,7 +16,41 @@ export async function GET() {
       );
     }
 
+    // 2. Determinar scope de actividades según permisos
+    const puedeVerTodo = tienePermiso(session, 'vacaciones.solicitudes.ver_todas');
+    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
+    const esEmpleado = !puedeVerTodo && !esJefe;
+
     const actividades: any[] = [];
+
+    // 3. Construir condiciones para solicitudes
+    let solicitudesCondition: any = and(
+      isNull(solicitudes.deletedAt),
+      or(
+        eq(solicitudes.estado, "pendiente"),
+        eq(solicitudes.estado, "aprobada"),
+        eq(solicitudes.estado, "aprobada_jefe")
+      )
+    );
+
+    // Si es empleado, solo sus propias solicitudes
+    if (esEmpleado) {
+      solicitudesCondition = and(solicitudesCondition, eq(solicitudes.usuarioId, session.id));
+    }
+    // Si es jefe, solo su departamento
+    else if (esJefe && session.departamentoId && !puedeVerTodo) {
+      const usuariosDept = await db
+        .select({ id: usuarios.id })
+        .from(usuarios)
+        .where(and(
+          eq(usuarios.departamentoId, session.departamentoId),
+          isNull(usuarios.deletedAt)
+        ));
+      const usuariosIds = usuariosDept.map(u => u.id);
+      if (usuariosIds.length > 0) {
+        solicitudesCondition = and(solicitudesCondition, inArray(solicitudes.usuarioId, usuariosIds));
+      }
+    }
 
     // Obtener últimas solicitudes (aprobadas, pendientes, creadas recientemente)
     const ultimasSolicitudes = await db
@@ -34,16 +69,7 @@ export async function GET() {
       })
       .from(solicitudes)
       .innerJoin(usuarios, eq(solicitudes.usuarioId, usuarios.id))
-      .where(
-        and(
-          isNull(solicitudes.deletedAt),
-          or(
-            eq(solicitudes.estado, "pendiente"),
-            eq(solicitudes.estado, "aprobada"),
-            eq(solicitudes.estado, "aprobada_jefe")
-          )
-        )
-      )
+      .where(solicitudesCondition)
       .orderBy(desc(solicitudes.createdAt))
       .limit(5);
 

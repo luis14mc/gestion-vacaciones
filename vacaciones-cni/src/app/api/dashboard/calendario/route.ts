@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { solicitudes, usuarios } from "@/lib/db/schema";
-import { eq, and, isNull, gte, lte, or } from "drizzle-orm";
+import { eq, and, isNull, gte, lte, or, inArray } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
+    // 1. Verificar autenticación
+    const session = await getSession();
 
     if (!session) {
       return NextResponse.json(
@@ -14,6 +15,12 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // 2. Verificar permisos - calendario es público para usuarios autenticados
+    // Pero filtraremos datos según permisos
+    const puedeVerTodo = tienePermiso(session, 'vacaciones.solicitudes.ver_todas');
+    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
+    const esEmpleado = !puedeVerTodo && !esJefe;
 
     const searchParams = request.nextUrl.searchParams;
     const mes = searchParams.get("mes") || String(new Date().getMonth() + 1);
@@ -26,6 +33,51 @@ export async function GET(request: NextRequest) {
     // Convertir a strings para comparación con DATE columns
     const primerDiaStr = primerDia.toISOString().split('T')[0];
     const ultimoDiaStr = ultimoDia.toISOString().split('T')[0];
+
+    // 3. Construir condiciones según permisos
+    let whereConditions: any = and(
+      isNull(solicitudes.deletedAt),
+      or(
+        eq(solicitudes.estado, "aprobada"),
+        eq(solicitudes.estado, "en_uso")
+      ),
+      or(
+        // La solicitud comienza en el mes
+        and(
+          gte(solicitudes.fechaInicio, primerDiaStr),
+          lte(solicitudes.fechaInicio, ultimoDiaStr)
+        ),
+        // La solicitud termina en el mes
+        and(
+          gte(solicitudes.fechaFin, primerDiaStr),
+          lte(solicitudes.fechaFin, ultimoDiaStr)
+        ),
+        // La solicitud abarca todo el mes
+        and(
+          lte(solicitudes.fechaInicio, primerDiaStr),
+          gte(solicitudes.fechaFin, ultimoDiaStr)
+        )
+      )
+    );
+
+    // Si es empleado sin permisos, solo ver sus propias solicitudes
+    if (esEmpleado) {
+      whereConditions = and(whereConditions, eq(solicitudes.usuarioId, session.id));
+    }
+    // Si es jefe, ver solo su departamento
+    else if (esJefe && session.departamentoId && !puedeVerTodo) {
+      const usuariosDept = await db
+        .select({ id: usuarios.id })
+        .from(usuarios)
+        .where(and(
+          eq(usuarios.departamentoId, session.departamentoId),
+          isNull(usuarios.deletedAt)
+        ));
+      const usuariosIds = usuariosDept.map(u => u.id);
+      if (usuariosIds.length > 0) {
+        whereConditions = and(whereConditions, inArray(solicitudes.usuarioId, usuariosIds));
+      }
+    }
 
     // Obtener solicitudes del mes (aprobadas o en uso)
     const solicitudesMes = await db
@@ -43,32 +95,7 @@ export async function GET(request: NextRequest) {
       })
       .from(solicitudes)
       .innerJoin(usuarios, eq(solicitudes.usuarioId, usuarios.id))
-      .where(
-        and(
-          isNull(solicitudes.deletedAt),
-          or(
-            eq(solicitudes.estado, "aprobada"),
-            eq(solicitudes.estado, "en_uso")
-          ),
-          or(
-            // La solicitud comienza en el mes
-            and(
-              gte(solicitudes.fechaInicio, primerDiaStr),
-              lte(solicitudes.fechaInicio, ultimoDiaStr)
-            ),
-            // La solicitud termina en el mes
-            and(
-              gte(solicitudes.fechaFin, primerDiaStr),
-              lte(solicitudes.fechaFin, ultimoDiaStr)
-            ),
-            // La solicitud abarca todo el mes
-            and(
-              lte(solicitudes.fechaInicio, primerDiaStr),
-              gte(solicitudes.fechaFin, ultimoDiaStr)
-            )
-          )
-        )
-      )
+      .where(whereConditions)
       .orderBy(solicitudes.fechaInicio);
 
     // Generar estructura del calendario

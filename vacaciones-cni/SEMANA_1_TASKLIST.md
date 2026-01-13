@@ -253,15 +253,26 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
     * ✅ Mensajes de error descriptivos (403)
     * ✅ Sistema listo para siguiente fase
 
-- [ ] **5.3 Actualizar Postman/Thunder Client Collection** (1h)
-  - Crear carpeta "RBAC Tests"
-  - Agregar requests para cada endpoint con diferentes roles
-  - Configurar variables de entorno:
-    * `{{adminToken}}`
-    * `{{rrhhToken}}`
-    * `{{jefeToken}}`
-    * `{{empleadoToken}}`
-  - Exportar collection actualizada
+- [x] **5.3 Actualizar Postman/Thunder Client Collection** (1h) ✅ COMPLETADO
+  - ✅ Creada carpeta `postman/` con archivos exportables
+  - ✅ Collection con 25 requests organizados en 8 categorías:
+    * 01. Autenticación (1 endpoint)
+    * 02. Solicitudes (5 endpoints)
+    * 03. Usuarios (4 endpoints)
+    * 04. Balances (3 endpoints)
+    * 05. Reportes (3 endpoints)
+    * 06. Dashboard (4 endpoints)
+    * 07. Mi Perfil (3 endpoints)
+    * 08. Gestión de Roles (2 endpoints)
+  - ✅ Environment configurado con variables:
+    * `{{baseUrl}}` - http://localhost:3000
+    * `{{email}}` - admin@cni.hn
+    * `{{password}}` - Admin123!
+    * `{{authToken}}` - Se guarda automáticamente al hacer login
+  - ✅ Archivos listos para importar:
+    * `postman/CNI-Vacaciones-RBAC.postman_collection.json`
+    * `postman/CNI-Vacaciones-RBAC.postman_environment.json`
+  - ✅ Script automático en request "Login" que guarda el token
 
 - [ ] **5.4 Documentar cambios en CHANGELOG.md** (1h)
   - Crear sección "Semana 1 - Integración RBAC"

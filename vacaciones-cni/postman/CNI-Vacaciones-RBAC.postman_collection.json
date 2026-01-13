@@ -1,0 +1,453 @@
+{
+  "info": {
+    "name": "CNI Vacaciones - RBAC Tests",
+    "description": "Colección completa para testing de endpoints con RBAC - Sistema de Gestión de Vacaciones CNI Honduras",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01. Autenticación",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.environment.set('authToken', jsonData.authToken);",
+                  "    console.log('Token guardado:', jsonData.authToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/callback/credentials",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "callback", "credentials"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Solicitudes",
+      "item": [
+        {
+          "name": "GET Solicitudes - Ver todas/propias según rol",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/solicitudes?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "solicitudes"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "pageSize", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST Solicitud - Crear nueva",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": 4,\n  \"tipoAusenciaId\": 1,\n  \"fechaInicio\": \"2026-02-01\",\n  \"fechaFin\": \"2026-02-05\",\n  \"cantidad\": 5,\n  \"unidad\": \"dias\",\n  \"motivo\": \"Vacaciones familiares\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/solicitudes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "solicitudes"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Aprobar - Jefe (solo su depto)",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"aprobar_jefe\",\n  \"comentarios\": \"Aprobado por jefe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/solicitudes/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "solicitudes", "1"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Aprobar - RRHH (todas)",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"aprobar_rrhh\",\n  \"comentarios\": \"Aprobado por RRHH\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/solicitudes/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "solicitudes", "1"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Rechazar",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"rechazar\",\n  \"comentarios\": \"No se puede aprobar en estas fechas\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/solicitudes/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "solicitudes", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Usuarios",
+      "item": [
+        {
+          "name": "GET Usuarios - Admin/RRHH ver todos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            }
+          }
+        },
+        {
+          "name": "POST Usuario - Admin/RRHH crear",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@cni.hn\",\n  \"password\": \"Password123!\",\n  \"cargo\": \"Analista\",\n  \"departamentoId\": 1,\n  \"fechaIngreso\": \"2026-01-13\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Usuario - Admin/RRHH editar",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"+504 9999-9999\",\n  \"direccion\": \"Tegucigalpa, Honduras\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "5"]
+            }
+          }
+        },
+        {
+          "name": "DELETE Usuario - Admin/RRHH desactivar",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "5"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Balances",
+      "item": [
+        {
+          "name": "GET Balance - Propio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/balances?usuarioId=4",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "balances"],
+              "query": [{"key": "usuarioId", "value": "4"}]
+            }
+          }
+        },
+        {
+          "name": "GET Balance - Otros (Admin/RRHH)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/balances?usuarioId=3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "balances"],
+              "query": [{"key": "usuarioId", "value": "3"}]
+            }
+          }
+        },
+        {
+          "name": "PATCH Balance - Ajuste manual",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidadAsignada\": 20,\n  \"motivo\": \"Ajuste por antigüedad\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/balances/8",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "balances", "8"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Reportes",
+      "item": [
+        {
+          "name": "GET Reportes General (Admin/RRHH)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reportes/general?anio=2026",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reportes", "general"],
+              "query": [{"key": "anio", "value": "2026"}]
+            }
+          }
+        },
+        {
+          "name": "GET Reportes Departamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reportes/departamento?mes=1&anio=2026",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reportes", "departamento"],
+              "query": [
+                {"key": "mes", "value": "1"},
+                {"key": "anio", "value": "2026"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Exportar Reporte",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reportes/exportar?formato=excel&tipoReporte=general&anio=2026",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reportes", "exportar"],
+              "query": [
+                {"key": "formato", "value": "excel"},
+                {"key": "tipoReporte", "value": "general"},
+                {"key": "anio", "value": "2026"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Dashboard",
+      "item": [
+        {
+          "name": "GET Dashboard Métricas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/metricas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "metricas"]
+            }
+          }
+        },
+        {
+          "name": "GET Dashboard Calendario",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/calendario?mes=1&anio=2026",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "calendario"],
+              "query": [
+                {"key": "mes", "value": "1"},
+                {"key": "anio", "value": "2026"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Dashboard Mi Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/mi-balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "mi-balance"]
+            }
+          }
+        },
+        {
+          "name": "GET Dashboard Actividad",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/actividad",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "actividad"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Mi Perfil",
+      "item": [
+        {
+          "name": "GET Mi Perfil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "me"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Mi Perfil - Actualizar contacto",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"+504 1234-5678\",\n  \"direccion\": \"Col. Palmira, Tegucigalpa\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "me"]
+            }
+          }
+        },
+        {
+          "name": "PATCH Cambiar Contraseña",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Emp123!\",\n  \"newPassword\": \"NewPassword123!\",\n  \"confirmPassword\": \"NewPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "me", "password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Gestión de Roles",
+      "item": [
+        {
+          "name": "POST Asignar Rol",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": 5,\n  \"rolCodigo\": \"JEFE\",\n  \"departamentoId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "roles"]
+            }
+          }
+        },
+        {
+          "name": "DELETE Remover Rol",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuarioId\": 5,\n  \"rolCodigo\": \"JEFE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "usuarios", "roles"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:3000"},
+    {"key": "email", "value": "admin@cni.hn"},
+    {"key": "password", "value": "Admin123!"},
+    {"key": "authToken", "value": ""}
+  ]
+}

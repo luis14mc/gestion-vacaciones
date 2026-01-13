@@ -1,0 +1,593 @@
+{
+  "clientName": "Thunder Client",
+  "collectionName": "CNI Vacaciones - RBAC Tests",
+  "collectionId": "tc_cni_vacaciones_rbac",
+  "dateExported": "2026-01-13T00:00:00.000Z",
+  "version": "1.2",
+  "folders": [
+    {
+      "id": "folder_auth",
+      "name": "01. Autenticación",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 10000
+    },
+    {
+      "id": "folder_solicitudes",
+      "name": "02. Solicitudes",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 20000
+    },
+    {
+      "id": "folder_usuarios",
+      "name": "03. Usuarios",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 30000
+    },
+    {
+      "id": "folder_balances",
+      "name": "04. Balances",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 40000
+    },
+    {
+      "id": "folder_reportes",
+      "name": "05. Reportes",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 50000
+    },
+    {
+      "id": "folder_dashboard",
+      "name": "06. Dashboard",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 60000
+    },
+    {
+      "id": "folder_perfil",
+      "name": "07. Mi Perfil",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 70000
+    },
+    {
+      "id": "folder_roles",
+      "name": "08. Gestión de Roles",
+      "containerId": "",
+      "created": "2026-01-13T00:00:00.000Z",
+      "sortNum": 80000
+    }
+  ],
+  "requests": [
+    {
+      "id": "req_login",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_auth",
+      "name": "Login",
+      "url": "{{baseUrl}}/api/auth/callback/credentials",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+        "form": []
+      },
+      "tests": [
+        {
+          "type": "set-env-var",
+          "custom": "json.authToken",
+          "action": "setto",
+          "value": "{{authToken}}"
+        }
+      ]
+    },
+    {
+      "id": "req_get_solicitudes",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_solicitudes",
+      "name": "GET Solicitudes - Ver todas/propias según rol",
+      "url": "{{baseUrl}}/api/solicitudes?page=1&pageSize=20",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "page",
+          "value": "1",
+          "isPath": false
+        },
+        {
+          "name": "pageSize",
+          "value": "20",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_post_solicitud",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_solicitudes",
+      "name": "POST Solicitud - Crear nueva",
+      "url": "{{baseUrl}}/api/solicitudes",
+      "method": "POST",
+      "sortNum": 20100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"usuarioId\": 4,\n  \"tipoAusenciaId\": 1,\n  \"fechaInicio\": \"2026-02-01\",\n  \"fechaFin\": \"2026-02-05\",\n  \"cantidad\": 5,\n  \"unidad\": \"dias\",\n  \"motivo\": \"Vacaciones familiares\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_patch_aprobar_jefe",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_solicitudes",
+      "name": "PATCH Aprobar - Jefe (solo su depto)",
+      "url": "{{baseUrl}}/api/solicitudes/1",
+      "method": "PATCH",
+      "sortNum": 20200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"accion\": \"aprobar_jefe\",\n  \"comentarios\": \"Aprobado por jefe\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_patch_aprobar_rrhh",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_solicitudes",
+      "name": "PATCH Aprobar - RRHH (todas)",
+      "url": "{{baseUrl}}/api/solicitudes/1",
+      "method": "PATCH",
+      "sortNum": 20300,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"accion\": \"aprobar_rrhh\",\n  \"comentarios\": \"Aprobado por RRHH\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_patch_rechazar",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_solicitudes",
+      "name": "PATCH Rechazar",
+      "url": "{{baseUrl}}/api/solicitudes/1",
+      "method": "PATCH",
+      "sortNum": 20400,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"accion\": \"rechazar\",\n  \"comentarios\": \"No se puede aprobar en estas fechas\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_get_usuarios",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_usuarios",
+      "name": "GET Usuarios - Admin/RRHH ver todos",
+      "url": "{{baseUrl}}/api/usuarios",
+      "method": "GET",
+      "sortNum": 30000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_post_usuario",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_usuarios",
+      "name": "POST Usuario - Admin/RRHH crear",
+      "url": "{{baseUrl}}/api/usuarios",
+      "method": "POST",
+      "sortNum": 30100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@cni.hn\",\n  \"password\": \"Password123!\",\n  \"cargo\": \"Analista\",\n  \"departamentoId\": 1,\n  \"fechaIngreso\": \"2026-01-13\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_patch_usuario",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_usuarios",
+      "name": "PATCH Usuario - Admin/RRHH editar",
+      "url": "{{baseUrl}}/api/usuarios/5",
+      "method": "PATCH",
+      "sortNum": 30200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"telefono\": \"+504 9999-9999\",\n  \"direccion\": \"Tegucigalpa, Honduras\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_delete_usuario",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_usuarios",
+      "name": "DELETE Usuario - Admin/RRHH desactivar",
+      "url": "{{baseUrl}}/api/usuarios/5",
+      "method": "DELETE",
+      "sortNum": 30300,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_get_balances_propios",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_balances",
+      "name": "GET Balance - Propio (todos pueden ver)",
+      "url": "{{baseUrl}}/api/balances?usuarioId=4",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "usuarioId",
+          "value": "4",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_get_balances_otros",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_balances",
+      "name": "GET Balance - Otros (solo Admin/RRHH)",
+      "url": "{{baseUrl}}/api/balances?usuarioId=3",
+      "method": "GET",
+      "sortNum": 40100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "usuarioId",
+          "value": "3",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_patch_balance",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_balances",
+      "name": "PATCH Balance - Ajuste manual (Admin/RRHH)",
+      "url": "{{baseUrl}}/api/balances/8",
+      "method": "PATCH",
+      "sortNum": 40200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"cantidadAsignada\": 20,\n  \"motivo\": \"Ajuste por antigüedad\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_get_reportes_general",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_reportes",
+      "name": "GET Reportes General (Admin/RRHH)",
+      "url": "{{baseUrl}}/api/reportes/general?anio=2026",
+      "method": "GET",
+      "sortNum": 50000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "anio",
+          "value": "2026",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_get_reportes_depto",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_reportes",
+      "name": "GET Reportes Departamento (Jefe su depto)",
+      "url": "{{baseUrl}}/api/reportes/departamento?mes=1&anio=2026",
+      "method": "GET",
+      "sortNum": 50100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "mes",
+          "value": "1",
+          "isPath": false
+        },
+        {
+          "name": "anio",
+          "value": "2026",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_get_reportes_exportar",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_reportes",
+      "name": "GET Exportar Reporte (Admin/RRHH)",
+      "url": "{{baseUrl}}/api/reportes/exportar?formato=excel&tipoReporte=general&anio=2026",
+      "method": "GET",
+      "sortNum": 50200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "formato",
+          "value": "excel",
+          "isPath": false
+        },
+        {
+          "name": "tipoReporte",
+          "value": "general",
+          "isPath": false
+        },
+        {
+          "name": "anio",
+          "value": "2026",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_get_dashboard_metricas",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_dashboard",
+      "name": "GET Dashboard Métricas",
+      "url": "{{baseUrl}}/api/dashboard/metricas",
+      "method": "GET",
+      "sortNum": 60000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_get_dashboard_calendario",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_dashboard",
+      "name": "GET Dashboard Calendario",
+      "url": "{{baseUrl}}/api/dashboard/calendario?mes=1&anio=2026",
+      "method": "GET",
+      "sortNum": 60100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "params": [
+        {
+          "name": "mes",
+          "value": "1",
+          "isPath": false
+        },
+        {
+          "name": "anio",
+          "value": "2026",
+          "isPath": false
+        }
+      ],
+      "tests": []
+    },
+    {
+      "id": "req_get_dashboard_balance",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_dashboard",
+      "name": "GET Dashboard Mi Balance",
+      "url": "{{baseUrl}}/api/dashboard/mi-balance",
+      "method": "GET",
+      "sortNum": 60200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_get_dashboard_actividad",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_dashboard",
+      "name": "GET Dashboard Actividad",
+      "url": "{{baseUrl}}/api/dashboard/actividad",
+      "method": "GET",
+      "sortNum": 60300,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_get_perfil",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_perfil",
+      "name": "GET Mi Perfil",
+      "url": "{{baseUrl}}/api/usuarios/me",
+      "method": "GET",
+      "sortNum": 70000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [],
+      "tests": []
+    },
+    {
+      "id": "req_patch_perfil",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_perfil",
+      "name": "PATCH Mi Perfil - Actualizar contacto",
+      "url": "{{baseUrl}}/api/usuarios/me",
+      "method": "PATCH",
+      "sortNum": 70100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"telefono\": \"+504 1234-5678\",\n  \"direccion\": \"Col. Palmira, Tegucigalpa\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_patch_password",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_perfil",
+      "name": "PATCH Cambiar Contraseña",
+      "url": "{{baseUrl}}/api/usuarios/me/password",
+      "method": "PATCH",
+      "sortNum": 70200,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"currentPassword\": \"Emp123!\",\n  \"newPassword\": \"NewPassword123!\",\n  \"confirmPassword\": \"NewPassword123!\"\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_post_asignar_rol",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_roles",
+      "name": "POST Asignar Rol (Admin/RRHH)",
+      "url": "{{baseUrl}}/api/usuarios/roles",
+      "method": "POST",
+      "sortNum": 80000,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"usuarioId\": 5,\n  \"rolCodigo\": \"JEFE\",\n  \"departamentoId\": 1\n}",
+        "form": []
+      },
+      "tests": []
+    },
+    {
+      "id": "req_delete_remover_rol",
+      "colId": "tc_cni_vacaciones_rbac",
+      "containerId": "folder_roles",
+      "name": "DELETE Remover Rol (Admin/RRHH)",
+      "url": "{{baseUrl}}/api/usuarios/roles",
+      "method": "DELETE",
+      "sortNum": 80100,
+      "created": "2026-01-13T00:00:00.000Z",
+      "modified": "2026-01-13T00:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"usuarioId\": 5,\n  \"rolCodigo\": \"JEFE\"\n}",
+        "form": []
+      },
+      "tests": []
+    }
+  ]
+}

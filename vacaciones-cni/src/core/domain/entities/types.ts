@@ -23,6 +23,13 @@ declare module "next-auth" {
       esJefe: boolean;
       esRrhh: boolean;
       esAdmin: boolean;
+      roles?: Array<{
+        id: number;
+        codigo: string;
+        nombre: string;
+        nivel: number;
+      }>;
+      permisos?: string[];
     } & DefaultSession["user"];
   }
 }

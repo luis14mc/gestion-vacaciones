@@ -486,10 +486,10 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
         <button
           type="submit"
           className="btn btn-primary w-full sm:w-auto order-1 sm:order-2"
-          disabled={
+          disabled={Boolean(
             submitting || 
             (esVacaciones && formData.fechaInicio && formData.fechaFin && diasRestantes < 0)
-          }
+          )}
         >
           {submitting ? (
             <>

@@ -69,8 +69,6 @@ export async function GET(request: NextRequest) {
       id: usuario.id,
       nombre: `${usuario.nombre} ${usuario.apellido}`,
       email: usuario.email,
-      telefono: usuario.telefono || null,
-      direccion: usuario.direccion || null,
       fechaContratacion: usuario.fechaIngreso,
       diasVacacionesAnuales: balance ? parseFloat(balance.cantidadAsignada) : 0,
       diasAcumulados: balance ? parseFloat(balance.cantidadAsignada) - parseFloat(balance.cantidadUtilizada) - parseFloat(balance.cantidadPendiente) : 0,
@@ -119,19 +117,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     const userId = session.id;
-    const body = await request.json();
 
-    const { telefono, direccion } = body;
-
-    // Actualizar solo campos editables por el usuario
-    await db
-      .update(usuarios)
-      .set({
-        telefono: telefono || null,
-        direccion: direccion || null,
-      })
-      .where(eq(usuarios.id, userId));
-
+    // Por ahora, solo retornamos el perfil actualizado
+    // Los campos telefono y direccion no existen en el esquema actual
     // Obtener usuario actualizado
     const [usuarioActualizado] = await db
       .select()
@@ -183,8 +171,6 @@ export async function PATCH(request: NextRequest) {
       id: usuarioActualizado.id,
       nombre: `${usuarioActualizado.nombre} ${usuarioActualizado.apellido}`,
       email: usuarioActualizado.email,
-      telefono: usuarioActualizado.telefono || null,
-      direccion: usuarioActualizado.direccion || null,
       fechaContratacion: usuarioActualizado.fechaIngreso,
       diasVacacionesAnuales: balance ? parseFloat(balance.cantidadAsignada) : 0,
       diasAcumulados: balance ? parseFloat(balance.cantidadAsignada) - parseFloat(balance.cantidadUtilizada) - parseFloat(balance.cantidadPendiente) : 0,

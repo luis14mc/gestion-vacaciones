@@ -48,7 +48,6 @@ export async function GET() {
 
     // Obtener IDs de usuarios del departamento (si es jefe)
     let usuariosIds: number[] = [];
-    if (debeFiltrarpDepartamento) {
     if (esJefe && departamentoId) {
       const usuariosDept = await db
         .select({ id: usuarios.id })

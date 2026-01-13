@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // 6. Verificar resultado
     if (!resultado.success) {
       return NextResponse.json(
-        { error: resultado.message || 'Error al asignar rol' },
+        { error: resultado.error || 'Error al asignar rol' },
         { status: 400 }
       );
     }
@@ -57,8 +57,7 @@ export async function POST(request: NextRequest) {
     // 7. Respuesta exitosa
     return NextResponse.json({
       success: true,
-      message: `Rol ${rolCodigo} asignado exitosamente`,
-      data: resultado.data
+      message: `Rol ${rolCodigo} asignado exitosamente`
     });
 
   } catch (error) {
@@ -119,7 +118,7 @@ export async function DELETE(request: NextRequest) {
     // 6. Verificar resultado
     if (!resultado.success) {
       return NextResponse.json(
-        { error: resultado.message || 'Error al remover rol' },
+        { error: resultado.error || 'Error al remover rol' },
         { status: 400 }
       );
     }
@@ -127,8 +126,7 @@ export async function DELETE(request: NextRequest) {
     // 7. Respuesta exitosa
     return NextResponse.json({
       success: true,
-      message: `Rol ${rolCodigo} removido exitosamente`,
-      data: resultado.data
+      message: `Rol ${rolCodigo} removido exitosamente`
     });
 
   } catch (error) {

@@ -20,6 +20,12 @@ import Swal from "sweetalert2";
 import autoTable from 'jspdf-autotable';
 import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
 
+// Constante para nombres de meses
+const meses = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
 interface ReporteDepartamento {
   totalColaboradores: number;
   colaboradoresActivos: number;

@@ -11,12 +11,8 @@ export const runtime = 'nodejs';
 // GET: Obtener solicitudes con filtros (con RBAC)
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔵 Iniciando GET /api/solicitudes');
-    
     // 🔐 1. AUTENTICACIÓN - Obtener sesión del usuario
     const sessionUser = await getSession();
-    
-    console.log('🔵 SessionUser obtenido:', sessionUser ? 'OK' : 'NULL');
     
     if (!sessionUser) {
       return NextResponse.json(
@@ -24,13 +20,6 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
-
-    console.log('🔵 Usuario autenticado:', { 
-      id: sessionUser.id, 
-      email: sessionUser.email,
-      roles: sessionUser.roles?.map(r => r.codigo),
-      permisos: sessionUser.permisos?.length 
-    });
 
     // 🔐 2. AUTORIZACIÓN - Verificar permisos
     const puedeVerTodas = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_todas');
@@ -58,23 +47,11 @@ export async function GET(request: NextRequest) {
     const esRrhh = sessionUser.roles?.some(r => r.codigo === 'RRHH') || false;
     const esJefe = sessionUser.roles?.some(r => r.codigo === 'JEFE') || false;
 
-    console.log('📋 GET /api/solicitudes - Usuario:', sessionUser.email);
-    console.log('🔍 Parámetros:', { paraAprobar, estado, page, pageSize });
-    console.log('👤 Usuario info:', { 
-      esAdmin,
-      esJefe, 
-      esRrhh,
-      departamentoId: sessionUser.departamentoId 
-    });
-    console.log('🔐 Permisos:', { puedeVerTodas, puedeVerPropias });
-
     const conditions = [isNull(solicitudes.deletedAt)];
     
     // 🔐 3. FILTRADO SEGÚN PERMISOS
     if (puedeVerTodas) {
       // ADMIN/RRHH → Ver todas las solicitudes
-      console.log('✅ Permiso: Ver todas las solicitudes');
-      
       // Si se pasa usuarioId como filtro, respetarlo
       if (usuarioIdParam) {
         conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioIdParam)));
@@ -287,8 +264,6 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-
-    console.log(`✅ Creando solicitud para usuario: ${usuarioId}`);
 
     // Verificar que el usuario existe y está activo
     const usuario = await db.query.usuarios.findFirst({

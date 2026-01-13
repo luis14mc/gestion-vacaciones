@@ -484,7 +484,11 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                             </div>
                           </td>
                           <td>
-                            {usuario.departamento || (
+                            {usuario.departamento ? (
+                              typeof usuario.departamento === 'string' 
+                                ? usuario.departamento 
+                                : usuario.departamento.nombre
+                            ) : (
                               <span className="text-base-content/50">
                                 Sin departamento
                               </span>
@@ -553,7 +557,11 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                           <div>
                             <span className="text-base-content/60">Departamento:</span>{" "}
                             <span className="font-medium">
-                              {usuario.departamento || "Sin departamento"}
+                              {usuario.departamento ? (
+                                typeof usuario.departamento === 'string' 
+                                  ? usuario.departamento 
+                                  : usuario.departamento.nombre
+                              ) : "Sin departamento"}
                             </span>
                           </div>
                           <div>

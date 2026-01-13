@@ -184,12 +184,12 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: RRHH ajustando balance de empleado
   - Commit: `feat(api): RBAC en edición manual de balances`
 
-- [ ] **4.3 Integrar RBAC en GET /api/reportes/general** (1h)
-  - Abrir: `src/app/api/reportes/general/route.ts`
-  - Verificar permiso `reportes.general`
+- [x] **4.3 Integrar RBAC en GET /api/reportes/general** (1h) ✅ COMPLETADO
+  - Verificar permiso `reportes.general` (ya implementado)
   - Solo ADMIN y RRHH pueden ver
-  - Testing: Admin consultando reporte general
-  - Commit: `feat(api): RBAC en reportes generales`
+  - Corregir queries SQL de 5 tipos de reportes
+  - Testing: Admin consultando todos los reportes
+  - Commit: `fix(api): Corregir queries SQL en reportes generales`
 
 - [ ] **4.4 Integrar RBAC en GET /api/reportes/departamento** (1.5h)
   - Abrir: `src/app/api/reportes/departamento/route.ts`

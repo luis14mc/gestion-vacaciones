@@ -1,27 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { getSession, tienePermiso } from "@/lib/auth";
 import { usuarios, balancesAusencias, solicitudes } from "@/lib/db/schema";
-import { eq, and, sql, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
+
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    // 1. Verificar autenticación
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
+
+    // 2. Verificar permiso reportes.departamento
+    if (!tienePermiso(session, 'reportes.departamento')) {
+      console.log(`❌ Usuario ${session.email} sin permiso reportes.departamento`);
+      return NextResponse.json(
+        { error: 'No tienes permiso para consultar reportes por departamento' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`✅ Usuario ${session.email} consultando reportes por departamento`);
+
+    console.log(`✅ Usuario ${session.email} consultando reportes por departamento`);
 
     const { searchParams } = new URL(request.url);
     const mes = parseInt(searchParams.get("mes") || String(new Date().getMonth() + 1));
     const anio = parseInt(searchParams.get("anio") || String(new Date().getFullYear()));
 
-    // Filtro de departamento (solo para jefes)
+    // 3. Filtro contextual: Si es JEFE, solo puede ver su departamento
     let departamentoCondition = undefined;
-    if (session.user.esJefe && !session.user.esAdmin && !session.user.esRrhh) {
-      if (session.user.departamentoId) {
-        departamentoCondition = eq(usuarios.departamentoId, session.user.departamentoId);
+    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
+    const esAdminORrhh = session.roles?.some(r => ['ADMIN', 'RRHH'].includes(r.codigo));
+    
+    if (esJefe && !esAdminORrhh) {
+      // JEFE solo ve su departamento
+      if (session.departamentoId) {
+        departamentoCondition = eq(usuarios.departamentoId, session.departamentoId);
+        console.log(`🔒 JEFE: Filtrando solo departamento ${session.departamentoId}`);
+      } else {
+        return NextResponse.json(
+          { error: 'Usuario JEFE sin departamento asignado' },
+          { status: 403 }
+        );
       }
     }
+    // ADMIN y RRHH pueden ver todos los departamentos
 
     // Obtener usuarios del departamento
     const usuariosDept = await db.query.usuarios.findMany({

@@ -191,10 +191,10 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: Admin consultando todos los reportes
   - Commit: `fix(api): Corregir queries SQL en reportes generales`
 
-- [ ] **4.4 Integrar RBAC en GET /api/reportes/departamento** (1.5h)
-  - Abrir: `src/app/api/reportes/departamento/route.ts`
+- [x] **4.4 Integrar RBAC en GET /api/reportes/departamento** (1.5h) ✅ COMPLETADO
   - Verificar permiso `reportes.departamento`
-  - Si es JEFE, filtrar solo su departamento
+  - Si es JEFE, filtrar solo su departamento (scope contextual)
+  - ADMIN y RRHH ven todos los departamentos
   - Testing: Jefe viendo reporte de su depto
   - Commit: `feat(api): RBAC en reportes por departamento`
 

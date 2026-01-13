@@ -104,7 +104,8 @@ WHERE r.codigo = 'JEFE' AND p.codigo IN (
   'vacaciones.solicitudes.aprobar_jefe',
   'vacaciones.solicitudes.rechazar',
   'balances.ver_todos',
-  'reportes.departamento'
+  'reportes.departamento',
+  'reportes.exportar'
 )
 ON CONFLICT (rol_id, permiso_id) DO NOTHING;
 

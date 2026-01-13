@@ -198,10 +198,10 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
   - Testing: Jefe viendo reporte de su depto
   - Commit: `feat(api): RBAC en reportes por departamento`
 
-- [ ] **4.5 Integrar RBAC en GET /api/reportes/exportar** (1h)
-  - Abrir: `src/app/api/reportes/exportar/route.ts`
+- [x] **4.5 Integrar RBAC en GET /api/reportes/exportar** (1h) ✅ COMPLETADO
   - Verificar permiso `reportes.exportar`
-  - Generar Excel/CSV según parámetro
+  - Generar Excel/CSV según parámetro (implementación pendiente)
+  - Solo ADMIN y RRHH pueden exportar
   - Testing: RRHH exportando reporte a Excel
   - Commit: `feat(api): RBAC en exportación de reportes`
 

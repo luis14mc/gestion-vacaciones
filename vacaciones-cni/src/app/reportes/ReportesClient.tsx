@@ -15,6 +15,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
 
 interface ReportesClientProps {
   session: Session;
@@ -124,32 +125,156 @@ export default function ReportesClient({ session }: ReportesClientProps) {
   };
 
   const exportarReporte = async (formato: "excel" | "pdf") => {
-    try {
-      const params = new URLSearchParams({
-        ...filtros,
-        tipoReporte: reporteSeleccionado,
-        formato,
-      } as any);
-
-      const res = await fetch(`/api/reportes/exportar?${params}`);
-      const blob = await res.blob();
-      
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reporte_${reporteSeleccionado}_${Date.now()}.${formato === 'excel' ? 'xlsx' : 'pdf'}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
+    if (!reporteSeleccionado) {
       await Swal.fire({
-        icon: "success",
-        title: "Exportado",
-        text: `Reporte exportado a ${formato.toUpperCase()}`,
-        timer: 2000,
-        showConfirmButton: false,
+        icon: "warning",
+        title: "Sin selección",
+        text: "Primero selecciona un tipo de reporte",
       });
+      return;
+    }
+
+    // Confirmación antes de exportar
+    const formatoTexto = formato === "excel" ? "CSV" : "PDF";
+    const result = await Swal.fire({
+      title: "¿Exportar reporte?",
+      text: `Se descargará el reporte de ${tiposReporte.find(t => t.id === reporteSeleccionado)?.nombre} en formato ${formatoTexto}`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sí, exportar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#3b82f6",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // Mostrar indicador de carga
+      Swal.fire({
+        title: 'Generando exportación...',
+        html: 'Por favor espera mientras se obtienen todos los datos',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      if (formato === "pdf") {
+        // Obtener datos COMPLETOS de la API para PDF (sin limitaciones del frontend)
+        const params = new URLSearchParams({
+          ...filtros,
+          tipoReporte: reporteSeleccionado,
+        } as any);
+
+        const res = await fetch(`/api/reportes?${params}`);
+        const data = await res.json();
+
+        if (!data.success || !data.data) {
+          throw new Error('No se pudieron obtener los datos');
+        }
+
+        const datosCompletos = data.data;
+
+        // Generar PDF con TODOS los datos de la API
+        let config: any = {};
+        const tituloReporte = tiposReporte.find(t => t.id === reporteSeleccionado)?.nombre || '';
+        
+        switch (reporteSeleccionado) {
+          case "balances":
+            config = {
+              titulo: tituloReporte,
+              subtitulo: `Período: ${filtros.fechaInicio} a ${filtros.fechaFin}`,
+              datos: datosCompletos.balances || [],
+              columnas: ['Empleado', 'Departamento', 'Tipo', 'Asignados', 'Usados', 'Pendientes', 'Disponibles'],
+              campos: ['empleado', 'departamento', 'tipo_ausencia', 'asignados', 'utilizados', 'pendientes', 'disponibles'],
+            };
+            break;
+          case "solicitudes":
+            config = {
+              titulo: tituloReporte,
+              subtitulo: `Período: ${filtros.fechaInicio} a ${filtros.fechaFin}`,
+              datos: datosCompletos.solicitudes || [],
+              columnas: ['Empleado', 'Tipo', 'Inicio', 'Fin', 'Días', 'Estado', 'Motivo'],
+              campos: ['empleado', 'tipo_ausencia', 'fecha_inicio', 'fecha_fin', 'dias_solicitados', 'estado', 'motivo'],
+            };
+            break;
+          case "departamentos":
+            config = {
+              titulo: tituloReporte,
+              subtitulo: `Año ${filtros.anio}`,
+              datos: datosCompletos.departamentos || [],
+              columnas: ['Departamento', 'Empleados', 'Total Asignados', 'Total Usados', 'Total Pendientes', 'Total Disponibles', '% Uso'],
+              campos: ['departamento', 'total_empleados', 'total_asignados', 'total_usados', 'total_pendientes', 'total_disponibles', 'porcentaje_uso'],
+            };
+            break;
+          case "proyecciones":
+            config = {
+              titulo: tituloReporte,
+              subtitulo: 'Días próximos a vencer',
+              datos: datosCompletos.proximos_vencer || [],
+              columnas: ['Empleado', 'Tipo', 'Disponibles', 'Vencimiento', 'Días Restantes'],
+              campos: ['empleado', 'tipo_ausencia', 'dias_disponibles', 'fecha_vencimiento', 'dias_restantes'],
+            };
+            break;
+          case "ausentismo":
+            config = {
+              titulo: tituloReporte,
+              subtitulo: `Año ${filtros.anio}`,
+              datos: datosCompletos.por_mes || [],
+              columnas: ['Mes', 'Solicitudes', 'Días Totales', 'Días Promedio', 'Aprobadas', 'Rechazadas', 'Pendientes'],
+              campos: ['mes', 'total_solicitudes', 'total_dias', 'promedio_dias', 'aprobadas', 'rechazadas', 'pendientes'],
+            };
+            break;
+        }
+
+        const doc = generarPDFReporte(config);
+        descargarPDF(doc, `reporte_${reporteSeleccionado}_${Date.now()}.pdf`);
+
+        Swal.close(); // Cerrar el loading
+        await Swal.fire({
+          icon: "success",
+          title: "Exportado",
+          html: `<strong>${config.datos.length}</strong> registros exportados exitosamente`,
+          timer: 3000,
+          showConfirmButton: false,
+        });
+      } else {
+        // Exportar CSV desde API (ya obtiene todos los datos)
+        const params = new URLSearchParams({
+          ...filtros,
+          tipoReporte: reporteSeleccionado,
+          formato,
+        } as any);
+
+        const res = await fetch(`/api/reportes/exportar?${params}`);
+        
+        if (!res.ok) {
+          throw new Error('Error al exportar');
+        }
+        
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte_${reporteSeleccionado}_${Date.now()}.csv`;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 100);
+
+        Swal.close(); // Cerrar el loading
+        await Swal.fire({
+          icon: "success",
+          title: "Exportado",
+          text: "Archivo CSV descargado exitosamente con todos los registros",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      }
     } catch (error) {
       console.error("Error exportando reporte:", error);
       await Swal.fire({
@@ -404,14 +529,16 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                 <>
                   <button
                     onClick={() => exportarReporte("excel")}
-                    className="btn btn-success gap-2"
+                    className="btn btn-success gap-2 shadow-lg hover:shadow-xl transition-all"
+                    title="Descargar reporte en formato CSV"
                   >
                     <Download className="w-4 h-4" />
-                    Exportar Excel
+                    Exportar CSV
                   </button>
                   <button
                     onClick={() => exportarReporte("pdf")}
-                    className="btn btn-error gap-2"
+                    className="btn btn-error gap-2 shadow-lg hover:shadow-xl transition-all"
+                    title="Descargar reporte en formato PDF"
                   >
                     <Download className="w-4 h-4" />
                     Exportar PDF

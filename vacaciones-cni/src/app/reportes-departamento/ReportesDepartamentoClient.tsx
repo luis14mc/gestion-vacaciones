@@ -17,6 +17,8 @@ import {
   Activity
 } from "lucide-react";
 import Swal from "sweetalert2";
+import autoTable from 'jspdf-autotable';
+import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
 
 interface ReporteDepartamento {
   totalColaboradores: number;
@@ -70,12 +72,165 @@ export default function ReportesDepartamentoClient() {
     }
   };
 
-  const exportarReporte = () => {
-    Swal.fire({
-      title: "Exportar reporte",
-      text: "Funcionalidad próximamente disponible",
-      icon: "info",
+  const exportarReporte = async (formato: 'csv' | 'pdf' = 'csv') => {
+    if (!reporte) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Sin datos",
+        text: "No hay datos para exportar",
+      });
+      return;
+    }
+
+    // Confirmación antes de exportar
+    const formatoTexto = formato === 'csv' ? 'CSV' : 'PDF';
+    const result = await Swal.fire({
+      title: "¿Exportar reporte?",
+      html: `Se descargará el reporte del departamento<br><strong>${meses[mesSeleccionado - 1]} ${anioSeleccionado}</strong> en formato ${formatoTexto}`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "<i class='fas fa-download'></i> Sí, exportar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#10b981",
+      cancelButtonColor: "#6b7280",
     });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // Mostrar indicador de carga
+      Swal.fire({
+        title: 'Generando exportación...',
+        html: 'Por favor espera',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      if (formato === 'pdf') {
+        // Preparar datos para PDF
+        const proximasVacaciones = reporte.proximasVacaciones.map(vac => ({
+          ...vac,
+          periodo: `${new Date(vac.fechaInicio).toLocaleDateString()} - ${new Date(vac.fechaFin).toLocaleDateString()}`,
+        }));
+
+        const topUsuarios = reporte.topUsuarios;
+
+        // Crear documento con datos de resumen
+        const datosResumen = [
+          { concepto: 'Colaboradores Totales', valor: reporte.totalColaboradores },
+          { concepto: 'Colaboradores Activos', valor: reporte.colaboradoresActivos },
+          { concepto: 'En Vacaciones Hoy', valor: reporte.enVacacionesHoy },
+          { concepto: 'Solicitudes Pendientes', valor: reporte.solicitudesPendientes },
+          { concepto: 'Solicitudes Aprobadas', valor: reporte.solicitudesAprobadas },
+          { concepto: 'Solicitudes Rechazadas', valor: reporte.solicitudesRechazadas },
+          { concepto: 'Días Totales Asignados', valor: reporte.diasTotalesAsignados },
+          { concepto: 'Días Totales Usados', valor: reporte.diasTotalesUsados },
+          { concepto: 'Días Totales Disponibles', valor: reporte.diasTotalesDisponibles },
+          { concepto: 'Promedio Uso por Persona', valor: reporte.promedioUsoPorPersona.toFixed(1) },
+        ];
+
+        const config = {
+          titulo: 'Reporte Departamental',
+          subtitulo: `${meses[mesSeleccionado - 1]} ${anioSeleccionado}`,
+          datos: datosResumen,
+          columnas: ['Concepto', 'Valor'],
+          campos: ['concepto', 'valor'],
+        };
+
+        const doc = generarPDFReporte(config);
+
+        // Añadir segunda página con próximas vacaciones si hay datos
+        if (proximasVacaciones.length > 0) {
+          doc.addPage();
+          doc.setFontSize(14);
+          doc.setTextColor(59, 130, 246);
+          doc.text('Próximas Vacaciones', doc.internal.pageSize.width / 2, 15, { align: 'center' });
+
+          autoTable(doc, {
+            head: [['Colaborador', 'Período', 'Días']],
+            body: proximasVacaciones.map(v => [v.usuario, v.periodo, v.dias]),
+            startY: 25,
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [59, 130, 246], textColor: [255, 255, 255] },
+          });
+        }
+
+        // Añadir tercera página con top usuarios
+        if (topUsuarios.length > 0) {
+          doc.addPage();
+          doc.setFontSize(14);
+          doc.setTextColor(59, 130, 246);
+          doc.text('Mayor Uso de Días', doc.internal.pageSize.width / 2, 15, { align: 'center' });
+
+          autoTable(doc, {
+            head: [['Colaborador', 'Días Usados', 'Días Disponibles']],
+            body: topUsuarios.map(u => [u.usuario, u.diasUsados, u.diasDisponibles]),
+            startY: 25,
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 3 },
+            headStyles: { fillColor: [59, 130, 246], textColor: [255, 255, 255] },
+          });
+        }
+
+        descargarPDF(doc, `reporte_departamento_${mesSeleccionado}_${anioSeleccionado}.pdf`);
+
+        Swal.close(); // Cerrar el loading
+        Swal.fire({
+          icon: "success",
+          title: "¡Exportado!",
+          text: "El reporte PDF completo se ha descargado exitosamente",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      } else {
+        // Exportar CSV desde API
+        const params = new URLSearchParams({
+          formato: 'excel',
+          tipoReporte: 'departamentos',
+          anio: String(anioSeleccionado),
+          mes: String(mesSeleccionado)
+        });
+
+        const response = await fetch(`/api/reportes/exportar?${params}`);
+        
+        if (!response.ok) {
+          throw new Error('Error al exportar');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte_departamento_${mesSeleccionado}_${anioSeleccionado}.csv`;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }, 100);
+
+        Swal.close(); // Cerrar el loading
+        Swal.fire({
+          icon: "success",
+          title: "¡Exportado!",
+          text: "El reporte CSV completo se ha descargado exitosamente",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      }
+    } catch (error) {
+      console.error('Error exportando:', error);
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "No se pudo exportar el reporte",
+      });
+    }
   };
 
   const calcularPorcentaje = (usado: number, total: number) => {
@@ -132,10 +287,24 @@ export default function ReportesDepartamentoClient() {
                     <option key={a} value={a}>{a}</option>
                   ))}
                 </select>
-                <button className="btn btn-sm btn-primary gap-1" onClick={exportarReporte}>
-                  <Download className="w-4 h-4" />
-                  Exportar
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    className="btn btn-sm btn-success gap-1 shadow-lg hover:shadow-xl transition-all" 
+                    onClick={() => exportarReporte('csv')}
+                    title="Descargar reporte en formato CSV"
+                  >
+                    <Download className="w-4 h-4" />
+                    CSV
+                  </button>
+                  <button 
+                    className="btn btn-sm btn-error gap-1 shadow-lg hover:shadow-xl transition-all" 
+                    onClick={() => exportarReporte('pdf')}
+                    title="Descargar reporte en formato PDF"
+                  >
+                    <Download className="w-4 h-4" />
+                    PDF
+                  </button>
+                </div>
               </div>
             </div>
           </div>

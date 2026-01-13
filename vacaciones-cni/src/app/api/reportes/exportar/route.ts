@@ -58,7 +58,11 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ error: 'Tipo de reporte no válido' }, { status: 400 });
       }
 
-      return new NextResponse(csvData, {
+      // Agregar BOM UTF-8 para correcta visualización de tildes en Excel
+      const BOM = '\uFEFF';
+      const csvWithBOM = BOM + csvData;
+
+      return new NextResponse(csvWithBOM, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': `attachment; filename="${filename}"`,

@@ -274,11 +274,17 @@ Integrar el sistema RBAC completo en todas las rutas API del sistema, eliminando
     * `postman/CNI-Vacaciones-RBAC.postman_environment.json`
   - ✅ Script automático en request "Login" que guarda el token
 
-- [ ] **5.4 Documentar cambios en CHANGELOG.md** (1h)
-  - Crear sección "Semana 1 - Integración RBAC"
-  - Listar todos los endpoints modificados
-  - Documentar breaking changes (si los hay)
-  - Ejemplos de uso de nuevos endpoints
+- [x] **5.4 Documentar cambios en CHANGELOG.md** (1h) ✅ COMPLETADO
+  - ✅ Creado archivo `CHANGELOG.md` completo (~500 líneas)
+  - ✅ Sección detallada "Semana 1 - Integración RBAC"
+  - ✅ Listados todos los endpoints modificados (27 endpoints)
+  - ✅ Breaking changes documentados (ninguno - compatibilidad total)
+  - ✅ 5 ejemplos de uso con requests/responses
+  - ✅ Estadísticas completas del proyecto
+  - ✅ Testing results (27/27 PASS)
+  - ✅ Nuevas características documentadas (Mi Perfil, Dashboard, etc)
+  - ✅ Mejoras UI/UX (responsive design)
+  - ✅ Referencias a documentación relacionada
 
 - [ ] **5.5 Code review y limpieza** (1h)
   - Revisar todos los commits de la semana

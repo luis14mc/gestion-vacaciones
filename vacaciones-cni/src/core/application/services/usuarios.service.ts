@@ -15,7 +15,7 @@ import {
   balancesAusencias,
   departamentos
 } from '@/core/infrastructure/database/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
 // ==========================================
@@ -54,12 +54,63 @@ export interface CambiarContrasena {
   contrasenaNueva: string;
 }
 
+export interface FiltrosUsuarios {
+  departamentoId?: number;
+  search?: string;
+  soloActivos?: boolean;
+}
+
 // ==========================================
 // FUNCIONES DEL SERVICIO
 // ==========================================
 
 /**
- * 📝 CREAR USUARIO
+ * � OBTENER USUARIOS
+ * Lista usuarios con filtros opcionales
+ */
+export async function obtenerUsuarios(filtros: FiltrosUsuarios = {}) {
+  console.log('📋 Obteniendo usuarios con filtros:', filtros);
+
+  const conditions = [];
+
+  if (filtros.departamentoId) {
+    conditions.push(eq(usuarios.departamentoId, filtros.departamentoId));
+  }
+
+  if (filtros.soloActivos) {
+    conditions.push(eq(usuarios.activo, true));
+  }
+
+  let results = await db.query.usuarios.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    with: {
+      departamento: true,
+      usuariosRoles: {
+        where: eq(usuariosRoles.activo, true),
+        with: {
+          rol: true,
+          departamento: true
+        }
+      }
+    }
+  });
+
+  // Filtro de búsqueda en memoria
+  if (filtros.search) {
+    const searchLower = filtros.search.toLowerCase();
+    results = results.filter((u: any) => 
+      u.nombre.toLowerCase().includes(searchLower) ||
+      u.apellido.toLowerCase().includes(searchLower) ||
+      u.email.toLowerCase().includes(searchLower)
+    );
+  }
+
+  // Eliminar password de cada resultado
+  return results.map(({ password, ...usuario }) => usuario);
+}
+
+/**
+ * �📝 CREAR USUARIO
  * Crea un nuevo usuario con:
  * - Hash de contraseña
  * - Rol EMPLEADO por defecto

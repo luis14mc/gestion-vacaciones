@@ -68,8 +68,6 @@ export interface FiltrosUsuarios {
  * Lista usuarios con filtros opcionales
  */
 export async function obtenerUsuarios(filtros: FiltrosUsuarios = {}) {
-  console.log('📋 Obteniendo usuarios con filtros:', filtros);
-
   const conditions = [];
 
   if (filtros.departamentoId) {
@@ -158,7 +156,7 @@ export async function crearUsuario(data: NuevoUsuario) {
     // 1. Hash de contraseña
     const SALT_ROUNDS = 10;
     const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
-    console.log(`🔒 Contraseña hasheada con ${SALT_ROUNDS} rounds`);
+
 
     // 2. Crear usuario
     const [nuevoUsuario] = await tx.insert(usuarios).values({
@@ -177,7 +175,6 @@ export async function crearUsuario(data: NuevoUsuario) {
       esAdmin: false
     }).returning();
 
-    console.log(`✅ Usuario creado con ID: ${nuevoUsuario.id}`);
 
     // 3. Asignar rol EMPLEADO por defecto
     const rolEmpleado = await tx.query.roles.findFirst({

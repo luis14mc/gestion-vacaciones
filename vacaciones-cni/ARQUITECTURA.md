@@ -41,9 +41,10 @@ src/
 │   │   │   ├── auditoria.service.ts
 │   │   │   └── index.ts
 │   │   └── services/               # Servicios de negocio
-│   │       ├── balance.service.ts
-│   │       ├── solicitudes.service.ts  # 🔜 Próximamente
-│   │       ├── usuarios.service.ts     # 🔜 Próximamente
+│   │       ├── solicitudes.service.ts  # ✅ Implementado - ~800 líneas
+│   │       ├── usuarios.service.ts     # ✅ Implementado - ~540 líneas
+│   │       ├── reportes.service.ts     # ✅ Implementado - ~430 líneas
+│   │       ├── balance.service.ts      # ✅ Implementado - ~180 líneas
 │   │       └── index.ts
 │   │
 │   └── infrastructure/             # Capa de Infraestructura
@@ -175,7 +176,7 @@ export interface Rol {
 - **Contenido**:
   - `rbac/`: Lógica de permisos y autorización
   - `auditoria/`: Registro de eventos
-  - `services/`: Servicios de negocio (balance, notificaciones, etc.)
+  - `services/`: Servicios de negocio (✅ balance, solicitudes, usuarios, reportes)
 
 **Ejemplo**:
 ```typescript
@@ -402,15 +403,21 @@ import { usuarioTienePermiso } from '@/core/application/rbac';
 
 ## 🚀 Próximos Pasos
 
-### Inmediatos (Esta semana)
+### Completados (Semana 2) ✅
 1. ✅ Crear estructura core/
 2. ✅ Mover archivos principales
 3. ✅ Crear alias de compatibilidad
-4. ⏳ Documentar arquitectura
+4. ✅ Documentar arquitectura
+5. ✅ Implementar solicitudes.service.ts (~800 líneas)
+6. ✅ Implementar usuarios.service.ts (~540 líneas)
+7. ✅ Implementar reportes.service.ts (~430 líneas)
+8. ✅ Refactorizar 7 API endpoints (~526 líneas eliminadas)
+9. ✅ Crear SERVICES.md documentación completa
+10. ✅ Tests unitarios para servicios principales
 
 ### Corto plazo (2 semanas)
 1. [ ] Crear helper de autorización en core/application
-2. [ ] Migrar balance.service a core/application/services
+2. ✅ Migrar balance.service a core/application/services
 3. [ ] Crear features/solicitudes/
 4. [ ] Mover FormularioSolicitud y TablaSolicitudes
 

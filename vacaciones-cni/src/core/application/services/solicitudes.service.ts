@@ -667,3 +667,127 @@ export async function obtenerSolicitudes(
   }
 }
 
+/**
+ * 2.3 Obtener solicitud por ID con validación RBAC
+ * - Query por ID con todas las relaciones
+ * - Valida permisos: puede ver si es suya, si es jefe del depto, o si es Admin/RRHH
+ * - Lanza 404 si no existe
+ * - Lanza 403 si no tiene permiso
+ */
+export async function obtenerSolicitudPorId(
+  solicitudId: number,
+  usuarioSolicitanteId: number
+) {
+  // 1. Obtener roles y permisos del usuario solicitante
+  const usuarioConRoles = await obtenerRolesYPermisos(usuarioSolicitanteId);
+  
+  if (!usuarioConRoles) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  // 2. Obtener solicitud con todas las relaciones
+  const solicitud = await db.query.solicitudes.findFirst({
+    where: eq(solicitudes.id, solicitudId),
+    with: {
+      usuario: {
+        columns: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          departamentoId: true,
+          cargo: true
+        },
+        with: {
+          departamento: {
+            columns: {
+              id: true,
+              nombre: true,
+              codigo: true
+            }
+          }
+        }
+      },
+      tipoAusencia: {
+        columns: {
+          id: true,
+          nombre: true,
+          tipo: true,
+          descripcion: true,
+          colorHex: true,
+          requiereAprobacionJefe: true,
+          requiereAprobacionRrhh: true
+        }
+      },
+      aprobador: {
+        columns: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          cargo: true
+        }
+      },
+      aprobadorRrhh: {
+        columns: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          cargo: true
+        }
+      },
+      rechazador: {
+        columns: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          cargo: true
+        }
+      }
+    }
+  });
+
+  // 3. Validar que existe (404)
+  if (!solicitud) {
+    throw new Error("Solicitud no encontrada (404)");
+  }
+
+  // 4. Obtener información del usuario solicitante
+  const usuarioSolicitante = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioSolicitanteId),
+    columns: {
+      id: true,
+      departamentoId: true
+    }
+  });
+
+  if (!usuarioSolicitante) {
+    throw new Error("Usuario solicitante no encontrado");
+  }
+
+  // 5. Validar permisos RBAC (403)
+  const esAdmin = usuarioConRoles.roles.some(r => r.codigo === 'ADMIN');
+  const esRrhh = usuarioConRoles.roles.some(r => r.codigo === 'RRHH');
+  const esJefe = usuarioConRoles.roles.some(r => r.codigo === 'JEFE');
+
+  // Puede ver si es Admin o RRHH
+  if (esAdmin || esRrhh) {
+    return solicitud;
+  }
+
+  // Puede ver si es jefe del departamento del solicitante
+  if (esJefe && solicitud.usuario.departamentoId === usuarioSolicitante.departamentoId) {
+    return solicitud;
+  }
+
+  // Puede ver si es su propia solicitud
+  if (solicitud.usuarioId === usuarioSolicitanteId) {
+    return solicitud;
+  }
+
+  // Si no cumple ninguna condición, no tiene permiso (403)
+  throw new Error("No tienes permiso para ver esta solicitud (403)");
+}
+

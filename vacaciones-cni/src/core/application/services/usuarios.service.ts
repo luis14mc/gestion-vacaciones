@@ -362,6 +362,97 @@ export async function desactivarUsuario(
  * - Departamento opcional
  */
 export async function asignarRolConValidacion(data: AsignarRol) {
-  // TODO: Implementar en tarea 3.5
-  throw new Error('No implementado');
+  console.log(`🎭 Asignando rol ${data.rolId} a usuario ${data.usuarioId}`);
+
+  // ========== VALIDACIONES ==========
+
+  // 1. Verificar que el rol existe
+  const rol = await db.query.roles.findFirst({
+    where: eq(roles.id, data.rolId)
+  });
+
+  if (!rol) {
+    throw new Error(`Rol con ID ${data.rolId} no encontrado`);
+  }
+
+  if (!rol.activo) {
+    throw new Error(`El rol ${rol.nombre} está desactivado`);
+  }
+
+  // 2. Verificar que el usuario existe y está activo
+  const usuario = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, data.usuarioId)
+  });
+
+  if (!usuario) {
+    throw new Error(`Usuario con ID ${data.usuarioId} no encontrado`);
+  }
+
+  if (!usuario.activo) {
+    throw new Error('No se puede asignar roles a un usuario desactivado');
+  }
+
+  // 3. Verificar si el usuario ya tiene este rol en este departamento
+  const rolExistente = await db.query.usuariosRoles.findFirst({
+    where: sql`usuario_id = ${data.usuarioId} 
+               AND rol_id = ${data.rolId} 
+               AND (departamento_id = ${data.departamentoId} OR (departamento_id IS NULL AND ${data.departamentoId} IS NULL))
+               AND activo = true`
+  });
+
+  if (rolExistente) {
+    throw new Error(`El usuario ya tiene el rol ${rol.nombre} asignado${data.departamentoId ? ' en este departamento' : ''}`);
+  }
+
+  // 4. Si es rol JEFE, verificar que se proporcione departamento
+  if (rol.codigo === 'JEFE' && !data.departamentoId) {
+    throw new Error('El rol JEFE requiere especificar un departamento');
+  }
+
+  // 5. Si se proporciona departamento, verificar que existe
+  if (data.departamentoId) {
+    const departamento = await db.query.departamentos.findFirst({
+      where: sql`id = ${data.departamentoId}`
+    });
+
+    if (!departamento) {
+      throw new Error(`Departamento con ID ${data.departamentoId} no encontrado`);
+    }
+  }
+
+  console.log(`✅ Validaciones completadas - Asignando rol: ${rol.nombre}`);
+
+  // ========== ASIGNACIÓN ==========
+
+  await db
+    .insert(usuariosRoles)
+    .values({
+      usuarioId: data.usuarioId,
+      rolId: data.rolId,
+      departamentoId: data.departamentoId,
+      activo: true,
+      metadata: {
+        asignadoPor: data.asignadoPor,
+        fechaAsignacion: new Date().toISOString()
+      }
+    });
+
+  console.log(`✅ Rol ${rol.nombre} asignado exitosamente`);
+
+  // Obtener usuario completo con todos sus roles
+  const usuarioConRoles = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, data.usuarioId),
+    with: {
+      departamento: true,
+      usuariosRoles: {
+        where: eq(usuariosRoles.activo, true),
+        with: {
+          rol: true,
+          departamento: true
+        }
+      }
+    }
+  });
+
+  return usuarioConRoles;
 }

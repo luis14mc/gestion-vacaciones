@@ -338,7 +338,6 @@ export async function PATCH(request: NextRequest) {
     console.log(`🎯 Acción solicitada: ${accion} para solicitud ${solicitudId}`);
 
     // 2. EJECUTAR ACCIÓN USANDO SERVICIOS
-    let solicitudActualizada: any;
     let mensaje = '';
 
     switch (accion) {
@@ -353,7 +352,7 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        solicitudActualizada = await aprobarSolicitudJefe(solicitudId, sessionUser.id);
+        await aprobarSolicitudJefe(solicitudId, sessionUser.id);
         mensaje = 'Solicitud aprobada por jefe';
         console.log(`✅ ${mensaje}`);
         break;
@@ -370,7 +369,7 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        solicitudActualizada = await aprobarSolicitudRRHH(solicitudId, sessionUser.id);
+        await aprobarSolicitudRRHH(solicitudId, sessionUser.id);
         mensaje = 'Solicitud aprobada por RRHH';
         console.log(`✅ ${mensaje}`);
         break;
@@ -394,7 +393,7 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        solicitudActualizada = await rechazarSolicitud(solicitudId, sessionUser.id, motivo);
+        await rechazarSolicitud(solicitudId, sessionUser.id, motivo);
         mensaje = 'Solicitud rechazada';
         console.log(`✅ ${mensaje}`);
         break;
@@ -425,7 +424,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         // Cancelar es como rechazar pero sin motivo obligatorio
-        solicitudActualizada = await rechazarSolicitud(
+        await rechazarSolicitud(
           solicitudId, 
           sessionUser.id, 
           motivo || 'Cancelada por el usuario'

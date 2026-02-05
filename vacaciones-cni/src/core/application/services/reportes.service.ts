@@ -11,8 +11,7 @@ import {
   usuarios, 
   solicitudes, 
   balancesAusencias,
-  departamentos,
-  tiposAusenciaConfig
+  departamentos
 } from '@/core/infrastructure/database/schema';
 import { eq, and, sql, gte, lte, desc } from 'drizzle-orm';
 

@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, isNull, sql } from 'drizzle-orm';
-import { db } from '@/lib/db';
-import { usuarios, balancesAusencias, solicitudes, usuariosRoles } from '@/lib/db/schema';
-import bcrypt from 'bcryptjs';
-import type { NuevoUsuario } from '@/types';
-import { auth } from '@/auth';
 import { getSession, tienePermiso } from '@/lib/auth';
-import { asignarRolAUsuario } from '@/core/application/rbac/rbac.service';
 import { 
   obtenerUsuarios, 
   crearUsuario,

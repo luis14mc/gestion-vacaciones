@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
-import { asignarRolAUsuario, removerRolDeUsuario } from '@/core/application/rbac/rbac.service';
+import { removerRolDeUsuario } from '@/core/application/rbac/rbac.service';
 import { asignarRolConValidacion } from '@/core/application/services/usuarios.service';
 import { db } from '@/lib/db';
 import { roles } from '@/lib/db/schema';

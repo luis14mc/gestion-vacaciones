@@ -12,8 +12,7 @@ import {
   usuarios, 
   roles, 
   usuariosRoles, 
-  balancesAusencias,
-  departamentos
+  balancesAusencias
 } from '@/core/infrastructure/database/schema';
 import { eq, sql, and } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';

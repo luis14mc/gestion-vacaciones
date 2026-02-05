@@ -12,7 +12,8 @@ import {
   usuarios, 
   roles, 
   usuariosRoles, 
-  balancesAusencias
+  balancesAusencias,
+  departamentos
 } from '@/core/infrastructure/database/schema';
 import { eq, sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
@@ -194,8 +195,74 @@ export async function actualizarUsuario(
   data: ActualizarUsuario,
   actualizadoPor: number
 ) {
-  // TODO: Implementar en tarea 3.3
-  throw new Error('No implementado');
+  console.log(`✏️ Actualizando usuario ID: ${usuarioId}`);
+
+  // ========== VALIDACIONES ==========
+
+  // 1. Verificar que el usuario existe
+  const usuarioExistente = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioId)
+  });
+
+  if (!usuarioExistente) {
+    throw new Error(`Usuario con ID ${usuarioId} no encontrado`);
+  }
+
+  // 2. Si se cambia el departamento, verificar que existe
+  if (data.departamentoId) {
+    const departamento = await db.query.departamentos.findFirst({
+      where: sql`id = ${data.departamentoId}`
+    });
+
+    if (!departamento) {
+      throw new Error(`Departamento con ID ${data.departamentoId} no encontrado`);
+    }
+  }
+
+  console.log(`✅ Validaciones completadas`);
+
+  // ========== ACTUALIZACIÓN ==========
+
+  // Preparar objeto con campos a actualizar
+  const camposActualizar: any = {
+    version: usuarioExistente.version + 1,
+    updatedAt: new Date()
+  };
+
+  // Solo agregar campos que se proporcionaron
+  if (data.nombre !== undefined) camposActualizar.nombre = data.nombre;
+  if (data.apellido !== undefined) camposActualizar.apellido = data.apellido;
+  if (data.departamentoId !== undefined) camposActualizar.departamentoId = data.departamentoId;
+  if (data.cargo !== undefined) camposActualizar.cargo = data.cargo;
+  if (data.activo !== undefined) camposActualizar.activo = data.activo;
+
+  // Actualizar usuario con control optimista
+  const [usuarioActualizado] = await db
+    .update(usuarios)
+    .set(camposActualizar)
+    .where(eq(usuarios.id, usuarioId))
+    .returning();
+
+  if (!usuarioActualizado) {
+    throw new Error('Error al actualizar usuario - posible conflicto de versión');
+  }
+
+  console.log(`✅ Usuario actualizado - Nueva versión: ${usuarioActualizado.version}`);
+
+  // Obtener usuario completo con relaciones
+  const usuarioCompleto = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioId),
+    with: {
+      departamento: true,
+      usuariosRoles: {
+        with: {
+          rol: true
+        }
+      }
+    }
+  });
+
+  return usuarioCompleto;
 }
 
 /**

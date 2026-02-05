@@ -277,8 +277,81 @@ export async function desactivarUsuario(
   desactivadoPor: number,
   motivo?: string
 ) {
-  // TODO: Implementar en tarea 3.4
-  throw new Error('No implementado');
+  console.log(`🗑️ Desactivando usuario ID: ${usuarioId}`);
+
+  // ========== VALIDACIONES ==========
+
+  // 1. Verificar que el usuario existe
+  const usuario = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioId)
+  });
+
+  if (!usuario) {
+    throw new Error(`Usuario con ID ${usuarioId} no encontrado`);
+  }
+
+  // 2. Verificar que el usuario no está ya desactivado
+  if (!usuario.activo) {
+    throw new Error('El usuario ya está desactivado');
+  }
+
+  // 3. No puede desactivarse a sí mismo
+  if (usuarioId === desactivadoPor) {
+    throw new Error('No puedes desactivarte a ti mismo');
+  }
+
+  console.log(`✅ Validaciones completadas - Usuario: ${usuario.email}`);
+
+  // ========== TRANSACCIÓN ==========
+
+  return await db.transaction(async (tx) => {
+    // 1. Desactivar usuario (soft delete)
+    const [usuarioDesactivado] = await tx
+      .update(usuarios)
+      .set({
+        activo: false,
+        deletedAt: new Date(),
+        metadata: {
+          ...usuario.metadata as any,
+          desactivadoPor,
+          motivoDesactivacion: motivo,
+          fechaDesactivacion: new Date().toISOString()
+        },
+        version: usuario.version + 1
+      })
+      .where(eq(usuarios.id, usuarioId))
+      .returning();
+
+    console.log(`✅ Usuario desactivado - ID: ${usuarioDesactivado.id}`);
+
+    // 2. Desactivar todos los roles del usuario
+    await tx
+      .update(usuariosRoles)
+      .set({
+        activo: false,
+        updatedAt: new Date()
+      })
+      .where(eq(usuariosRoles.usuarioId, usuarioId));
+
+    console.log(`✅ Roles desactivados para el usuario`);
+
+    // 3. Obtener usuario completo con relaciones
+    const usuarioCompleto = await tx.query.usuarios.findFirst({
+      where: eq(usuarios.id, usuarioId),
+      with: {
+        departamento: true,
+        usuariosRoles: {
+          with: {
+            rol: true
+          }
+        }
+      }
+    });
+
+    console.log(`✅ Usuario desactivado exitosamente: ${usuarioCompleto?.email}`);
+    
+    return usuarioCompleto;
+  });
 }
 
 /**

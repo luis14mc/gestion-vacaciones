@@ -378,3 +378,110 @@ export async function aprobarSolicitudRRHH(
   }
 }
 
+/**
+ * 2.1 Rechazar solicitud
+ * - Verifica permiso RBAC vacaciones.solicitudes.rechazar
+ * - Valida estado no sea rechazada ni aprobada (final)
+ * - Actualiza solicitud a rechazada
+ * - Devuelve días al balance (pendiente → disponible)
+ * - Registra rechazador y motivo
+ */
+export async function rechazarSolicitud(
+  solicitudId: number,
+  rechazadorId: number,
+  motivoRechazo: string
+) {
+  // 1. Validar motivo obligatorio
+  if (!motivoRechazo || motivoRechazo.trim().length === 0) {
+    throw new Error("El motivo de rechazo es obligatorio");
+  }
+
+  // 2. Verificar permiso RBAC
+  const validacionPermiso = await usuarioTienePermiso(rechazadorId, 'vacaciones.solicitudes.rechazar');
+  
+  if (!validacionPermiso.tienePermiso) {
+    throw new Error(`Permiso denegado: ${validacionPermiso.razon || 'No tiene permiso para rechazar solicitudes'}`);
+  }
+
+  // 3. Obtener solicitud
+  const solicitud = await db.query.solicitudes.findFirst({
+    where: eq(solicitudes.id, solicitudId)
+  });
+
+  if (!solicitud) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  // 4. Validar estado no sea rechazada ni aprobada (estados finales)
+  if (solicitud.estado === 'rechazada') {
+    throw new Error("La solicitud ya está rechazada");
+  }
+
+  if (solicitud.estado === 'aprobada') {
+    throw new Error("No se puede rechazar una solicitud ya aprobada (estado final)");
+  }
+
+  // 5. Obtener balance del usuario
+  const anio = new Date(solicitud.fechaInicio).getFullYear();
+  const balance = await db.query.balancesAusencias.findFirst({
+    where: and(
+      eq(balancesAusencias.usuarioId, solicitud.usuarioId),
+      eq(balancesAusencias.anio, anio),
+      eq(balancesAusencias.estado, 'activo')
+    )
+  });
+
+  if (!balance) {
+    throw new Error(`Balance no encontrado para el año ${anio}`);
+  }
+
+  const diasSolicitud = Number(solicitud.cantidad);
+
+  // 6. Actualizar solicitud y balance en transacción con lost update control
+  try {
+    await db.transaction(async (trx) => {
+      // Actualizar solicitud con control optimista
+      const [solicitudActualizada] = await trx
+        .update(solicitudes)
+        .set({
+          estado: 'rechazada',
+          rechazadoPor: rechazadorId,
+          fechaRechazo: new Date(),
+          motivoRechazo,
+          version: sql`${solicitudes.version} + 1`,
+          updatedAt: new Date()
+        })
+        .where(
+          and(
+            eq(solicitudes.id, solicitudId),
+            eq(solicitudes.version, solicitud.version) // Lost update control
+          )
+        )
+        .returning();
+
+      if (!solicitudActualizada) {
+        throw new Error("Conflicto de versión: la solicitud fue modificada por otro usuario. Intenta nuevamente.");
+      }
+
+      // Devolver días al balance: pendiente → disponible (restar de pendiente)
+      await trx
+        .update(balancesAusencias)
+        .set({
+          cantidadPendiente: sql`${balancesAusencias.cantidadPendiente} - ${diasSolicitud}`,
+          updatedAt: new Date()
+        })
+        .where(eq(balancesAusencias.id, balance.id));
+    });
+
+    // 7. Retornar solicitud actualizada
+    const solicitudFinal = await db.query.solicitudes.findFirst({
+      where: eq(solicitudes.id, solicitudId)
+    });
+
+    return solicitudFinal;
+  } catch (error) {
+    console.error('❌ Error al rechazar solicitud:', error);
+    throw new Error(`Error al rechazar solicitud: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
+}
+

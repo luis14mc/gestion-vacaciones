@@ -1,6 +1,6 @@
-# 📊 RESUMEN SEMANA 2 - SERVICIOS Y CLEAN ARCHITECTURE
+# 📊 RESUMEN SEMANA 2 - SERVICIOS Y CLEAN ARCHITECTURE ✅
 
-## ✅ Estado Actual: Días 1-4 COMPLETADOS
+## ✅ Estado Final: COMPLETADA (5 de febrero de 2026)
 
 ### 📅 Progreso por Día
 
@@ -58,6 +58,51 @@
 2. ✅ `generarReporteDepartamento()` - Métricas depto, colaboradores, próximas vacaciones
 3. ✅ `exportarReporteCSV()` - RFC 4180, UTF-8 BOM, formato Excel-friendly
 4. ✅ `exportarReporteExcel()` - Estructura base (TODO: instalar ExcelJS)
+
+#### **DÍA 5 (Extra): Refactorización BD Atómica** ✅
+**Fecha:** 5 de febrero de 2026  
+**Commits:** 3 commits (60b6d73, da929e4, 07c64e4)
+
+**Base de Datos - 5 archivos SQL atómicos:**
+```
+database/
+├── 00_extensions.sql           # pgcrypto, uuid-ossp
+├── 01_enums.sql               # estadoSolicitud, tipoPermiso
+├── 02_core_tables.sql         # usuarios, departamentos, roles
+├── 03_solicitudes_tables.sql  # solicitudes, balances
+└── 04_indexes_and_policies.sql # índices, particiones, políticas
+```
+
+**Características Senior:**
+- ✅ Índices B-tree + GIN para búsquedas optimizadas
+- ✅ Particionado por rango en tabla auditoria
+- ✅ Política de retención automática (30 días)
+- ✅ Constraints complejos (CHECK, UNIQUE)
+- ✅ Triggers para versioning
+- ✅ ON DELETE CASCADE en relaciones
+
+**Schema TypeScript - 7 módulos separados:**
+```
+src/core/infrastructure/database/schema/
+├── usuarios.schema.ts         # usuarios + sessions + relations
+├── roles.schema.ts           # roles + permisos + rolePermiso
+├── departamentos.schema.ts   # departamentos + usuarioDepartamento
+├── solicitudes.schema.ts     # solicitudes + relations
+├── balances.schema.ts        # balances + relations
+├── auditoria.schema.ts       # auditoria (particionada)
+└── index.ts                  # Exportación unificada
+```
+
+**Corrección de Imports:**
+- 29 archivos actualizados (commit da929e4)
+- Cambio: `@/lib/db/schema` → `@/core/infrastructure/database/schema`
+- PowerShell bulk replacement + fixes manuales
+- UTF-8 encoding fix en src/lib/db/index.ts
+
+**Validación Completa:**
+- ✅ Build: Successful (8.0s con Turbopack)
+- ✅ Tests: 60/60 passing (incremento de 48→60)
+- ✅ Lint: Configurado (warning no crítico)
 
 ---
 

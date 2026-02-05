@@ -8,9 +8,14 @@
  */
 
 import { db } from '@/core/infrastructure/database';
-import { usuarios, roles, rolesUsuarios, balancesAusencias, tiposAusencias } from '@/core/infrastructure/database/schema';
-import { eq, and, sql } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
+import { 
+  usuarios, 
+  roles, 
+  usuariosRoles, 
+  balancesAusencias
+} from '@/core/infrastructure/database/schema';
+import { eq, sql } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
 
 // ==========================================
 // INTERFACES
@@ -21,10 +26,10 @@ export interface NuevoUsuario {
   password: string;
   nombre: string;
   apellido: string;
-  cedula: string;
   departamentoId: number;
   fechaIngreso: Date;
   cargo?: string;
+  cedula?: string; // Se guarda en metadata
 }
 
 export interface ActualizarUsuario {
@@ -55,8 +60,126 @@ export interface AsignarRol {
  * - Validaciones completas
  */
 export async function crearUsuario(data: NuevoUsuario) {
-  // TODO: Implementar en tarea 3.2
-  throw new Error('No implementado');
+  console.log(`📝 Creando usuario: ${data.email}`);
+
+  // ========== VALIDACIONES ==========
+
+  // 1. Validar formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(data.email)) {
+    throw new Error('Formato de email inválido');
+  }
+
+  // 2. Validar longitud de contraseña
+  if (data.password.length < 8) {
+    throw new Error('La contraseña debe tener al menos 8 caracteres');
+  }
+
+  // 3. Verificar que el email no existe
+  const usuarioExistente = await db.query.usuarios.findFirst({
+    where: eq(usuarios.email, data.email)
+  });
+
+  if (usuarioExistente) {
+    throw new Error(`Ya existe un usuario con el email: ${data.email}`);
+  }
+
+  // 4. Verificar que el departamento existe
+  const departamento = await db.query.departamentos.findFirst({
+    where: sql`id = ${data.departamentoId}`
+  });
+
+  if (!departamento) {
+    throw new Error(`Departamento con ID ${data.departamentoId} no encontrado`);
+  }
+
+  console.log(`✅ Validaciones completadas - Departamento: ${departamento.nombre}`);
+
+  // ========== TRANSACCIÓN ==========
+  
+  return await db.transaction(async (tx) => {
+    // 1. Hash de contraseña
+    const SALT_ROUNDS = 10;
+    const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+    console.log(`🔒 Contraseña hasheada con ${SALT_ROUNDS} rounds`);
+
+    // 2. Crear usuario
+    const [nuevoUsuario] = await tx.insert(usuarios).values({
+      email: data.email,
+      password: passwordHash,
+      nombre: data.nombre,
+      apellido: data.apellido,
+      departamentoId: data.departamentoId,
+      fechaIngreso: data.fechaIngreso.toISOString().split('T')[0], // Convertir a string YYYY-MM-DD
+      cargo: data.cargo,
+      metadata: data.cedula ? { cedula: data.cedula } : {},
+      activo: true,
+      // Campos legacy en false por defecto
+      esJefe: false,
+      esRrhh: false,
+      esAdmin: false
+    }).returning();
+
+    console.log(`✅ Usuario creado con ID: ${nuevoUsuario.id}`);
+
+    // 3. Asignar rol EMPLEADO por defecto
+    const rolEmpleado = await tx.query.roles.findFirst({
+      where: eq(roles.nombre, 'EMPLEADO')
+    });
+
+    if (!rolEmpleado) {
+      throw new Error('Error: Rol EMPLEADO no encontrado en la base de datos');
+    }
+
+    await tx.insert(usuariosRoles).values({
+      usuarioId: nuevoUsuario.id,
+      rolId: rolEmpleado.id,
+      departamentoId: data.departamentoId,
+      activo: true
+    });
+
+    console.log(`🎭 Rol EMPLEADO asignado al usuario`);
+
+    // 4. Crear balances iniciales para todos los tipos de ausencia activos
+    const tiposAusenciasActivos = await tx.query.tiposAusenciaConfig.findMany({
+      where: sql`activo = true`
+    });
+
+    if (tiposAusenciasActivos.length > 0) {
+      const anioActual = new Date().getFullYear();
+      
+      const balancesValues = tiposAusenciasActivos.map(tipo => ({
+        usuarioId: nuevoUsuario.id,
+        tipoAusenciaId: tipo.id,
+        anio: anioActual,
+        cantidadAsignada: '0', // Balance inicial en 0, se asigna manualmente después
+        cantidadUtilizada: '0',
+        cantidadPendiente: '0',
+        estado: 'activo' as const
+      }));
+
+      await tx.insert(balancesAusencias).values(balancesValues);
+
+      console.log(`📊 ${balancesValues.length} balances iniciales creados para el año ${anioActual}`);
+    }
+
+    // 5. Obtener usuario completo con relaciones
+    const usuarioCompleto = await tx.query.usuarios.findFirst({
+      where: eq(usuarios.id, nuevoUsuario.id),
+      with: {
+        departamento: true,
+        usuariosRoles: {
+          with: {
+            rol: true
+          }
+        }
+      }
+    });
+
+    console.log(`✅ Usuario creado exitosamente: ${usuarioCompleto?.email}`);
+    
+    return usuarioCompleto;
+  });
 }
 
 /**

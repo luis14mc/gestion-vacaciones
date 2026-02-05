@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { usuarios } from "@/lib/db/schema";
+import { usuarios } from "@/core/infrastructure/database/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import bcrypt from "bcryptjs";

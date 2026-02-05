@@ -1,5 +1,5 @@
-﻿/**
+/**
  * @deprecated Use @/core/infrastructure/database instead
- * Alias de compatibilidad - Será eliminado en versión 3.0
+ * Alias de compatibilidad - Sera eliminado en version 3.0
  */
 export * from '@/core/infrastructure/database';

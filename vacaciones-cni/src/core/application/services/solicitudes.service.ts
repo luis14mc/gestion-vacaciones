@@ -4,11 +4,34 @@
  */
 
 import { db } from "@/lib/db";
-import { solicitudes, usuarios, tiposAusenciaConfig, balancesAusencias } from "@/lib/db/schema";
-import { calcularDiasLaborables, validarSolicitud } from "@/services/balance.service";
+import { solicitudes, usuarios, tiposAusenciaConfig, balancesAusencias } from "@/core/infrastructure/database/schema";
+import { validarSolicitud } from "@/core/application/services/balance.service";
 import { usuarioTienePermiso, obtenerRolesYPermisos } from "@/core/application/rbac/rbac.service";
 import { eq, and, sql, desc, gte, lte } from "drizzle-orm";
 import type { EstadoSolicitud } from "@/types";
+
+// =====================================================
+// HELPERS
+// =====================================================
+
+/**
+ * Calcula días laborables entre dos fechas (excluyendo fines de semana)
+ */
+function calcularDiasLaborables(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const current = new Date(fechaInicio);
+  const end = new Date(fechaFin);
+  
+  while (current <= end) {
+    const dayOfWeek = current.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0 = Domingo, 6 = Sábado
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return count;
+}
 
 // =====================================================
 // INTERFACES

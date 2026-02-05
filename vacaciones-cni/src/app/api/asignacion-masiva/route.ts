@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { balancesAusencias, usuarios } from "@/lib/db/schema";
+import { balancesAusencias, usuarios } from "@/core/infrastructure/database/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {

@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
-import { usuarios } from "@/lib/db/schema";
+import { usuarios } from "@/core/infrastructure/database/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/core/application/rbac/rbac.service";

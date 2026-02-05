@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { auditoria } from "@/lib/db/schema";
+import { auditoria } from "@/core/infrastructure/database/schema";
 
 interface RegistrarAuditoriaParams {
   usuarioId: number;

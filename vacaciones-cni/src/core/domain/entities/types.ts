@@ -6,7 +6,7 @@ import type {
   balancesAusencias, 
   tiposAusenciaConfig,
   configuracionSistema 
-} from '@/lib/db/schema';
+} from '@/core/infrastructure/database/schema';
 
 // Tipos de NextAuth
 import type { DefaultSession } from "next-auth";

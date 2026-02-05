@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { balancesAusencias } from '@/lib/db/schema';
+import { balancesAusencias } from '@/core/infrastructure/database/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';

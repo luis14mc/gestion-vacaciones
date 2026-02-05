@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { solicitudes, usuarios } from "@/lib/db/schema";
+import { solicitudes, usuarios } from "@/core/infrastructure/database/schema";
 import { eq, and, isNull, gte, lte, or, inArray } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
-import { usuarios } from '@/lib/db/schema';
+import { usuarios } from '@/core/infrastructure/database/schema';
 import { obtenerRolesYPermisos } from '@/core/application/rbac/rbac.service';
 import type { LoginRequest, SessionUser } from '@/types';
 

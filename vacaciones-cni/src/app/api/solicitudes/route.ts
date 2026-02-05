@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
+import { solicitudes, usuarios, tiposAusenciaConfig } from '@/core/infrastructure/database/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { 
   crearSolicitud, 

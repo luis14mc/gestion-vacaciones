@@ -3,7 +3,12 @@ import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
-import { crearSolicitud } from '@/core/application/services/solicitudes.service';
+import { 
+  crearSolicitud, 
+  aprobarSolicitudJefe, 
+  aprobarSolicitudRRHH, 
+  rechazarSolicitud 
+} from '@/core/application/services/solicitudes.service';
 
 export const runtime = 'nodejs';
 
@@ -330,34 +335,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Obtener solicitud actual con relaciones
-    const solicitud = await db.query.solicitudes.findFirst({
-      where: eq(solicitudes.id, solicitudId),
-      with: {
-        usuario: {
-          with: { departamento: true }
-        },
-        tipoAusencia: true
-      }
-    });
+    console.log(`🎯 Acción solicitada: ${accion} para solicitud ${solicitudId}`);
 
-    if (!solicitud) {
-      return NextResponse.json(
-        { success: false, error: 'Solicitud no encontrada' },
-        { status: 404 }
-      );
-    }
-
-    console.log(`📋 Solicitud ${solicitud.codigo} - Estado actual: ${solicitud.estado}`);
-    console.log(`🎯 Acción solicitada: ${accion}`);
-
-    // 🔐 2. AUTORIZACIÓN Y VALIDACIÓN SEGÚN LA ACCIÓN
-    let nuevoEstado = solicitud.estado;
-    let camposActualizar: any = { version: solicitud.version + 1 };
+    // 2. EJECUTAR ACCIÓN USANDO SERVICIOS
+    let solicitudActualizada: any;
+    let mensaje = '';
 
     switch (accion) {
       case 'aprobar_jefe': {
-        // Verificar permiso de aprobar como jefe
+        // Verificar permiso
         const puedeAprobarJefe = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_jefe');
         if (!puedeAprobarJefe) {
           console.log('❌ Sin permiso para aprobar como jefe');
@@ -367,36 +353,14 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        // JEFE solo puede aprobar de su departamento (a menos que sea ADMIN/RRHH)
-        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
-        if (!esAdminORrhh) {
-          if (!sessionUser.departamentoId || sessionUser.departamentoId !== solicitud.usuario.departamentoId) {
-            console.log(`❌ JEFE ${sessionUser.id} intenta aprobar solicitud de otro departamento`);
-            return NextResponse.json(
-              { success: false, error: 'Solo puedes aprobar solicitudes de tu departamento' },
-              { status: 403 }
-            );
-          }
-        }
-
-        // Validar que la solicitud esté en estado pendiente
-        if (solicitud.estado !== 'pendiente') {
-          return NextResponse.json(
-            { success: false, error: `No se puede aprobar una solicitud en estado: ${solicitud.estado}` },
-            { status: 400 }
-          );
-        }
-
-        nuevoEstado = 'aprobada_jefe';
-        camposActualizar.estado = nuevoEstado;
-        camposActualizar.aprobadoPor = sessionUser.id;
-        camposActualizar.fechaAprobacionJefe = new Date();
-        console.log(`✅ Aprobación de jefe autorizada`);
+        solicitudActualizada = await aprobarSolicitudJefe(solicitudId, sessionUser.id);
+        mensaje = 'Solicitud aprobada por jefe';
+        console.log(`✅ ${mensaje}`);
         break;
       }
 
       case 'aprobar_rrhh': {
-        // Verificar permiso de aprobar como RRHH
+        // Verificar permiso
         const puedeAprobarRrhh = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_rrhh');
         if (!puedeAprobarRrhh) {
           console.log('❌ Sin permiso para aprobar como RRHH');
@@ -406,42 +370,14 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        // Validar que la solicitud esté en estado aprobada_jefe
-        if (solicitud.estado !== 'aprobada_jefe') {
-          return NextResponse.json(
-            { success: false, error: `Solo se pueden aprobar solicitudes previamente aprobadas por el jefe (estado actual: ${solicitud.estado})` },
-            { status: 400 }
-          );
-        }
-
-        nuevoEstado = 'aprobada';
-        camposActualizar.estado = nuevoEstado;
-        camposActualizar.aprobadoRrhhPor = sessionUser.id;
-        camposActualizar.fechaAprobacionRrhh = new Date();
-        console.log(`✅ Aprobación de RRHH autorizada`);
-
-        // 📊 MOVER DÍAS DE PENDIENTE A UTILIZADA EN BALANCE
-        const anio = new Date(solicitud.fechaInicio).getFullYear();
-        const diasSolicitud = parseFloat(solicitud.cantidad);
-        
-        // Restar de pendientes y sumar a utilizados
-        await db.execute(sql`
-          UPDATE balances_ausencias
-          SET 
-            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
-            cantidad_utilizada = cantidad_utilizada + ${diasSolicitud},
-            updated_at = NOW()
-          WHERE usuario_id = ${solicitud.usuarioId}
-            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
-            AND anio = ${anio}
-        `);
-        
-        console.log(`📊 Balance actualizado: ${diasSolicitud} días movidos de pendiente a utilizada`);
+        solicitudActualizada = await aprobarSolicitudRRHH(solicitudId, sessionUser.id);
+        mensaje = 'Solicitud aprobada por RRHH';
+        console.log(`✅ ${mensaje}`);
         break;
       }
 
       case 'rechazar': {
-        // Verificar permiso de rechazar
+        // Verificar permiso
         const puedeRechazar = tienePermiso(sessionUser, 'vacaciones.solicitudes.rechazar');
         if (!puedeRechazar) {
           console.log('❌ Sin permiso para rechazar solicitudes');
@@ -451,53 +387,32 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        // JEFE solo puede rechazar de su departamento (a menos que sea ADMIN/RRHH)
-        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
-        if (!esAdminORrhh && !sessionUser.esRrhh) {
-          if (!sessionUser.departamentoId || sessionUser.departamentoId !== solicitud.usuario.departamentoId) {
-            console.log(`❌ JEFE ${sessionUser.id} intenta rechazar solicitud de otro departamento`);
-            return NextResponse.json(
-              { success: false, error: 'Solo puedes rechazar solicitudes de tu departamento' },
-              { status: 403 }
-            );
-          }
-        }
-
-        // Validar que la solicitud esté en estado válido para rechazar
-        if (!['pendiente', 'aprobada_jefe'].includes(solicitud.estado)) {
+        if (!motivo) {
           return NextResponse.json(
-            { success: false, error: `No se puede rechazar una solicitud en estado: ${solicitud.estado}` },
+            { success: false, error: 'El motivo de rechazo es obligatorio' },
             { status: 400 }
           );
         }
 
-        nuevoEstado = 'rechazada';
-        camposActualizar.estado = nuevoEstado;
-        camposActualizar.rechazadoPor = sessionUser.id;
-        camposActualizar.fechaRechazo = new Date();
-        camposActualizar.motivoRechazo = motivo || null;
-        console.log(`✅ Rechazo autorizado`);
-
-        // 📊 DEVOLVER DÍAS PENDIENTES AL BALANCE
-        const anio = new Date(solicitud.fechaInicio).getFullYear();
-        const diasSolicitud = parseFloat(solicitud.cantidad);
-        
-        await db.execute(sql`
-          UPDATE balances_ausencias
-          SET 
-            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
-            updated_at = NOW()
-          WHERE usuario_id = ${solicitud.usuarioId}
-            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
-            AND anio = ${anio}
-        `);
-        
-        console.log(`📊 Balance actualizado: ${diasSolicitud} días liberados de pendiente`);
+        solicitudActualizada = await rechazarSolicitud(solicitudId, sessionUser.id, motivo);
+        mensaje = 'Solicitud rechazada';
+        console.log(`✅ ${mensaje}`);
         break;
       }
 
       case 'cancelar': {
         // Solo el usuario dueño o ADMIN/RRHH pueden cancelar
+        const solicitud = await db.query.solicitudes.findFirst({
+          where: eq(solicitudes.id, solicitudId)
+        });
+
+        if (!solicitud) {
+          return NextResponse.json(
+            { success: false, error: 'Solicitud no encontrada' },
+            { status: 404 }
+          );
+        }
+
         const esPropietario = solicitud.usuarioId === sessionUser.id;
         const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
         
@@ -509,33 +424,21 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        // Validar que la solicitud esté en estado válido para cancelar
-        if (!['pendiente', 'aprobada_jefe'].includes(solicitud.estado)) {
-          return NextResponse.json(
-            { success: false, error: `No se puede cancelar una solicitud en estado: ${solicitud.estado}` },
-            { status: 400 }
-          );
-        }
-
-        nuevoEstado = 'cancelada';
-        camposActualizar.estado = nuevoEstado;
-        console.log(`✅ Cancelación autorizada`);
-
-        // 📊 DEVOLVER DÍAS PENDIENTES AL BALANCE
-        const anio = new Date(solicitud.fechaInicio).getFullYear();
-        const diasSolicitud = parseFloat(solicitud.cantidad);
+        // Cancelar es como rechazar pero sin motivo obligatorio
+        solicitudActualizada = await rechazarSolicitud(
+          solicitudId, 
+          sessionUser.id, 
+          motivo || 'Cancelada por el usuario'
+        );
         
-        await db.execute(sql`
-          UPDATE balances_ausencias
-          SET 
-            cantidad_pendiente = cantidad_pendiente - ${diasSolicitud},
-            updated_at = NOW()
-          WHERE usuario_id = ${solicitud.usuarioId}
-            AND tipo_ausencia_id = ${solicitud.tipoAusenciaId}
-            AND anio = ${anio}
-        `);
-        
-        console.log(`📊 Balance actualizado: ${diasSolicitud} días liberados de pendiente`);
+        // Actualizar estado a cancelada
+        await db
+          .update(solicitudes)
+          .set({ estado: 'cancelada' })
+          .where(eq(solicitudes.id, solicitudId));
+
+        mensaje = 'Solicitud cancelada';
+        console.log(`✅ ${mensaje}`);
         break;
       }
 
@@ -546,42 +449,46 @@ export async function PATCH(request: NextRequest) {
         );
     }
 
-    // Actualizar solicitud
-    await db
-      .update(solicitudes)
-      .set(camposActualizar)
-      .where(eq(solicitudes.id, solicitudId));
-
-    // Obtener solicitud actualizada
-    const solicitudActualizada = await db.query.solicitudes.findFirst({
+    // 3. Obtener solicitud actualizada con relaciones para respuesta
+    const solicitudCompleta = await db.query.solicitudes.findFirst({
       where: eq(solicitudes.id, solicitudId),
       with: {
         usuario: { with: { departamento: true } },
         tipoAusencia: true,
         aprobador: true,
-        aprobadorRrhh: true
+        aprobadorRrhh: true,
+        rechazador: true
       }
     });
 
-    let mensaje = 'Solicitud actualizada exitosamente';
-    if (accion === 'aprobar_jefe') mensaje = 'Solicitud aprobada por jefe';
-    else if (accion === 'aprobar_rrhh') mensaje = 'Solicitud aprobada por RRHH';
-    else if (accion === 'rechazar') mensaje = 'Solicitud rechazada';
-    else if (accion === 'cancelar') mensaje = 'Solicitud cancelada';
-
-    console.log(`✅ ${mensaje} - Nuevo estado: ${nuevoEstado}`);
-
     return NextResponse.json({
       success: true,
-      data: solicitudActualizada,
+      data: solicitudCompleta,
       message: mensaje
     });
 
   } catch (error) {
     console.error('Error actualizando solicitud:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Error al actualizar solicitud';
+    
+    // Manejar errores específicos (404, 403)
+    if (errorMessage.includes('404')) {
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 404 }
+      );
+    }
+    
+    if (errorMessage.includes('403') || errorMessage.includes('permiso')) {
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
-      { success: false, error: 'Error al actualizar solicitud' },
-      { status: 500 }
+      { success: false, error: errorMessage },
+      { status: 400 }
     );
   }
 }

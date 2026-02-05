@@ -6,8 +6,9 @@
 import { db } from "@/lib/db";
 import { solicitudes, usuarios, tiposAusenciaConfig, balancesAusencias } from "@/lib/db/schema";
 import { calcularDiasLaborables, validarSolicitud } from "@/services/balance.service";
-import { usuarioTienePermiso } from "@/core/application/rbac/rbac.service";
-import { eq, and, sql } from "drizzle-orm";
+import { usuarioTienePermiso, obtenerRolesYPermisos } from "@/core/application/rbac/rbac.service";
+import { eq, and, sql, desc, gte, lte } from "drizzle-orm";
+import type { EstadoSolicitud } from "@/types";
 
 // =====================================================
 // INTERFACES
@@ -28,7 +29,7 @@ export interface NuevaSolicitud {
 export interface FiltrosSolicitudes {
   usuarioId?: number;
   departamentoId?: number;
-  estado?: string;
+  estado?: EstadoSolicitud;
   fechaInicio?: Date;
   fechaFin?: Date;
   page?: number;
@@ -482,6 +483,187 @@ export async function rechazarSolicitud(
   } catch (error) {
     console.error('❌ Error al rechazar solicitud:', error);
     throw new Error(`Error al rechazar solicitud: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
+}
+
+/**
+ * 2.2 Obtener solicitudes con filtros y RBAC automático
+ * - Query con filtros opcionales (usuario, depto, estado, fechas)
+ * - Paginación (page, pageSize)
+ * - Aplica RBAC: Admin/RRHH ven todas, Jefe solo su depto, Empleado solo propias
+ * - Incluye datos relacionados (usuario, tipo ausencia, aprobadores)
+ * - Ordenar por fecha creación DESC
+ */
+export async function obtenerSolicitudes(
+  filtros: FiltrosSolicitudes,
+  usuarioSolicitanteId: number
+) {
+  const {
+    usuarioId,
+    departamentoId,
+    estado,
+    fechaInicio,
+    fechaFin,
+    page = 1,
+    pageSize = 20
+  } = filtros;
+
+  // 1. Obtener roles y permisos del usuario solicitante
+  const usuarioConRoles = await obtenerRolesYPermisos(usuarioSolicitanteId);
+  
+  if (!usuarioConRoles) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  // 2. Obtener información del usuario para scope departamental
+  const usuarioSolicitante = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioSolicitanteId),
+    columns: {
+      id: true,
+      departamentoId: true
+    }
+  });
+
+  if (!usuarioSolicitante) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  // 3. Determinar roles y scope de acceso
+  const esAdmin = usuarioConRoles.roles.some(r => r.codigo === 'ADMIN');
+  const esRrhh = usuarioConRoles.roles.some(r => r.codigo === 'RRHH');
+  const esJefe = usuarioConRoles.roles.some(r => r.codigo === 'JEFE');
+  
+  const tieneAccesoTotal = esAdmin || esRrhh;
+
+  // 4. Construir condiciones de filtro con RBAC
+  const condiciones = [];
+
+  // RBAC: Aplicar scope según rol
+  if (!tieneAccesoTotal) {
+    if (esJefe) {
+      // Jefe: solo solicitudes de su departamento
+      if (departamentoId && departamentoId !== usuarioSolicitante.departamentoId) {
+        throw new Error("No tienes permiso para ver solicitudes de otros departamentos");
+      }
+      // Filtrar por departamento del jefe (a través de join con usuarios)
+    } else {
+      // Empleado: solo sus propias solicitudes
+      condiciones.push(eq(solicitudes.usuarioId, usuarioSolicitanteId));
+    }
+  }
+
+  // Filtros adicionales
+  if (usuarioId) {
+    condiciones.push(eq(solicitudes.usuarioId, usuarioId));
+  }
+
+  if (estado) {
+    condiciones.push(eq(solicitudes.estado, estado));
+  }
+
+  if (fechaInicio) {
+    condiciones.push(gte(solicitudes.fechaInicio, fechaInicio.toString()));
+  }
+
+  if (fechaFin) {
+    condiciones.push(lte(solicitudes.fechaFin, fechaFin.toString()));
+  }
+
+  // 5. Query principal con relaciones
+  try {
+    let query = db.query.solicitudes.findMany({
+      where: condiciones.length > 0 ? and(...condiciones) : undefined,
+      with: {
+        usuario: {
+          columns: {
+            id: true,
+            nombre: true,
+            apellido: true,
+            email: true,
+            departamentoId: true,
+            cargo: true
+          },
+          with: {
+            departamento: {
+              columns: {
+                id: true,
+                nombre: true,
+                codigo: true
+              }
+            }
+          }
+        },
+        tipoAusencia: {
+          columns: {
+            id: true,
+            nombre: true,
+            tipo: true,
+            colorHex: true
+          }
+        },
+        aprobador: {
+          columns: {
+            id: true,
+            nombre: true,
+            apellido: true
+          }
+        },
+        aprobadorRrhh: {
+          columns: {
+            id: true,
+            nombre: true,
+            apellido: true
+          }
+        },
+        rechazador: {
+          columns: {
+            id: true,
+            nombre: true,
+            apellido: true
+          }
+        }
+      },
+      orderBy: [desc(solicitudes.createdAt)],
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    const resultados = await query;
+
+    // 6. Aplicar filtro de departamento para Jefe (post-query por limitación de Drizzle)
+    let resultadosFiltrados = resultados;
+    
+    if (esJefe && !tieneAccesoTotal) {
+      resultadosFiltrados = resultados.filter(
+        s => s.usuario.departamentoId === usuarioSolicitante.departamentoId
+      );
+    }
+
+    // Aplicar filtro de departamento si se especificó
+    if (departamentoId && tieneAccesoTotal) {
+      resultadosFiltrados = resultadosFiltrados.filter(
+        s => s.usuario.departamentoId === departamentoId
+      );
+    }
+
+    // 7. Contar total (para paginación)
+    const totalCondiciones = [...condiciones];
+    
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(solicitudes)
+      .where(totalCondiciones.length > 0 ? and(...totalCondiciones) : undefined);
+
+    return {
+      data: resultadosFiltrados,
+      total: Number(count),
+      page,
+      pageSize,
+      totalPages: Math.ceil(Number(count) / pageSize)
+    };
+  } catch (error) {
+    console.error('❌ Error al obtener solicitudes:', error);
+    throw new Error(`Error al obtener solicitudes: ${error instanceof Error ? error.message : 'Error desconocido'}`);
   }
 }
 

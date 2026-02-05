@@ -263,3 +263,118 @@ export async function aprobarSolicitudJefe(
   }
 }
 
+/**
+ * 1.4 Aprobar solicitud por RRHH (aprobación final)
+ * - Verifica permiso RBAC vacaciones.solicitudes.aprobar_rrhh
+ * - Valida estado = aprobada_jefe
+ * - Actualiza solicitud a aprobada (final)
+ * - Mueve días: cantidadPendiente → cantidadUtilizada
+ * - Registra fecha de aprobación
+ */
+export async function aprobarSolicitudRRHH(
+  solicitudId: number,
+  rrhhId: number,
+  observaciones?: string
+) {
+  // 1. Verificar permiso RBAC
+  const validacionPermiso = await usuarioTienePermiso(rrhhId, 'vacaciones.solicitudes.aprobar_rrhh');
+  
+  if (!validacionPermiso.tienePermiso) {
+    throw new Error(`Permiso denegado: ${validacionPermiso.razon || 'No tiene permiso para aprobar solicitudes como RRHH'}`);
+  }
+
+  // 2. Obtener solicitud con relaciones
+  const solicitud = await db.query.solicitudes.findFirst({
+    where: eq(solicitudes.id, solicitudId),
+    with: {
+      usuario: {
+        columns: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          departamentoId: true
+        }
+      }
+    }
+  });
+
+  if (!solicitud) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  // 3. Validar estado = aprobada_jefe
+  if (solicitud.estado !== 'aprobada_jefe') {
+    throw new Error(`No se puede aprobar. Estado actual: ${solicitud.estado}. Debe estar en estado 'aprobada_jefe'`);
+  }
+
+  // 4. Obtener balance del usuario
+  const anio = new Date(solicitud.fechaInicio).getFullYear();
+  const balance = await db.query.balancesAusencias.findFirst({
+    where: and(
+      eq(balancesAusencias.usuarioId, solicitud.usuarioId),
+      eq(balancesAusencias.anio, anio),
+      eq(balancesAusencias.estado, 'activo')
+    )
+  });
+
+  if (!balance) {
+    throw new Error(`Balance no encontrado para el año ${anio}`);
+  }
+
+  // 5. Validar que balance tiene suficiente pendiente
+  const diasSolicitud = Number(solicitud.cantidad);
+  const diasPendientes = Number(balance.cantidadPendiente);
+
+  if (diasPendientes < diasSolicitud) {
+    throw new Error(`Balance insuficiente. Días pendientes: ${diasPendientes}, Días solicitados: ${diasSolicitud}`);
+  }
+
+  // 6. Actualizar solicitud y balance en transacción
+  try {
+    await db.transaction(async (trx) => {
+      // Actualizar solicitud con control optimista
+      const [solicitudActualizada] = await trx
+        .update(solicitudes)
+        .set({
+          estado: 'aprobada',
+          aprobadoRrhhPor: rrhhId,
+          fechaAprobacionRrhh: new Date(),
+          observaciones: observaciones || solicitud.observaciones,
+          version: sql`${solicitudes.version} + 1`,
+          updatedAt: new Date()
+        })
+        .where(
+          and(
+            eq(solicitudes.id, solicitudId),
+            eq(solicitudes.version, solicitud.version)
+          )
+        )
+        .returning();
+
+      if (!solicitudActualizada) {
+        throw new Error("Conflicto de versión: la solicitud fue modificada por otro usuario. Intenta nuevamente.");
+      }
+
+      // Mover días: cantidadPendiente → cantidadUtilizada
+      await trx
+        .update(balancesAusencias)
+        .set({
+          cantidadPendiente: sql`${balancesAusencias.cantidadPendiente} - ${diasSolicitud}`,
+          cantidadUtilizada: sql`${balancesAusencias.cantidadUtilizada} + ${diasSolicitud}`,
+          updatedAt: new Date()
+        })
+        .where(eq(balancesAusencias.id, balance.id));
+    });
+
+    // 7. Retornar solicitud actualizada
+    const solicitudFinal = await db.query.solicitudes.findFirst({
+      where: eq(solicitudes.id, solicitudId)
+    });
+
+    return solicitudFinal;
+  } catch (error) {
+    console.error('❌ Error al aprobar solicitud (RRHH):', error);
+    throw new Error(`Error al aprobar solicitud: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
+}
+

@@ -195,10 +195,45 @@ export async function usuarioTienePermiso(
 - **Contenido**:
   - `database/`: Drizzle ORM, schemas, cliente BD
 
+##### 🗄️ Base de Datos Atómica (Refactorización Semana 2)
+
+**Estructura SQL Modular** (5 archivos atómicos):
+```
+database/
+├── 00_extensions.sql           # Extensiones PostgreSQL (pgcrypto, uuid-ossp)
+├── 01_enums.sql               # Enumeraciones (estadoSolicitud, tipoPermiso)
+├── 02_core_tables.sql         # Tablas principales (usuarios, departamentos)
+├── 03_solicitudes_tables.sql  # Sistema de solicitudes y balances
+└── 04_indexes_and_policies.sql # Índices, particiones, optimizaciones
+```
+
+**Schema TypeScript Modular** (7 módulos):
+```
+src/core/infrastructure/database/schema/
+├── usuarios.schema.ts         # Tabla usuarios + relaciones
+├── roles.schema.ts           # RBAC (roles, permisos)
+├── departamentos.schema.ts   # Estructura organizacional
+├── solicitudes.schema.ts     # Gestión de solicitudes
+├── balances.schema.ts        # Saldos de vacaciones
+├── auditoria.schema.ts       # Logs de auditoría
+└── index.ts                  # Exportación unificada
+```
+
+**Optimizaciones Senior**:
+- ✅ Índices compuestos (B-tree + GIN para búsquedas)
+- ✅ Particionado por rango de fechas (auditoria)
+- ✅ Política de retención automática (30 días)
+- ✅ Constraints complejos (CHECK, UNIQUE)
+- ✅ Tipos ENUM nativos en PostgreSQL
+- ✅ Relaciones con ON DELETE CASCADE
+
 **Ejemplo**:
 ```typescript
 // src/core/infrastructure/database/client.ts
 export const db = drizzle(sql, { schema });
+
+// Import modular
+import { usuarios, roles, solicitudes } from '@/core/infrastructure/database/schema';
 ```
 
 ---
@@ -430,5 +465,5 @@ import { usuarioTienePermiso } from '@/core/application/rbac';
 ---
 
 **Autor**: Arquitecto Senior + DBA Senior  
-**Versión**: 2.0.0  
-**Última actualización**: 7 de enero de 2026
+**Versión**: 2.1.0 (Base de Datos Atómica + 4 Servicios)  
+**Última actualización**: 5 de febrero de 2026

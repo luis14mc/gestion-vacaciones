@@ -212,7 +212,103 @@ No se agregaron nuevas dependencias en esta semana.
 - [ ] `exceljs` - Para export Excel
 - [ ] `jest` o completar `vitest` - Para tests de integración
 
-#### 🚀 Próximos Pasos (Semana 3)
+#### �️ Refactorización Base de Datos Atómica (5 febrero 2026)
+
+##### Estructura SQL Modular (5 archivos atómicos)
+
+**Antes**: 1 archivo monolítico `schema.sql` (~800 líneas)  
+**Después**: 5 archivos especializados con optimizaciones Senior
+
+```
+database/
+├── 00_extensions.sql           # PostgreSQL extensions (pgcrypto, uuid-ossp)
+├── 01_enums.sql               # ENUMs nativos (estadoSolicitud, tipoPermiso)
+├── 02_core_tables.sql         # Tablas principales (usuarios, departamentos, roles)
+├── 03_solicitudes_tables.sql  # Sistema solicitudes y balances
+└── 04_indexes_and_policies.sql # Índices compuestos, particiones, políticas
+```
+
+**Características:**
+- ✅ **Índices B-tree + GIN** para búsquedas rápidas
+- ✅ **Particionado por rango** en tabla auditoria (mejora queries)
+- ✅ **Política de retención automática** (30 días)
+- ✅ **Constraints complejos** (CHECK, UNIQUE multi-columna)
+- ✅ **Triggers para versioning** (campo `version` auto-incrementado)
+- ✅ **ON DELETE CASCADE** en relaciones críticas
+
+##### Schema TypeScript Modular (7 módulos separados)
+
+**Antes**: 1 archivo monolítico `schema.ts` (~1,200 líneas)  
+**Después**: 7 módulos especializados
+
+```
+src/core/infrastructure/database/schema/
+├── usuarios.schema.ts         # usuarios + sessions + relations
+├── roles.schema.ts           # roles + permisos + rolePermiso + relations
+├── departamentos.schema.ts   # departamentos + usuarioDepartamento + relations
+├── solicitudes.schema.ts     # solicitudes + relations
+├── balances.schema.ts        # balances + relations
+├── auditoria.schema.ts       # auditoria (tabla particionada)
+└── index.ts                  # Exportación unificada
+```
+
+**Ventajas:**
+- ✅ **Mejor organización**: Cada tabla con sus relaciones en su módulo
+- ✅ **Tree-shaking óptimo**: Imports específicos reducen bundle
+- ✅ **Mantenimiento simplificado**: Modificaciones aisladas
+- ✅ **Escalabilidad**: Fácil agregar nuevos módulos
+
+##### Corrección de Rutas de Imports (29 archivos)
+
+**Commit**: `da929e4` - "fix: Actualizar imports después de refactorización BD"
+
+**Archivos actualizados** (29 total):
+- `src/app/api/**/*.ts` - 18 archivos (API routes)
+  - solicitudes, usuarios, balances, reportes, dashboard, auditoria
+- `src/core/application/**/*.ts` - 4 archivos (servicios)
+  - solicitudes.service, usuarios.service, auditoria.service
+- `src/core/domain/entities/types.ts` - 1 archivo
+- `src/lib/*.ts` - 4 archivos (rbac, auditoria, db)
+- `src/auth.ts`, `src/types/index.ts` - 2 archivos
+
+**Cambio aplicado**:
+```typescript
+// ❌ Antes (ruta obsoleta)
+import { usuarios, solicitudes } from '@/lib/db/schema';
+
+// ✅ Después (ruta modular)
+import { usuarios, solicitudes } from '@/core/infrastructure/database/schema';
+```
+
+**Metodología**:
+- PowerShell bulk replacement con Get-ChildItem + ForEach-Object
+- Verificación con grep_search (0 rutas antiguas encontradas)
+- Corrección manual de encoding UTF-8 en 1 archivo
+
+##### Validación Completa del Sistema
+
+**Build** (Turbopack):
+- ✅ 1er intento: FAILED (22 errores - imports no encontrados)
+- ✅ 2do intento: FAILED (2 errores - UTF-8 encoding + export faltante)
+- ✅ 3er intento: **SUCCESS** - Compiled successfully in 8.0s
+
+**Tests** (Vitest):
+- ✅ **60 tests passing** (incremento de 48→60)
+- ✅ 3 test files (solicitudes, usuarios, reportes)
+- ✅ Watch mode activo para desarrollo continuo
+
+**Fixes aplicados**:
+1. **UTF-8 encoding**: Changed "será eliminado" → "Sera eliminado" en `src/lib/db/index.ts`
+2. **Export faltante**: Agregada función `calcularDiasLaborables()` localmente en `solicitudes.service.ts`
+3. **29 imports actualizados**: Comando PowerShell bulk replacement
+
+**Métricas del commit da929e4**:
+- 29 archivos modificados
+- 1,530 inserciones (+)
+- 30 eliminaciones (-)
+- Compatibilidad 100% restaurada
+
+#### �🚀 Próximos Pasos (Semana 3)
 1. [ ] Implementar tests de integración con BD real
 2. [ ] Completar exportación Excel con ExcelJS
 3. [ ] Refactorizar reportes API routes

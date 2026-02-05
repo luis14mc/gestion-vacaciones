@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, tiposAusenciaConfig } from '@/lib/db/schema';
-import type { NuevaSolicitud } from '@/types';
-import { validarSolicitud, registrarDiasPendientes, calcularDiasLaborables } from '@/services/balance.service';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { crearSolicitud } from '@/core/application/services/solicitudes.service';
 
 export const runtime = 'nodejs';
 
@@ -237,16 +236,13 @@ export async function POST(request: NextRequest) {
       tipoAusenciaId,
       fechaInicio,
       fechaFin,
-      horaInicio,
-      horaFin,
       cantidad,
-      unidad,
       motivo,
       observaciones
     } = body;
 
     // Validaciones básicas
-    if (!usuarioId || !tipoAusenciaId || !fechaInicio || !fechaFin || !cantidad) {
+    if (!usuarioId || !tipoAusenciaId || !fechaInicio || !fechaFin) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos requeridos' },
         { status: 400 }
@@ -265,93 +261,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verificar que el usuario existe y está activo
-    const usuario = await db.query.usuarios.findFirst({
-      where: eq(usuarios.id, usuarioId)
-    });
-
-    if (!usuario?.activo) {
-      return NextResponse.json(
-        { success: false, error: 'Usuario no encontrado o inactivo' },
-        { status: 400 }
-      );
-    }
-
-    // Verificar disponibilidad (si es vacaciones o permiso con balance)
-    const tipoAusencia = await db.query.tiposAusenciaConfig.findFirst({
-      where: eq(tiposAusenciaConfig.id, tipoAusenciaId)
-    });
-
-    if (!tipoAusencia?.activo) {
-      return NextResponse.json(
-        { success: false, error: 'Tipo de ausencia no válido' },
-        { status: 400 }
-      );
-    }
-
-    // 🔐 VALIDAR SOLICITUD CON BALANCE SERVICE
-    const fechaInicioDate = new Date(fechaInicio);
-    const fechaFinDate = new Date(fechaFin);
-    
-    // 📅 CALCULAR DÍAS LABORABLES (excluyendo sábados y domingos)
-    const diasLaborables = calcularDiasLaborables(fechaInicioDate, fechaFinDate);
-    
-    console.log(`📊 Rango: ${fechaInicio} a ${fechaFin}`);
-    console.log(`📊 Días laborables calculados: ${diasLaborables} (excluyendo fines de semana)`);
-    
-    // Usar días laborables en lugar de la cantidad enviada por el frontend
-    const diasSolicitados = diasLaborables;
-
-    const validacion = await validarSolicitud(
-      usuarioId,
-      diasSolicitados,
-      fechaInicioDate,
-      fechaFinDate
-    );
-
-    if (!validacion.valido) {
-      console.log(`❌ Validación fallida para usuario ${usuarioId}:`, validacion.error);
-      return NextResponse.json(
-        { success: false, error: validacion.error },
-        { status: 400 }
-      );
-    }
-
-    console.log(`✅ Validación exitosa para usuario ${usuarioId} - ${diasSolicitados} días`);
-
-    // Generar código de solicitud
-    const codigoSolicitud = `SOL-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`;
-
-    // Crear solicitud
-    const nuevaSolicitud: NuevaSolicitud = {
-      codigo: codigoSolicitud,
+    // 4. USAR SERVICIO PARA CREAR SOLICITUD
+    const solicitudCreada: any = await crearSolicitud({
       usuarioId,
       tipoAusenciaId,
-      fechaInicio,
-      fechaFin,
-      horaInicio: horaInicio || null,
-      horaFin: horaFin || null,
-      cantidad: cantidad.toString(),
-      unidad: unidad || 'dias',
-      estado: 'pendiente', // Auto-enviar a pendiente
-      motivo: motivo || null,
-      observaciones: observaciones || null,
-      fechaSolicitud: new Date()
-    };
+      fechaInicio: new Date(fechaInicio),
+      fechaFin: new Date(fechaFin),
+      cantidad: cantidad || 0,
+      motivo: motivo || '',
+      esPermiso: false,
+      direccionDuranteAusencia: observaciones || undefined,
+      telefonoDuranteAusencia: undefined
+    });
 
-    const [solicitudCreada] = await db
-      .insert(solicitudes)
-      .values(nuevaSolicitud)
-      .returning();
+    // 5. Obtener solicitud completa con relaciones para respuesta
+    if (!solicitudCreada || !solicitudCreada.id) {
+      throw new Error('Error al crear solicitud');
+    }
 
-    // 📝 REGISTRAR DÍAS PENDIENTES EN BALANCE
-    const anio = fechaInicioDate.getFullYear();
-    await registrarDiasPendientes(usuarioId, diasSolicitados, anio);
-    console.log(`📊 Registrados ${diasSolicitados} días pendientes para usuario ${usuarioId}`)
-
-    // Obtener solicitud completa con relaciones
     const solicitudCompleta = await db.query.solicitudes.findFirst({
-      where: eq(solicitudes.id, solicitudCreada.id),
+      where: eq(solicitudes.id, Number(solicitudCreada.id)),
       with: {
         usuario: {
           with: { departamento: true }
@@ -368,9 +297,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error creando solicitud:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Error al crear solicitud';
     return NextResponse.json(
-      { success: false, error: 'Error al crear solicitud' },
-      { status: 500 }
+      { success: false, error: errorMessage },
+      { status: 400 }
     );
   }
 }

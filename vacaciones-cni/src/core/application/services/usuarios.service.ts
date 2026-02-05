@@ -48,6 +48,12 @@ export interface AsignarRol {
   asignadoPor: number;
 }
 
+export interface CambiarContrasena {
+  usuarioId: number;
+  contrasenaActual: string;
+  contrasenaNueva: string;
+}
+
 // ==========================================
 // FUNCIONES DEL SERVICIO
 // ==========================================
@@ -455,4 +461,82 @@ export async function asignarRolConValidacion(data: AsignarRol) {
   });
 
   return usuarioConRoles;
+}
+
+/**
+ * 🔐 CAMBIAR CONTRASEÑA
+ * Cambia la contraseña del usuario con:
+ * - Verificación de contraseña actual
+ * - Validación de nueva contraseña
+ * - Hash con bcrypt
+ */
+export async function cambiarContrasena(data: CambiarContrasena) {
+  console.log(`🔐 Cambiando contraseña para usuario ID: ${data.usuarioId}`);
+
+  // ========== VALIDACIONES ==========
+
+  // 1. Verificar que el usuario existe
+  const usuario = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, data.usuarioId)
+  });
+
+  if (!usuario) {
+    throw new Error(`Usuario con ID ${data.usuarioId} no encontrado`);
+  }
+
+  if (!usuario.activo) {
+    throw new Error('No se puede cambiar la contraseña de un usuario desactivado');
+  }
+
+  // 2. Verificar que la contraseña actual es correcta
+  const contrasenaValida = await bcrypt.compare(data.contrasenaActual, usuario.password);
+  
+  if (!contrasenaValida) {
+    throw new Error('La contraseña actual es incorrecta');
+  }
+
+  // 3. Validar longitud de nueva contraseña
+  if (data.contrasenaNueva.length < 8) {
+    throw new Error('La nueva contraseña debe tener al menos 8 caracteres');
+  }
+
+  // 4. Verificar que la nueva contraseña es diferente a la actual
+  const esIgualAActual = await bcrypt.compare(data.contrasenaNueva, usuario.password);
+  
+  if (esIgualAActual) {
+    throw new Error('La nueva contraseña debe ser diferente a la actual');
+  }
+
+  console.log(`✅ Validaciones completadas - Usuario: ${usuario.email}`);
+
+  // ========== ACTUALIZACIÓN ==========
+
+  // Hash de nueva contraseña
+  const SALT_ROUNDS = 10;
+  const nuevaPasswordHash = await bcrypt.hash(data.contrasenaNueva, SALT_ROUNDS);
+  console.log(`🔒 Nueva contraseña hasheada con ${SALT_ROUNDS} rounds`);
+
+  // Actualizar contraseña
+  const [usuarioActualizado] = await db
+    .update(usuarios)
+    .set({
+      password: nuevaPasswordHash,
+      version: usuario.version + 1,
+      updatedAt: new Date(),
+      metadata: {
+        ...usuario.metadata as any,
+        ultimoCambioPassword: new Date().toISOString()
+      }
+    })
+    .where(eq(usuarios.id, data.usuarioId))
+    .returning();
+
+  console.log(`✅ Contraseña actualizada exitosamente para: ${usuarioActualizado.email}`);
+
+  return {
+    success: true,
+    message: 'Contraseña actualizada exitosamente',
+    usuarioId: usuarioActualizado.id,
+    email: usuarioActualizado.email
+  };
 }

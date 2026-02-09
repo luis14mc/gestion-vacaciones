@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { usuarios, solicitudes } from "@/core/infrastructure/database/schema";
+import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
@@ -40,13 +40,13 @@ export async function GET() {
         )
       );
 
-    // Obtener usuarios en vacaciones (estado en_uso)
+    // Obtener usuarios en vacaciones (estado finalizada)
     const [enVacaciones] = await db
       .select({ count: sql<number>`count(DISTINCT ${solicitudes.usuarioId})` })
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.estado, "en_uso"),
+          eq(solicitudes.estado, "finalizada"),
           isNull(solicitudes.deletedAt)
         )
       );

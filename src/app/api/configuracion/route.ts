@@ -1,32 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { configuracionSistema } from '@/core/infrastructure/database/schema';
+import { anosLaborales } from '@/lib/db/schema';
 
 export const runtime = 'nodejs';
 
-// GET: Listar todas las configuraciones o filtrar por categoría
+// GET: Obtener años laborales
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const categoria = searchParams.get('categoria');
-
-    let query = db.query.configuracionSistema.findMany({
-      orderBy: (configs, { asc }) => [asc(configs.categoria), asc(configs.clave)]
+    const results = await db.query.anosLaborales.findMany({
+      orderBy: (anos, { desc }) => [desc(anos.ano)]
     });
 
-    let results = await query;
-
-    // Filtrar por categoría si se proporciona
-    if (categoria) {
-      results = results.filter(config => config.categoria === categoria);
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: results
-    });
-
+    return NextResponse.json({ success: true, data: results });
   } catch (error) {
     console.error('Error obteniendo configuraciones:', error);
     return NextResponse.json(
@@ -36,69 +22,56 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Crear nueva configuración
+// POST: Crear nuevo año laboral
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    const {
-      clave,
-      valor,
-      tipoDato = 'string',
-      descripcion,
-      categoria,
-      esPublico = false
-    } = body;
+    const { ano, descripcion, fechaInicio, fechaFin, activo = false } = body;
 
-    // Validaciones
-    if (!clave || !valor) {
+    if (!ano) {
       return NextResponse.json(
-        { success: false, error: 'Clave y valor son requeridos' },
+        { success: false, error: 'Año es requerido' },
         { status: 400 }
       );
     }
 
-    // Verificar si la clave ya existe
-    const configExistente = await db.query.configuracionSistema.findFirst({
-      where: eq(configuracionSistema.clave, clave)
+    const existente = await db.query.anosLaborales.findFirst({
+      where: eq(anosLaborales.ano, ano)
     });
 
-    if (configExistente) {
+    if (existente) {
       return NextResponse.json(
-        { success: false, error: 'La clave ya existe' },
+        { success: false, error: 'El año ya existe' },
         { status: 400 }
       );
     }
 
-    // Crear configuración
-    const [nuevaConfig] = await db
-      .insert(configuracionSistema)
+    const [nuevo] = await db
+      .insert(anosLaborales)
       .values({
-        clave,
-        valor,
-        tipoDato,
-        descripcion: descripcion || null,
-        categoria: categoria || null,
-        esPublico
+        ano,
+        nombre: descripcion || `Año Laboral ${ano}`,
+        fechaInicio: fechaInicio || `${ano}-01-01`,
+        fechaFin: fechaFin || `${ano}-12-31`,
+        activo
       })
       .returning();
 
     return NextResponse.json({
       success: true,
-      data: nuevaConfig,
-      message: 'Configuración creada exitosamente'
+      data: nuevo,
+      message: 'Año laboral creado exitosamente'
     });
-
   } catch (error) {
-    console.error('Error creando configuración:', error);
+    console.error('Error creando año laboral:', error);
     return NextResponse.json(
-      { success: false, error: 'Error al crear configuración' },
+      { success: false, error: 'Error al crear año laboral' },
       { status: 500 }
     );
   }
 }
 
-// PATCH: Actualizar configuración
+// PATCH: Actualizar año laboral
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -106,90 +79,33 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: 'ID de configuración requerido' },
+        { success: false, error: 'ID requerido' },
         { status: 400 }
       );
     }
 
-    // Obtener configuración actual para incrementar versión
-    const configActual = await db.query.configuracionSistema.findFirst({
-      where: eq(configuracionSistema.id, id)
-    });
-
-    if (!configActual) {
-      return NextResponse.json(
-        { success: false, error: 'Configuración no encontrada' },
-        { status: 404 }
-      );
-    }
-
-    // Incrementar versión y actualizar timestamp
-    camposActualizar.version = configActual.version + 1;
-    camposActualizar.updatedAt = new Date();
-
-    // Actualizar configuración
-    const [configActualizada] = await db
-      .update(configuracionSistema)
-      .set(camposActualizar)
-      .where(eq(configuracionSistema.id, id))
+    const [actualizado] = await db
+      .update(anosLaborales)
+      .set({ ...camposActualizar, updatedAt: new Date().toISOString() })
+      .where(eq(anosLaborales.id, id))
       .returning();
 
-    return NextResponse.json({
-      success: true,
-      data: configActualizada,
-      message: 'Configuración actualizada exitosamente'
-    });
-
-  } catch (error) {
-    console.error('Error actualizando configuración:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al actualizar configuración' },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE: Eliminar configuración
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
+    if (!actualizado) {
       return NextResponse.json(
-        { success: false, error: 'ID de configuración requerido' },
-        { status: 400 }
-      );
-    }
-
-    const configId = Number.parseInt(id);
-
-    // Verificar que la configuración existe
-    const config = await db.query.configuracionSistema.findFirst({
-      where: eq(configuracionSistema.id, configId)
-    });
-
-    if (!config) {
-      return NextResponse.json(
-        { success: false, error: 'Configuración no encontrada' },
+        { success: false, error: 'Año laboral no encontrado' },
         { status: 404 }
       );
     }
 
-    // Eliminar configuración (hard delete - no hay deletedAt en esta tabla)
-    await db
-      .delete(configuracionSistema)
-      .where(eq(configuracionSistema.id, configId));
-
     return NextResponse.json({
       success: true,
-      message: 'Configuración eliminada exitosamente'
+      data: actualizado,
+      message: 'Actualizado exitosamente'
     });
-
   } catch (error) {
-    console.error('Error eliminando configuración:', error);
+    console.error('Error actualizando:', error);
     return NextResponse.json(
-      { success: false, error: 'Error al eliminar configuración' },
+      { success: false, error: 'Error al actualizar' },
       { status: 500 }
     );
   }

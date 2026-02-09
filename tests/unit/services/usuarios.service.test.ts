@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as UsuariosService from '../../../src/core/application/services/usuarios.service';
+import * as UsuariosService from '../../../src/services/usuarios.service';
 
 describe('usuarios.service.ts - Estructura y Exportaciones', () => {
   it('debe exportar todas las funciones principales del servicio', () => {
@@ -12,20 +12,20 @@ describe('usuarios.service.ts - Estructura y Exportaciones', () => {
     expect(UsuariosService.desactivarUsuario).toBeDefined();
     expect(typeof UsuariosService.desactivarUsuario).toBe('function');
     
-    expect(UsuariosService.asignarRolConValidacion).toBeDefined();
-    expect(typeof UsuariosService.asignarRolConValidacion).toBe('function');
+    expect(UsuariosService.asignarRol).toBeDefined();
+    expect(typeof UsuariosService.asignarRol).toBe('function');
     
-    expect(UsuariosService.cambiarContrasena).toBeDefined();
-    expect(typeof UsuariosService.cambiarContrasena).toBe('function');
+    expect(UsuariosService.cambiarPassword).toBeDefined();
+    expect(typeof UsuariosService.cambiarPassword).toBe('function');
     
-    expect(UsuariosService.obtenerUsuarios).toBeDefined();
-    expect(typeof UsuariosService.obtenerUsuarios).toBe('function');
+    expect(UsuariosService.listarUsuarios).toBeDefined();
+    expect(typeof UsuariosService.listarUsuarios).toBe('function');
   });
 
   it('debe tener las firmas correctas (async)', () => {
     expect(UsuariosService.crearUsuario.constructor.name).toBe('AsyncFunction');
     expect(UsuariosService.actualizarUsuario.constructor.name).toBe('AsyncFunction');
-    expect(UsuariosService.cambiarContrasena.constructor.name).toBe('AsyncFunction');
+    expect(UsuariosService.cambiarPassword.constructor.name).toBe('AsyncFunction');
   });
 
   it('debe documentar casos de uso esenciales', () => {
@@ -33,9 +33,9 @@ describe('usuarios.service.ts - Estructura y Exportaciones', () => {
       'crearUsuario',
       'actualizarUsuario',
       'desactivarUsuario',
-      'asignarRolConValidacion',
-      'cambiarContrasena',
-      'obtenerUsuarios'
+      'asignarRol',
+      'cambiarPassword',
+      'listarUsuarios'
     ];
     
     serviceFunctions.forEach(fnName => {
@@ -141,7 +141,7 @@ describe('usuarios.service.ts - Casos de Uso', () => {
     });
   });
 
-  describe('asignarRolConValidacion() - Casos esperados', () => {
+  describe('asignarRol() - Casos esperados', () => {
     it('✅ Debe validar que rol existe y está activo', () => {
       // Verifica: rol.id EXISTS AND rol.activo=true
       expect(true).toBe(true);
@@ -173,7 +173,7 @@ describe('usuarios.service.ts - Casos de Uso', () => {
     });
   });
 
-  describe('cambiarContrasena() - Casos esperados', () => {
+  describe('cambiarPassword() - Casos esperados', () => {
     it('✅ Debe cambiar si password actual es correcto', () => {
       // bcrypt.compare(passwordActual, hash) -> bcrypt.hash(passwordNuevo)
       expect(true).toBe(true);
@@ -200,7 +200,7 @@ describe('usuarios.service.ts - Casos de Uso', () => {
     });
   });
 
-  describe('obtenerUsuarios() - Casos esperados', () => {
+  describe('listarUsuarios() - Casos esperados', () => {
     it('✅ Debe retornar lista sin passwords', () => {
       // NEVER return password field
       expect(true).toBe(true);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { balancesAusencias, usuarios } from "@/core/infrastructure/database/schema";
+import { balances, usuarios } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
@@ -16,9 +16,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { departamentoId, tipoAusenciaId, anio, cantidadAsignada, operacion = "reemplazar", fechaVencimiento, notas } = body;
+    const { departamentoId, tipoAusencia, anoLaboralId, cantidadAsignada, operacion = "reemplazar" } = body;
 
-    if (!departamentoId || !tipoAusenciaId || !anio || cantidadAsignada === undefined) {
+    if (!departamentoId || !tipoAusencia || !anoLaboralId || cantidadAsignada === undefined) {
       return NextResponse.json(
         { success: false, error: "Faltan campos requeridos" },
         { status: 400 }
@@ -46,44 +46,38 @@ export async function POST(request: NextRequest) {
     for (const usuario of usuariosDepartamento) {
       try {
         // Verificar si ya existe un balance para este usuario/tipo/año
-        const balanceExistente = await db
-          .select()
-          .from(balancesAusencias)
-          .where(
-            and(
-              eq(balancesAusencias.usuarioId, usuario.id),
-              eq(balancesAusencias.tipoAusenciaId, tipoAusenciaId),
-              eq(balancesAusencias.anio, anio)
-            )
+        const balanceExistente = await db.query.balances.findFirst({
+          where: and(
+            eq(balances.usuarioId, usuario.id),
+            eq(balances.tipoAusencia, tipoAusencia as any),
+            eq(balances.anoLaboralId, anoLaboralId)
           )
-          .limit(1);
+        });
 
         let cantidadFinal = Number.parseFloat(cantidadAsignada.toString());
 
-        if (balanceExistente.length > 0) {
+        if (balanceExistente) {
           // Actualizar existente
-          const balanceActual = balanceExistente[0];
+          const balanceActual = balanceExistente;
           
           // Calcular cantidad final según operación
           if (operacion === "sumar") {
-            const cantidadActual = Number.parseFloat(balanceActual.cantidadAsignada);
+            const cantidadActual = Number.parseFloat(balanceActual.cantidadInicial);
             cantidadFinal = cantidadActual + cantidadFinal;
           } else if (operacion === "restar") {
-            const cantidadActual = Number.parseFloat(balanceActual.cantidadAsignada);
+            const cantidadActual = Number.parseFloat(balanceActual.cantidadInicial);
             cantidadFinal = cantidadActual - cantidadFinal;
             if (cantidadFinal < 0) cantidadFinal = 0;
           }
-          // Si es "reemplazar", cantidadFinal ya tiene el valor correcto
 
           await db
-            .update(balancesAusencias)
+            .update(balances)
             .set({
-              cantidadAsignada: cantidadFinal.toString(),
-              fechaVencimiento: fechaVencimiento || null,
-              notas: notas || null,
+              cantidadInicial: cantidadFinal.toString(),
               version: balanceActual.version + 1,
+              updatedAt: new Date().toISOString()
             })
-            .where(eq(balancesAusencias.id, balanceActual.id));
+            .where(eq(balances.id, balanceActual.id));
           usuariosActualizados++;
         } else {
           // Crear nuevo (solo si es reemplazar o sumar, restar no tiene sentido si no existe)
@@ -92,15 +86,11 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          await db.insert(balancesAusencias).values({
+          await db.insert(balances).values({
             usuarioId: usuario.id,
-            tipoAusenciaId,
-            anio,
-            cantidadAsignada: cantidadFinal.toString(),
-            cantidadUtilizada: "0",
-            cantidadPendiente: "0",
-            fechaVencimiento: fechaVencimiento || null,
-            notas: notas || null,
+            tipoAusencia: tipoAusencia as any,
+            anoLaboralId,
+            cantidadInicial: cantidadFinal.toString()
           });
           usuariosCreados++;
         }

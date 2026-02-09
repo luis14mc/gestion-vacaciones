@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { usuarios, solicitudes, balancesAusencias, departamentos, auditoria } from "@/core/infrastructure/database/schema";
+import { usuarios, solicitudes, balances, departamentos } from "@/lib/db/schema";
 import { eq, isNull, and, gte, lte } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Solo Admin y RRHH pueden exportar
     if (!session.user.esAdmin && !session.user.esRrhh) {
       return NextResponse.json(
         { success: false, error: "No autorizado" },
@@ -25,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const tipo = searchParams.get("tipo") as string;
-    const formato = searchParams.get("formato") || "excel";
+    const formato = searchParams.get("formato") || "json";
     const incluirEliminados = searchParams.get("incluirEliminados") === "true";
     const fechaInicio = searchParams.get("fechaInicio");
     const fechaFin = searchParams.get("fechaFin");
@@ -36,26 +35,20 @@ export async function GET(request: NextRequest) {
     switch (tipo) {
       case "usuarios":
         datos = await exportarUsuarios(incluirEliminados);
-        nombreArchivo = `usuarios_${new Date().getTime()}`;
+        nombreArchivo = `usuarios_${Date.now()}`;
         break;
       case "solicitudes":
         datos = await exportarSolicitudes(incluirEliminados, fechaInicio, fechaFin);
-        nombreArchivo = `solicitudes_${new Date().getTime()}`;
+        nombreArchivo = `solicitudes_${Date.now()}`;
         break;
       case "balances":
-        datos = await exportarBalances(incluirEliminados);
-        nombreArchivo = `balances_${new Date().getTime()}`;
+        datos = await exportarBalances();
+        nombreArchivo = `balances_${Date.now()}`;
         break;
       case "departamentos":
         datos = await exportarDepartamentos(incluirEliminados);
-        nombreArchivo = `departamentos_${new Date().getTime()}`;
+        nombreArchivo = `departamentos_${Date.now()}`;
         break;
-      case "auditoria":
-        datos = await exportarAuditoria(fechaInicio, fechaFin);
-        nombreArchivo = `auditoria_${new Date().getTime()}`;
-        break;
-      case "completo":
-        return await exportarCompleto(incluirEliminados);
       default:
         return NextResponse.json(
           { success: false, error: "Tipo de exportación no válido" },
@@ -63,15 +56,7 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    // Generar el archivo según el formato
-    if (formato === "json") {
-      return new NextResponse(JSON.stringify(datos, null, 2), {
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Disposition": `attachment; filename="${nombreArchivo}.json"`,
-        },
-      });
-    } else if (formato === "csv") {
+    if (formato === "csv") {
       const csv = convertirACSV(datos);
       return new NextResponse(csv, {
         headers: {
@@ -79,17 +64,14 @@ export async function GET(request: NextRequest) {
           "Content-Disposition": `attachment; filename="${nombreArchivo}.csv"`,
         },
       });
-    } else {
-      // Excel - requiere instalación de librería
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: "Formato Excel no implementado. Instala: pnpm add xlsx",
-          data: datos // Devolver datos en JSON temporalmente
-        },
-        { status: 501 }
-      );
     }
+
+    return new NextResponse(JSON.stringify(datos, null, 2), {
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Disposition": `attachment; filename="${nombreArchivo}.json"`,
+      },
+    });
   } catch (error) {
     console.error("Error en exportación:", error);
     return NextResponse.json(
@@ -101,8 +83,7 @@ export async function GET(request: NextRequest) {
 
 async function exportarUsuarios(incluirEliminados: boolean) {
   const condiciones = incluirEliminados ? undefined : isNull(usuarios.deletedAt);
-  
-  const resultado = await db
+  return await db
     .select({
       id: usuarios.id,
       email: usuarios.email,
@@ -110,19 +91,13 @@ async function exportarUsuarios(incluirEliminados: boolean) {
       apellido: usuarios.apellido,
       departamento_id: usuarios.departamentoId,
       cargo: usuarios.cargo,
-      es_jefe: usuarios.esJefe,
-      es_rrhh: usuarios.esRrhh,
-      es_admin: usuarios.esAdmin,
       activo: usuarios.activo,
       fecha_ingreso: usuarios.fechaIngreso,
       created_at: usuarios.createdAt,
-      deleted_at: usuarios.deletedAt,
     })
     .from(usuarios)
     .where(condiciones)
     .orderBy(usuarios.apellido, usuarios.nombre);
-
-  return resultado;
 }
 
 async function exportarSolicitudes(incluirEliminados: boolean, fechaInicio?: string | null, fechaFin?: string | null) {
@@ -133,103 +108,36 @@ async function exportarSolicitudes(incluirEliminados: boolean, fechaInicio?: str
   }
 
   if (fechaInicio) {
-    condiciones.push(gte(solicitudes.createdAt, new Date(fechaInicio)));
+    condiciones.push(gte(solicitudes.createdAt, fechaInicio));
   }
 
   if (fechaFin) {
-    const fechaFinDate = new Date(fechaFin);
-    fechaFinDate.setHours(23, 59, 59, 999);
-    condiciones.push(lte(solicitudes.createdAt, fechaFinDate));
+    condiciones.push(lte(solicitudes.createdAt, fechaFin));
   }
 
   const whereClause = condiciones.length > 0 ? and(...condiciones) : undefined;
-
-  const resultado = await db
-    .select()
-    .from(solicitudes)
-    .where(whereClause)
-    .orderBy(solicitudes.createdAt);
-
-  return resultado;
+  return await db.select().from(solicitudes).where(whereClause).orderBy(solicitudes.createdAt);
 }
 
-async function exportarBalances(incluirEliminados: boolean) {
-  const resultado = await db
-    .select()
-    .from(balancesAusencias)
-    .orderBy(balancesAusencias.usuarioId, balancesAusencias.anio);
-
-  return resultado;
+async function exportarBalances() {
+  return await db.select().from(balances).orderBy(balances.usuarioId);
 }
 
 async function exportarDepartamentos(incluirEliminados: boolean) {
   const condiciones = incluirEliminados ? undefined : isNull(departamentos.deletedAt);
-  
-  const resultado = await db
-    .select()
-    .from(departamentos)
-    .where(condiciones)
-    .orderBy(departamentos.nombre);
-
-  return resultado;
-}
-
-async function exportarAuditoria(fechaInicio?: string | null, fechaFin?: string | null) {
-  const condiciones = [];
-
-  if (fechaInicio) {
-    condiciones.push(gte(auditoria.fechaCreacion, new Date(fechaInicio)));
-  }
-
-  if (fechaFin) {
-    const fechaFinDate = new Date(fechaFin);
-    fechaFinDate.setHours(23, 59, 59, 999);
-    condiciones.push(lte(auditoria.fechaCreacion, fechaFinDate));
-  }
-
-  const whereClause = condiciones.length > 0 ? and(...condiciones) : undefined;
-
-  const resultado = await db
-    .select()
-    .from(auditoria)
-    .where(whereClause)
-    .orderBy(auditoria.fechaCreacion);
-
-  return resultado;
-}
-
-async function exportarCompleto(incluirEliminados: boolean) {
-  // Para exportación completa, necesitaríamos generar un ZIP
-  // Por ahora retornamos un error con instrucciones
-  return NextResponse.json(
-    { 
-      success: false, 
-      error: "Exportación completa no implementada. Requiere: pnpm add archiver"
-    },
-    { status: 501 }
-  );
+  return await db.select().from(departamentos).where(condiciones).orderBy(departamentos.nombre);
 }
 
 function convertirACSV(datos: any[]): string {
   if (datos.length === 0) return "";
-
-  // Obtener headers
   const headers = Object.keys(datos[0]);
-  
-  // Crear filas
-  const filas = datos.map(obj => {
-    return headers.map(header => {
-      const valor = obj[header];
-      // Escapar comillas y wrap en comillas si contiene comas
-      if (valor === null || valor === undefined) return "";
-      const valorStr = String(valor);
-      if (valorStr.includes(",") || valorStr.includes('"') || valorStr.includes("\n")) {
-        return `"${valorStr.replace(/"/g, '""')}"`;
-      }
-      return valorStr;
-    }).join(",");
-  });
-
-  // Combinar headers y filas
-  return [headers.join(","), ...filas].join("\n");
+  const rows = datos.map((row) =>
+    headers.map((h) => {
+      const val = row[h];
+      if (val === null || val === undefined) return "";
+      const str = String(val);
+      return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+    }).join(",")
+  );
+  return [headers.join(","), ...rows].join("\n");
 }

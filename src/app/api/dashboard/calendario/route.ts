@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { solicitudes, usuarios } from "@/core/infrastructure/database/schema";
+import { solicitudes, usuarios } from "@/lib/db/schema";
 import { eq, and, isNull, gte, lte, or, inArray } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
     let whereConditions: any = and(
       isNull(solicitudes.deletedAt),
       or(
-        eq(solicitudes.estado, "aprobada"),
-        eq(solicitudes.estado, "en_uso")
+        eq(solicitudes.estado, "aprobada_rrhh"),
+        eq(solicitudes.estado, "finalizada")
       ),
       or(
         // La solicitud comienza en el mes

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { usuarios, solicitudes } from "@/core/infrastructure/database/schema";
+import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 
 export async function GET() {
@@ -78,14 +78,14 @@ export async function GET() {
     // Obtener usuarios en vacaciones (filtrado por departamento si es jefe)
     const enVacacionesCondition = debeFiltrarpDepartamento && usuariosIds.length > 0
       ? and(
-          eq(solicitudes.estado, "en_uso"),
+          eq(solicitudes.estado, "finalizada"),
           inArray(solicitudes.usuarioId, usuariosIds),
           isNull(solicitudes.deletedAt)
         )
       : debeFiltrarpDepartamento && usuariosIds.length === 0
       ? sql`1=0` // No hay usuarios, retornar 0
       : and(
-          eq(solicitudes.estado, "en_uso"),
+          eq(solicitudes.estado, "finalizada"),
           isNull(solicitudes.deletedAt)
         );
 

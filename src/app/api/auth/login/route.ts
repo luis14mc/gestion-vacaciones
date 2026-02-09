@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
-import { usuarios } from '@/core/infrastructure/database/schema';
-import { obtenerRolesYPermisos } from '@/core/application/rbac/rbac.service';
+import { usuarios } from '@/lib/db/schema';
+import { obtenerRolesYPermisos } from '@/services/rbac.service';
+import { loginLimiter, checkRateLimit } from '@/lib/security/rate-limiter';
 import type { LoginRequest, SessionUser } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 5 intentos por minuto por IP
+    const limited = checkRateLimit(request, loginLimiter);
+    if (limited) return limited;
+
     const body: LoginRequest = await request.json();
     const { email, password } = body;
 
@@ -18,12 +23,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Buscar usuario por email con su departamento
+    // Buscar usuario por email
     const usuario = await db.query.usuarios.findFirst({
-      where: eq(usuarios.email, email.toLowerCase()),
-      with: {
-        departamento: true
-      }
+      where: eq(usuarios.email, email.toLowerCase())
     });
 
     if (!usuario) {
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar contraseña
-    const passwordValida = await bcrypt.compare(password, usuario.password);
+    const passwordValida = await bcrypt.compare(password, usuario.passwordHash);
 
     if (!passwordValida) {
       return NextResponse.json(
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Actualizar último acceso
     await db
       .update(usuarios)
-      .set({ ultimoAcceso: new Date() })
+      .set({ ultimoAcceso: new Date().toISOString() })
       .where(eq(usuarios.id, usuario.id));
 
     // 🆕 Obtener roles y permisos del usuario
@@ -66,16 +68,16 @@ export async function POST(request: NextRequest) {
       email: usuario.email,
       nombre: usuario.nombre,
       apellido: usuario.apellido,
-      departamentoId: usuario.departamentoId,
-      departamentoNombre: usuario.departamento?.nombre,
+      departamentoId: usuario.departamentoId || undefined,
+      departamentoNombre: undefined, // Se carga por separado si lo necesitas
       cargo: usuario.cargo || undefined,
       // 🆕 RBAC: Roles y permisos del sistema
       roles: usuarioConRBAC?.roles || [],
       permisos: usuarioConRBAC?.permisos || [],
       // ⚠️ Legacy: Calculados desde roles para compatibilidad
-      esAdmin: usuarioConRBAC?.roles?.some(r => r.codigo === 'ADMIN') || false,
-      esRrhh: usuarioConRBAC?.roles?.some(r => r.codigo === 'RRHH') || false,
-      esJefe: usuarioConRBAC?.roles?.some(r => r.codigo === 'JEFE') || false,
+      esAdmin: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'ADMIN') || false,
+      esRrhh: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'RRHH') || false,
+      esJefe: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'JEFE') || false,
     };
 
     // 🍪 Crear respuesta y guardar sesión en cookie

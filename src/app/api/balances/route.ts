@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { balancesAusencias } from '@/core/infrastructure/database/schema';
+import { balances, anosLaborales } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 
 export const runtime = 'nodejs';
@@ -55,35 +55,32 @@ export async function GET(request: NextRequest) {
       console.log(`✅ Usuario ${session.email} consultando balance de usuario ${usuarioId}`);
     }
 
-    // Consulta SQL personalizada calculando cantidad_disponible
-    const balances = await db.execute(sql`
-      SELECT 
-        b.id,
-        b.usuario_id,
-        b.tipo_ausencia_id,
-        b.anio,
-        b.cantidad_asignada,
-        b.cantidad_utilizada,
-        b.cantidad_pendiente,
-        (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente) as cantidad_disponible,
-        b.estado,
-        b.fecha_vencimiento,
-        b.notas,
-        b.created_at,
-        b.updated_at,
-        ta.nombre as tipo_nombre,
-        ta.tipo as tipo_codigo,
-        ta.color_hex
-      FROM balances_ausencias b
-      LEFT JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
-      WHERE b.usuario_id = ${Number.parseInt(usuarioId)}
-        AND b.anio = ${Number.parseInt(anio)}
-      ORDER BY b.tipo_ausencia_id
-    `);
+    // Consulta SQL usando schema CNI
+    const balancesResult = await db
+      .select({
+        id: balances.id,
+        usuarioId: balances.usuarioId,
+        anoLaboralId: balances.anoLaboralId,
+        tipoAusencia: balances.tipoAusencia,
+        cantidadInicial: balances.cantidadInicial,
+        cantidadUsada: balances.cantidadUsada,
+        cantidadPendiente: balances.cantidadPendiente,
+        cantidadDisponible: balances.cantidadDisponible,
+        createdAt: balances.createdAt,
+        updatedAt: balances.updatedAt
+      })
+      .from(balances)
+      .innerJoin(anosLaborales, eq(balances.anoLaboralId, anosLaborales.id))
+      .where(
+        and(
+          eq(balances.usuarioId, Number.parseInt(usuarioId)),
+          eq(anosLaborales.ano, Number.parseInt(anio))
+        )
+      );
 
     return NextResponse.json({
       success: true,
-      data: balances.rows
+      data: balancesResult
     });
 
   } catch (error) {
@@ -117,9 +114,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { usuarioId, tipoAusenciaId, anio, cantidadAsignada } = body;
+    const { usuarioId, tipoAusencia, anoLaboralId, cantidadInicial } = body;
 
-    if (!usuarioId || !tipoAusenciaId || !anio || cantidadAsignada === undefined) {
+    if (!usuarioId || !tipoAusencia || !anoLaboralId || cantidadInicial === undefined) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos requeridos' },
         { status: 400 }
@@ -129,23 +126,24 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Usuario ${session.email} editando balance de usuario ${usuarioId}`);
 
     // Verificar si ya existe el balance
-    const balanceExistente = await db.query.balancesAusencias.findFirst({
+    const balanceExistente = await db.query.balances.findFirst({
       where: and(
-        eq(balancesAusencias.usuarioId, usuarioId),
-        eq(balancesAusencias.tipoAusenciaId, tipoAusenciaId),
-        eq(balancesAusencias.anio, anio)
+        eq(balances.usuarioId, usuarioId),
+        eq(balances.tipoAusencia, tipoAusencia),
+        eq(balances.anoLaboralId, anoLaboralId)
       )
     });
 
     if (balanceExistente) {
       // Actualizar
       await db
-        .update(balancesAusencias)
+        .update(balances)
         .set({
-          cantidadAsignada: cantidadAsignada.toString(),
-          version: balanceExistente.version + 1
+          cantidadInicial: cantidadInicial.toString(),
+          version: balanceExistente.version + 1,
+          updatedAt: new Date().toISOString()
         })
-        .where(eq(balancesAusencias.id, balanceExistente.id));
+        .where(eq(balances.id, balanceExistente.id));
 
       return NextResponse.json({
         success: true,
@@ -153,12 +151,11 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Crear nuevo
-      await db.insert(balancesAusencias).values({
+      await db.insert(balances).values({
         usuarioId,
-        tipoAusenciaId,
-        anio,
-        cantidadAsignada: cantidadAsignada.toString(),
-        estado: 'activo'
+        tipoAusencia,
+        anoLaboralId,
+        cantidadInicial: cantidadInicial.toString()
       });
 
       return NextResponse.json({

@@ -23,9 +23,6 @@
       }
     ],
     "paths": {
-      "@/core/*": [
-        "./src/core/*"
-      ],
       "@/features/*": [
         "./src/features/*"
       ],

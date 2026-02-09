@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { usuarios } from "@/core/infrastructure/database/schema";
+import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import bcrypt from "bcryptjs";
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Verificar contraseña actual
-    const passwordMatch = await bcrypt.compare(currentPassword, usuario.password);
+    const passwordMatch = await bcrypt.compare(currentPassword, usuario.passwordHash);
 
     if (!passwordMatch) {
       return NextResponse.json(
@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest) {
     await db
       .update(usuarios)
       .set({
-        password: hashedPassword,
+        passwordHash: hashedPassword,
       })
       .where(eq(usuarios.id, userId));
 

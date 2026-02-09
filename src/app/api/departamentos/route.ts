@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { departamentos } from '@/core/infrastructure/database/schema';
+import { departamentos } from '@/lib/db/schema';
 import { isNull, asc } from 'drizzle-orm';
 
 export const runtime = 'nodejs';

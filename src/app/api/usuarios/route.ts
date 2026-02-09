@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { usuarios } from '@/lib/db/schema';
+import { eq, and, like, or, isNull } from 'drizzle-orm';
 import { 
-  obtenerUsuarios, 
   crearUsuario,
-  actualizarUsuario,
-  desactivarUsuario
-} from '@/core/application/services/usuarios.service';
+  obtenerUsuarioPorId
+} from '@/services/usuarios.service';
 
 export const runtime = 'nodejs';
 
@@ -47,11 +48,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Usar servicio para obtener usuarios
-    const usuariosData = await obtenerUsuarios({
-      departamentoId: filtroDepto,
-      search: search || undefined,
-      soloActivos
+    // Construir condiciones de query
+    const conditions = [];
+    
+    if (soloActivos) {
+      conditions.push(eq(usuarios.activo, true));
+    }
+    
+    if (filtroDepto) {
+      conditions.push(eq(usuarios.departamentoId, filtroDepto));
+    }
+    
+    if (search) {
+      conditions.push(
+        or(
+          like(usuarios.nombre, `%${search}%`),
+          like(usuarios.apellido, `%${search}%`),
+          like(usuarios.email, `%${search}%`)
+        )
+      );
+    }
+
+    const usuariosData = await db.query.usuarios.findMany({
+      where: conditions.length > 0 ? and(...conditions) : undefined,
+      orderBy: (usuarios, { asc }) => [asc(usuarios.apellido)]
     });
 
     return NextResponse.json({
@@ -120,8 +140,7 @@ export async function POST(request: NextRequest) {
       password,
       departamentoId,
       cargo,
-      cedula,
-      fechaIngreso: fechaIngreso ? new Date(fechaIngreso) : new Date()
+      fechaIngreso: fechaIngreso ? new Date(fechaIngreso).toISOString() : new Date().toISOString()
     });
 
     return NextResponse.json({
@@ -173,12 +192,15 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`✅ Usuario ${session.email} editando usuario ID ${id}`);
 
-    // Usar servicio para actualizar usuario
-    const usuarioActualizado = await actualizarUsuario(
-      id,
-      camposActualizar,
-      session.id
-    );
+    // Actualizar usuario directamente
+    const [usuarioActualizado] = await db
+      .update(usuarios)
+      .set({
+        ...camposActualizar,
+        updatedAt: new Date().toISOString()
+      })
+      .where(eq(usuarios.id, id))
+      .returning();
 
     return NextResponse.json({
       success: true,
@@ -231,12 +253,15 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`✅ Usuario ${session.email} eliminando usuario ID ${usuarioId}`);
 
-    // Usar servicio para desactivar usuario
-    const usuarioDesactivado = await desactivarUsuario(
-      usuarioId,
-      session.id,
-      'Desactivado desde interfaz de administración'
-    );
+    // Soft delete del usuario
+    const [usuarioDesactivado] = await db
+      .update(usuarios)
+      .set({
+        activo: false,
+        updatedAt: new Date().toISOString()
+      })
+      .where(eq(usuarios.id, usuarioId))
+      .returning();
 
     return NextResponse.json({
       success: true,

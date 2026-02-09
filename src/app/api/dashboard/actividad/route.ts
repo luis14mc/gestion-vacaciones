@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { usuarios, solicitudes } from "@/core/infrastructure/database/schema";
-import { desc, isNull, or, eq, and, inArray } from "drizzle-orm";
+import { usuarios, solicitudes } from "@/lib/db/schema";
+import { desc, isNull, or, eq, and, inArray, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -27,8 +27,8 @@ export async function GET() {
     let solicitudesCondition: any = and(
       isNull(solicitudes.deletedAt),
       or(
-        eq(solicitudes.estado, "pendiente"),
-        eq(solicitudes.estado, "aprobada"),
+        eq(solicitudes.estado, "pendiente_jefe"),
+        eq(solicitudes.estado, "aprobada_rrhh"),
         eq(solicitudes.estado, "aprobada_jefe")
       )
     );
@@ -56,7 +56,7 @@ export async function GET() {
     const ultimasSolicitudes = await db
       .select({
         id: solicitudes.id,
-        tipo: solicitudes.tipoAusenciaId,
+        tipo: solicitudes.tipo,
         estado: solicitudes.estado,
         fechaInicio: solicitudes.fechaInicio,
         fechaFin: solicitudes.fechaFin,
@@ -89,8 +89,8 @@ export async function GET() {
 
       actividades.push({
         id: `solicitud-${solicitud.id}`,
-        tipo: solicitud.estado === "aprobada" ? "aprobada" : "nueva_solicitud",
-        titulo: solicitud.estado === "aprobada" ? "Solicitud Aprobada" : "Nueva Solicitud",
+        tipo: ['aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(solicitud.estado) ? "aprobada" : "nueva_solicitud",
+        titulo: ['aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(solicitud.estado) ? "Solicitud Aprobada" : "Nueva Solicitud",
         descripcion: `${solicitud.usuario.nombre} ${solicitud.usuario.apellido} - ${dias} días (${fechaRango})`,
         fecha: solicitud.createdAt,
       });

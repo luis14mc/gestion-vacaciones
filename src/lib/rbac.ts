@@ -1,5 +1,5 @@
 /**
- * @deprecated Use @/core/application/rbac instead
- * Alias de compatibilidad - Será eliminado en versión 3.0
+ * @deprecated Use @/services/rbac.service instead
+ * Alias de compatibilidad
  */
-export * from '@/core/application/rbac';
+export * from '@/services/rbac.service';

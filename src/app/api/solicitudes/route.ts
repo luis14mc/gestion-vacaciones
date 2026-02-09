@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { solicitudes, usuarios, tiposAusenciaConfig } from '@/core/infrastructure/database/schema';
+import { solicitudes, usuarios } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { 
   crearSolicitud, 
   aprobarSolicitudJefe, 
   aprobarSolicitudRRHH, 
   rechazarSolicitud 
-} from '@/core/application/services/solicitudes.service';
+} from '@/services/solicitudes.service';
 
 export const runtime = 'nodejs';
 
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         
         // Si no se especifica estado, por defecto filtrar pendientes
         if (!estado) {
-          conditions.push(eq(solicitudes.estado, 'pendiente'));
+          conditions.push(eq(solicitudes.estado, 'pendiente_jefe'));
           console.log('🔍 Filtrando solicitudes pendientes para JEFE');
         }
       } else {
@@ -110,9 +110,8 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(solicitudes.estado, estado as any));
     }
     
-    if (tipoAusenciaId) {
-      conditions.push(eq(solicitudes.tipoAusenciaId, Number.parseInt(tipoAusenciaId)));
-    }
+    // Nota: tipoAusenciaId ya no existe en CNI, filtrado por 'tipo' enum
+    // Si necesitas filtrar por tipo, usa searchParams.get('tipo')
 
     const offset = (page - 1) * pageSize;
 
@@ -120,14 +119,7 @@ export async function GET(request: NextRequest) {
     const results = await db.query.solicitudes.findMany({
       where: and(...conditions),
       with: {
-        usuario: {
-          with: {
-            departamento: true
-          }
-        },
-        tipoAusencia: true,
-        aprobador: true,
-        aprobadorRrhh: true
+        usuario: true
       },
       orderBy: [desc(solicitudes.createdAt)],
       limit: pageSize,
@@ -143,9 +135,9 @@ export async function GET(request: NextRequest) {
     // Calcular estadísticas para el frontend
     const [stats] = await db
       .select({
-        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente', 'aprobada_jefe'))::int`,
-        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} = 'aprobada')::int`,
-        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} = 'rechazada')::int`,
+        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh'))::int`,
+        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'))::int`,
+        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh', 'rechazada_ejecutiva'))::int`,
       })
       .from(solicitudes)
       .where(and(...conditions));
@@ -154,23 +146,21 @@ export async function GET(request: NextRequest) {
     const solicitudesFormateadas = results.map((sol: any) => ({
       id: sol.id,
       usuarioId: sol.usuarioId,
-      tipoAusenciaId: sol.tipoAusenciaId,
+      tipo: sol.tipo,
       fechaInicio: sol.fechaInicio,
       fechaFin: sol.fechaFin,
-      dias: sol.cantidad,
+      dias: sol.diasSolicitados,
       motivo: sol.motivo,
       estado: sol.estado,
-      comentariosJefe: sol.comentariosJefe,
-      comentariosRrhh: sol.comentariosRrhh,
-      aprobadoPorJefeId: sol.aprobadoPorJefeId,
-      aprobadoPorRrhhId: sol.aprobadoPorRrhhId,
-      fechaAprobacionJefe: sol.fechaAprobacionJefe,
-      fechaAprobacionRrhh: sol.fechaAprobacionRrhh,
+      comentarioJefe: sol.comentarioJefe,
+      comentarioRrhh: sol.comentarioRrhh,
+      aprobadaJefePor: sol.aprobadaJefePor,
+      aprobadaRrhhPor: sol.aprobadaRrhhPor,
+      aprobadaJefeFecha: sol.aprobadaJefeFecha,
+      aprobadaRrhhFecha: sol.aprobadaRrhhFecha,
       fechaCreacion: sol.createdAt,
       usuario: sol.usuario ? `${sol.usuario.nombre} ${sol.usuario.apellido}` : 'Desconocido',
-      tipoAusencia: sol.tipoAusencia?.nombre || 'Desconocido',
-      aprobadorJefe: sol.aprobador ? `${sol.aprobador.nombre} ${sol.aprobador.apellido}` : null,
-      aprobadorRrhh: sol.aprobadorRrhh ? `${sol.aprobadorRrhh.nombre} ${sol.aprobadorRrhh.apellido}` : null,
+      tipoAusencia: sol.tipo || 'vacaciones',
     }));
 
     console.log(`✅ Retornando ${results.length} solicitudes (total: ${count})`);
@@ -238,16 +228,16 @@ export async function POST(request: NextRequest) {
     
     const {
       usuarioId,
-      tipoAusenciaId,
+      tipo = 'vacaciones',
       fechaInicio,
       fechaFin,
-      cantidad,
+      diasSolicitados,
       motivo,
       observaciones
     } = body;
 
     // Validaciones básicas
-    if (!usuarioId || !tipoAusenciaId || !fechaInicio || !fechaFin) {
+    if (!usuarioId || !tipo || !fechaInicio || !fechaFin) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos requeridos' },
         { status: 400 }
@@ -269,14 +259,12 @@ export async function POST(request: NextRequest) {
     // 4. USAR SERVICIO PARA CREAR SOLICITUD
     const solicitudCreada: any = await crearSolicitud({
       usuarioId,
-      tipoAusenciaId,
-      fechaInicio: new Date(fechaInicio),
-      fechaFin: new Date(fechaFin),
-      cantidad: cantidad || 0,
+      tipo: tipo as 'vacaciones' | 'permiso_salida' | 'licencia_medica' | 'permiso_personal',
+      fechaInicio,
+      fechaFin,
+      diasSolicitados: diasSolicitados || 0,
       motivo: motivo || '',
-      esPermiso: false,
-      direccionDuranteAusencia: observaciones || undefined,
-      telefonoDuranteAusencia: undefined
+      comentarioEmpleado: observaciones || undefined
     });
 
     // 5. Obtener solicitud completa con relaciones para respuesta
@@ -287,10 +275,7 @@ export async function POST(request: NextRequest) {
     const solicitudCompleta = await db.query.solicitudes.findFirst({
       where: eq(solicitudes.id, Number(solicitudCreada.id)),
       with: {
-        usuario: {
-          with: { departamento: true }
-        },
-        tipoAusencia: true
+        usuario: true
       }
     });
 
@@ -452,11 +437,7 @@ export async function PATCH(request: NextRequest) {
     const solicitudCompleta = await db.query.solicitudes.findFirst({
       where: eq(solicitudes.id, solicitudId),
       with: {
-        usuario: { with: { departamento: true } },
-        tipoAusencia: true,
-        aprobador: true,
-        aprobadorRrhh: true,
-        rechazador: true
+        usuario: true
       }
     });
 

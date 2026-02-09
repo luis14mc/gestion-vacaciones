@@ -31,7 +31,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       message: 'Permiso reportes.exportar agregado al rol JEFE',
-      verificacion: result.rows
+      verificacion: [...result]
     });
 
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { usuarios, departamentos, usuariosRoles, roles, balancesAusencias } from "@/core/infrastructure/database/schema";
+import { usuarios, departamentos, balances, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 
@@ -18,12 +18,10 @@ export async function GET(request: NextRequest) {
 
     const userId = session.id;
 
-    // Obtener usuario básico
-    const [usuario] = await db
-      .select()
-      .from(usuarios)
-      .where(eq(usuarios.id, userId))
-      .limit(1);
+    // Obtener usuario usando query API
+    const usuario = await db.query.usuarios.findFirst({
+      where: eq(usuarios.id, userId),
+    });
 
     if (!usuario) {
       return NextResponse.json(
@@ -32,37 +30,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Obtener departamento
-    const [departamento] = await db
-      .select()
-      .from(departamentos)
-      .where(eq(departamentos.id, usuario.departamentoId))
-      .limit(1);
+    // Obtener departamento si existe
+    let departamentoNombre = "Sin departamento";
+    let departamentoIdVal = 0;
+    if (usuario.departamentoId) {
+      const dept = await db.query.departamentos.findFirst({
+        where: eq(departamentos.id, usuario.departamentoId),
+      });
+      if (dept) {
+        departamentoNombre = dept.nombre;
+        departamentoIdVal = dept.id;
+      }
+    }
 
-    // Obtener roles del usuario
-    const usuarioRolesData = await db
-      .select({
-        rolId: usuariosRoles.rolId,
-        nombre: roles.nombre,
-        codigo: roles.codigo,
-      })
-      .from(usuariosRoles)
-      .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
-      .where(eq(usuariosRoles.usuarioId, userId));
+    // Obtener año laboral activo
+    const anoLaboral = await db.query.anosLaborales.findFirst({
+      where: eq(anosLaborales.activo, true)
+    });
 
-    // Obtener balance de vacaciones del año actual (tipo_ausencia_id = 1 es vacaciones)
-    const anioActual = new Date().getFullYear();
-    const [balance] = await db
-      .select()
-      .from(balancesAusencias)
-      .where(
-        and(
-          eq(balancesAusencias.usuarioId, userId),
-          eq(balancesAusencias.tipoAusenciaId, 1),
-          eq(balancesAusencias.anio, anioActual)
-        )
+    // Obtener balance de vacaciones del año activo
+    const balance = anoLaboral ? await db.query.balances.findFirst({
+      where: and(
+        eq(balances.usuarioId, userId),
+        eq(balances.tipoAusencia, 'vacaciones'),
+        eq(balances.anoLaboralId, anoLaboral.id)
       )
-      .limit(1);
+    }) : null;
 
     // Formatear respuesta
     const response = {
@@ -70,21 +63,17 @@ export async function GET(request: NextRequest) {
       nombre: `${usuario.nombre} ${usuario.apellido}`,
       email: usuario.email,
       fechaContratacion: usuario.fechaIngreso,
-      diasVacacionesAnuales: balance ? parseFloat(balance.cantidadAsignada) : 0,
-      diasAcumulados: balance ? parseFloat(balance.cantidadAsignada) - parseFloat(balance.cantidadUtilizada) - parseFloat(balance.cantidadPendiente) : 0,
+      diasVacacionesAnuales: balance ? parseFloat(balance.cantidadInicial) : 0,
+      diasAcumulados: balance ? parseFloat(balance.cantidadDisponible) : 0,
       departamento: {
-        id: departamento?.id || 0,
-        nombre: departamento?.nombre || "Sin departamento",
+        id: departamentoIdVal,
+        nombre: departamentoNombre,
       },
       puesto: {
         id: 0,
         nombre: usuario.cargo || "Sin cargo",
       },
-      roles: usuarioRolesData.map((r) => ({
-        id: r.rolId,
-        nombre: r.nombre,
-        codigo: r.codigo,
-      })),
+      roles: session.roles || [],
     };
 
     return NextResponse.json({
@@ -119,74 +108,62 @@ export async function PATCH(request: NextRequest) {
     const userId = session.id;
 
     // Por ahora, solo retornamos el perfil actualizado
-    // Los campos telefono y direccion no existen en el esquema actual
     // Obtener usuario actualizado
-    const [usuarioActualizado] = await db
-      .select()
-      .from(usuarios)
-      .where(eq(usuarios.id, userId))
-      .limit(1);
+    const usuario = await db.query.usuarios.findFirst({
+      where: eq(usuarios.id, userId),
+    });
 
-    if (!usuarioActualizado) {
+    if (!usuario) {
       return NextResponse.json(
         { success: false, error: "Usuario no encontrado" },
         { status: 404 }
       );
     }
 
-    // Obtener departamento
-    const [departamento] = await db
-      .select()
-      .from(departamentos)
-      .where(eq(departamentos.id, usuarioActualizado.departamentoId))
-      .limit(1);
+    // Obtener departamento si existe
+    let departamentoNombrePatch = "Sin departamento";
+    let departamentoIdPatch = 0;
+    if (usuario.departamentoId) {
+      const dept = await db.query.departamentos.findFirst({
+        where: eq(departamentos.id, usuario.departamentoId),
+      });
+      if (dept) {
+        departamentoNombrePatch = dept.nombre;
+        departamentoIdPatch = dept.id;
+      }
+    }
 
-    // Obtener roles del usuario
-    const usuarioRolesData = await db
-      .select({
-        rolId: usuariosRoles.rolId,
-        nombre: roles.nombre,
-        codigo: roles.codigo,
-      })
-      .from(usuariosRoles)
-      .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
-      .where(eq(usuariosRoles.usuarioId, userId));
+    // Obtener año laboral activo
+    const anoLaboral = await db.query.anosLaborales.findFirst({
+      where: eq(anosLaborales.activo, true)
+    });
 
-    // Obtener balance de vacaciones del año actual
-    const anioActual = new Date().getFullYear();
-    const [balance] = await db
-      .select()
-      .from(balancesAusencias)
-      .where(
-        and(
-          eq(balancesAusencias.usuarioId, userId),
-          eq(balancesAusencias.tipoAusenciaId, 1),
-          eq(balancesAusencias.anio, anioActual)
-        )
+    // Obtener balance de vacaciones
+    const balance = anoLaboral ? await db.query.balances.findFirst({
+      where: and(
+        eq(balances.usuarioId, userId),
+        eq(balances.tipoAusencia, 'vacaciones'),
+        eq(balances.anoLaboralId, anoLaboral.id)
       )
-      .limit(1);
+    }) : null;
 
     // Formatear respuesta
     const response = {
-      id: usuarioActualizado.id,
-      nombre: `${usuarioActualizado.nombre} ${usuarioActualizado.apellido}`,
-      email: usuarioActualizado.email,
-      fechaContratacion: usuarioActualizado.fechaIngreso,
-      diasVacacionesAnuales: balance ? parseFloat(balance.cantidadAsignada) : 0,
-      diasAcumulados: balance ? parseFloat(balance.cantidadAsignada) - parseFloat(balance.cantidadUtilizada) - parseFloat(balance.cantidadPendiente) : 0,
+      id: usuario.id,
+      nombre: `${usuario.nombre} ${usuario.apellido}`,
+      email: usuario.email,
+      fechaContratacion: usuario.fechaIngreso,
+      diasVacacionesAnuales: balance ? parseFloat(balance.cantidadInicial) : 0,
+      diasAcumulados: balance ? parseFloat(balance.cantidadDisponible) : 0,
       departamento: {
-        id: departamento?.id || 0,
-        nombre: departamento?.nombre || "Sin departamento",
+        id: departamentoIdPatch,
+        nombre: departamentoNombrePatch,
       },
       puesto: {
         id: 0,
-        nombre: usuarioActualizado.cargo || "Sin cargo",
+        nombre: usuario.cargo || "Sin cargo",
       },
-      roles: usuarioRolesData.map((r) => ({
-        id: r.rolId,
-        nombre: r.nombre,
-        codigo: r.codigo,
-      })),
+      roles: session.roles || [],
     };
 
     return NextResponse.json({

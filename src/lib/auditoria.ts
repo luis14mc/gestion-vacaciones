@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { auditoria } from "@/core/infrastructure/database/schema";
+// TODO: Schema CNI no tiene tabla auditoria - implementar cuando se agregue
+// import { auditoria } from "@/lib/db/schema";
 
 interface RegistrarAuditoriaParams {
   usuarioId: number;
@@ -13,6 +14,7 @@ interface RegistrarAuditoriaParams {
 
 /**
  * Registra una acción en la tabla de auditoría
+ * NOTA: Deshabilitado temporalmente - schema CNI no incluye tabla auditoria
  */
 export async function registrarAuditoria({
   usuarioId,
@@ -24,6 +26,9 @@ export async function registrarAuditoria({
   userAgent,
 }: RegistrarAuditoriaParams) {
   try {
+    // TODO: Implementar cuando schema CNI tenga tabla auditoria
+    console.log('[Auditoría deshabilitada]', { usuarioId, accion, tablaAfectada });
+    /* 
     await db.insert(auditoria).values({
       usuarioId,
       accion,
@@ -33,6 +38,7 @@ export async function registrarAuditoria({
       ipAddress: ipAddress ?? undefined,
       userAgent: userAgent ?? undefined,
     });
+    */
   } catch (error) {
     console.error("Error registrando auditoría:", error);
     // No lanzamos el error para no interrumpir la operación principal

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { usuarios, solicitudes } from "@/core/infrastructure/database/schema";
+import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
@@ -46,7 +46,7 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.estado, "en_uso"),
+          eq(solicitudes.estado, "finalizada"),
           isNull(solicitudes.deletedAt)
         )
       );
@@ -77,9 +77,9 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.aprobadoRrhhPor, session.user.id),
-          sql`${solicitudes.fechaAprobacionRrhh} >= ${hoyInicio}`,
-          sql`${solicitudes.fechaAprobacionRrhh} <= ${hoyFin}`,
+          eq(solicitudes.aprobadaRrhhPor, session.user.id),
+          sql`${solicitudes.aprobadaRrhhFecha} >= ${hoyInicio.toISOString()}`,
+          sql`${solicitudes.aprobadaRrhhFecha} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -90,10 +90,10 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.estado, "rechazada"),
-          eq(solicitudes.aprobadoRrhhPor, session.user.id),
-          sql`${solicitudes.updatedAt} >= ${hoyInicio}`,
-          sql`${solicitudes.updatedAt} <= ${hoyFin}`,
+          sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh')`,
+          eq(solicitudes.rechazadaPor, session.user.id),
+          sql`${solicitudes.updatedAt} >= ${hoyInicio.toISOString()}`,
+          sql`${solicitudes.updatedAt} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
         )
       );

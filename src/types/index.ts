@@ -3,10 +3,9 @@ import type {
   usuarios, 
   departamentos, 
   solicitudes, 
-  balancesAusencias, 
-  tiposAusenciaConfig,
-  configuracionSistema 
-} from '@/core/infrastructure/database/schema';
+  balances,
+  anosLaborales
+} from '@/lib/db/schema';
 
 // Tipos de NextAuth
 import type { DefaultSession } from "next-auth";
@@ -46,14 +45,18 @@ export type NuevoDepartamento = InferInsertModel<typeof departamentos>;
 export type Solicitud = InferSelectModel<typeof solicitudes>;
 export type NuevaSolicitud = InferInsertModel<typeof solicitudes>;
 
-export type Balance = InferSelectModel<typeof balancesAusencias>;
-export type NuevoBalance = InferInsertModel<typeof balancesAusencias>;
+export type Balance = InferSelectModel<typeof balances>;
+export type NuevoBalance = InferInsertModel<typeof balances>;
 
-export type TipoAusenciaConfig = InferSelectModel<typeof tiposAusenciaConfig>;
-export type NuevoTipoAusenciaConfig = InferInsertModel<typeof tiposAusenciaConfig>;
+export type AnoLaboral = InferSelectModel<typeof anosLaborales>;
+export type NuevoAnoLaboral = InferInsertModel<typeof anosLaborales>;
 
-export type ConfiguracionSistema = InferSelectModel<typeof configuracionSistema>;
-export type NuevaConfiguracionSistema = InferInsertModel<typeof configuracionSistema>;
+// Tipos de ausencia son enums en CNI, no tablas
+export type TipoAusencia = 
+  | 'vacaciones'
+  | 'permiso_salida'
+  | 'licencia_medica'
+  | 'permiso_personal';
 
 // =====================================================
 // TIPOS EXTENDIDOS CON RELACIONES
@@ -66,17 +69,11 @@ export type UsuarioCompleto = Usuario & {
 
 export type SolicitudCompleta = Solicitud & {
   usuario: Usuario;
-  tipoAusencia: TipoAusenciaConfig;
-  aprobador?: Usuario | null;
-  aprobadorRrhh?: Usuario | null;
-  rechazador?: Usuario | null;
   departamento?: Departamento;
 };
 
 export type BalanceCompleto = Balance & {
   usuario: Usuario;
-  tipoAusencia: TipoAusenciaConfig;
-  cantidadDisponible?: number;
 };
 
 // =====================================================
@@ -84,22 +81,17 @@ export type BalanceCompleto = Balance & {
 // =====================================================
 export type EstadoSolicitud = 
   | 'borrador'
-  | 'pendiente'
+  | 'pendiente_jefe'
   | 'aprobada_jefe'
-  | 'aprobada'
-  | 'rechazada'
+  | 'rechazada_jefe'
+  | 'pendiente_rrhh'
+  | 'aprobada_rrhh'
+  | 'rechazada_rrhh'
+  | 'pendiente_ejecutiva'
+  | 'aprobada_ejecutiva'
+  | 'rechazada_ejecutiva'
   | 'cancelada'
-  | 'en_uso';
-
-export type TipoAusencia = 
-  | 'vacaciones'
-  | 'permiso_personal'
-  | 'permiso_medico'
-  | 'permiso_maternidad'
-  | 'permiso_paternidad'
-  | 'permiso_estudio'
-  | 'permiso_duelo'
-  | 'permiso_otro';
+  | 'finalizada';
 
 export type UnidadTiempo = 'dias' | 'horas';
 export type EstadoBalance = 'activo' | 'vencido' | 'suspendido';
@@ -143,7 +135,7 @@ export interface SessionUser {
   email: string;
   nombre: string;
   apellido: string;
-  departamentoId: number;
+  departamentoId?: number | null;
   departamentoNombre?: string;
   cargo?: string;
   

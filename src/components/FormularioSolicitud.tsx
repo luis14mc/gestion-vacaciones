@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import type { TipoAusenciaConfig, BalanceCompleto, NuevaSolicitud } from '@/types';
+import type { TipoAusencia, BalanceCompleto, NuevaSolicitud } from '@/types';
 
 interface FormularioSolicitudProps {
   usuarioId: number;
@@ -11,7 +11,7 @@ interface FormularioSolicitudProps {
 }
 
 export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: FormularioSolicitudProps) {
-  const [tiposAusencia, setTiposAusencia] = useState<TipoAusenciaConfig[]>([]);
+  const [tiposAusencia, setTiposAusencia] = useState<any[]>([]);
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { balancesAusencias, solicitudes } from "@/core/infrastructure/database/schema";
+import { balances, solicitudes, anosLaborales } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
@@ -22,14 +22,19 @@ export async function GET() {
     const anioActual = new Date().getFullYear();
     console.log('🔍 Buscando balance para usuario ID:', usuarioId, 'Año:', anioActual);
 
-    // Obtener balance activo del usuario para el año actual
-    const balance = await db.query.balancesAusencias.findFirst({
-      where: and(
-        eq(balancesAusencias.usuarioId, usuarioId),
-        eq(balancesAusencias.anio, anioActual),
-        eq(balancesAusencias.estado, 'activo')
-      )
+    // Obtener año laboral activo
+    const anoLaboral = await db.query.anosLaborales.findFirst({
+      where: eq(anosLaborales.activo, true)
     });
+
+    // Obtener balance activo del usuario para el año actual
+    const balance = anoLaboral ? await db.query.balances.findFirst({
+      where: and(
+        eq(balances.usuarioId, usuarioId),
+        eq(balances.anoLaboralId, anoLaboral.id),
+        eq(balances.tipoAusencia, 'vacaciones')
+      )
+    }) : null;
 
     console.log('💰 Balance encontrado:', balance);
 
@@ -50,8 +55,8 @@ export async function GET() {
       });
     }
 
-    const diasAsignados = Number(balance.cantidadAsignada || 0);
-    const diasUsados = Number(balance.cantidadUtilizada || 0);
+    const diasAsignados = Number(balance.cantidadInicial || 0);
+    const diasUsados = Number(balance.cantidadUsada || 0);
 
     console.log('📊 Días asignados:', diasAsignados, 'Días usados:', diasUsados);
 
@@ -69,7 +74,7 @@ export async function GET() {
 
     // Calcular días pendientes de aprobación
     const solicitudesPendientesData = await db
-      .select({ dias: solicitudes.cantidad })
+      .select({ dias: solicitudes.diasSolicitados })
       .from(solicitudes)
       .where(
         and(
@@ -92,7 +97,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('aprobada', 'aprobada_jefe', 'en_uso')`,
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )
@@ -119,7 +124,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          eq(solicitudes.estado, 'en_uso'),
+          eq(solicitudes.estado, 'finalizada'),
           sql`${solicitudes.fechaInicio} <= ${hoy}`,
           sql`${solicitudes.fechaFin} >= ${hoy}`,
           isNull(solicitudes.deletedAt)

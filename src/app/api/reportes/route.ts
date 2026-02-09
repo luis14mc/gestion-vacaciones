@@ -1,97 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from 'drizzle-orm';
-import { db } from '@/lib/db';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { sql } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    // 1. Verificar autenticación
+    // 1. Autenticación
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { error: 'No autenticado' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    // 2. Verificar permiso para ver reportes generales
-    if (!tienePermiso(session, 'reportes.general')) {
-      console.log(`❌ Usuario ${session.email} sin permiso reportes.general`);
+    // 2. Verificar permiso
+    if (!tienePermiso(session, 'reportes.exportar')) {
       return NextResponse.json(
-        { error: 'No tienes permiso para ver reportes generales' },
+        { error: 'No tienes permiso para ver reportes' },
         { status: 403 }
       );
     }
 
-    console.log(`✅ Usuario ${session.email} consultando reportes generales`);
-
     const { searchParams } = new URL(request.url);
-    const tipoReporte = searchParams.get('tipoReporte');
-    const departamentoId = searchParams.get('departamentoId');
-    const tipoAusenciaId = searchParams.get('tipoAusenciaId');
-    const anio = searchParams.get('anio') || new Date().getFullYear().toString();
-    const fechaInicio = searchParams.get('fechaInicio');
-    const fechaFin = searchParams.get('fechaFin');
-    const estado = searchParams.get('estado');
+    const tipoReporte = searchParams.get('tipo') || 'balances';
+    const anio = parseInt(searchParams.get('anio') || String(new Date().getFullYear()));
+    const fechaInicio = searchParams.get('fechaInicio') || `${anio}-01-01`;
+    const fechaFin = searchParams.get('fechaFin') || `${anio}-12-31`;
+    const departamentoId = searchParams.get('departamentoId') ? parseInt(searchParams.get('departamentoId')!) : null;
 
-    let data: any = {};
+    let data;
 
     switch (tipoReporte) {
       case 'balances':
-        data = await generarReporteBalances(
-          Number(anio),
-          departamentoId ? Number(departamentoId) : null,
-          tipoAusenciaId ? Number(tipoAusenciaId) : null
-        );
+        data = await generarReporteBalances(anio, departamentoId);
         break;
-
       case 'solicitudes':
-        data = await generarReporteSolicitudes(
-          fechaInicio || '',
-          fechaFin || '',
-          departamentoId ? Number(departamentoId) : null,
-          tipoAusenciaId ? Number(tipoAusenciaId) : null,
-          estado || null
-        );
+        data = await generarReporteSolicitudes(fechaInicio, fechaFin, departamentoId);
         break;
-
       case 'departamentos':
-        data = await generarReporteDepartamentos(
-          Number(anio),
-          departamentoId ? Number(departamentoId) : null
-        );
+        data = await generarReporteDepartamentos(anio, departamentoId);
         break;
-
-      case 'proyecciones':
-        data = await generarReporteProyecciones(
-          Number(anio),
-          departamentoId ? Number(departamentoId) : null
-        );
-        break;
-
       case 'ausentismo':
-        data = await generarReporteAusentismo(
-          fechaInicio || '',
-          fechaFin || '',
-          departamentoId ? Number(departamentoId) : null,
-          tipoAusenciaId ? Number(tipoAusenciaId) : null
-        );
+        data = await generarReporteAusentismo(fechaInicio, fechaFin, departamentoId);
         break;
-
       default:
         return NextResponse.json(
-          { success: false, error: 'Tipo de reporte no válido' },
+          { error: 'Tipo de reporte no válido. Use: balances, solicitudes, departamentos, ausentismo' },
           { status: 400 }
         );
     }
 
-    return NextResponse.json({
-      success: true,
-      data
-    });
-
+    return NextResponse.json({ success: true, data, tipo: tipoReporte });
   } catch (error) {
     console.error('Error generando reporte:', error);
     return NextResponse.json(
@@ -101,225 +60,137 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Reporte de Balances Actuales
-async function generarReporteBalances(
-  anio: number,
-  departamentoId: number | null,
-  tipoAusenciaId: number | null
-) {
+// Reporte de Balances
+async function generarReporteBalances(anio: number, departamentoId: number | null) {
   const result = await db.execute(sql`
     SELECT 
       u.id as usuario_id,
       CONCAT(u.nombre, ' ', u.apellido) as empleado,
       u.email,
       d.nombre as departamento,
-      ta.nombre as tipo_ausencia,
-      b.cantidad_asignada as asignados,
-      b.cantidad_utilizada as utilizados,
+      b.tipo_ausencia,
+      b.cantidad_inicial as asignados,
+      b.cantidad_usada as utilizados,
       b.cantidad_pendiente as pendientes,
-      (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente) as disponibles
+      b.cantidad_disponible as disponibles
     FROM usuarios u
     LEFT JOIN departamentos d ON d.id = u.departamento_id
-    LEFT JOIN balances_ausencias b ON b.usuario_id = u.id AND b.anio = ${anio}
-    LEFT JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
+    LEFT JOIN balances b ON b.usuario_id = u.id 
+      AND b.ano_laboral_id = (SELECT id FROM anos_laborales WHERE ano = ${anio} LIMIT 1)
     WHERE u.activo = true
+      AND u.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-      ${tipoAusenciaId ? sql`AND b.tipo_ausencia_id = ${tipoAusenciaId}` : sql``}
-    ORDER BY d.nombre, u.apellido, ta.nombre
+    ORDER BY d.nombre, u.apellido, b.tipo_ausencia
   `);
 
-  return {
-    balances: result.rows
-  };
+  return { balances: [...result] };
 }
 
 // Reporte de Solicitudes
 async function generarReporteSolicitudes(
   fechaInicio: string,
   fechaFin: string,
-  departamentoId: number | null,
-  tipoAusenciaId: number | null,
-  estado: string | null
+  departamentoId: number | null
 ) {
   const result = await db.execute(sql`
     SELECT 
       s.id,
+      s.codigo,
       CONCAT(u.nombre, ' ', u.apellido) as empleado,
       d.nombre as departamento,
-      ta.nombre as tipo_ausencia,
+      s.tipo,
       s.fecha_inicio,
       s.fecha_fin,
-      s.cantidad as dias_solicitados,
+      s.dias_solicitados,
       s.estado,
       s.created_at as fecha_solicitud,
       s.motivo
     FROM solicitudes s
     INNER JOIN usuarios u ON u.id = s.usuario_id
     LEFT JOIN departamentos d ON d.id = u.departamento_id
-    INNER JOIN tipos_ausencia_config ta ON ta.id = s.tipo_ausencia_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
+      AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-      ${tipoAusenciaId ? sql`AND s.tipo_ausencia_id = ${tipoAusenciaId}` : sql``}
-      ${estado ? sql`AND s.estado = ${estado}` : sql``}
     ORDER BY s.fecha_inicio DESC
   `);
 
-  return {
-    solicitudes: result.rows
-  };
+  return { solicitudes: [...result] };
 }
 
 // Reporte por Departamentos
-async function generarReporteDepartamentos(
-  anio: number,
-  departamentoId: number | null
-) {
+async function generarReporteDepartamentos(anio: number, departamentoId: number | null) {
   const result = await db.execute(sql`
     SELECT 
       d.id,
       d.nombre,
       d.codigo,
       COUNT(DISTINCT u.id) as total_empleados,
-      COALESCE(SUM(b.cantidad_asignada::numeric), 0) as total_asignados,
-      COALESCE(SUM(b.cantidad_utilizada::numeric), 0) as total_usados,
-      COALESCE(SUM((b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente)::numeric), 0) as total_disponibles,
+      COALESCE(SUM(b.cantidad_inicial::numeric), 0) as total_asignados,
+      COALESCE(SUM(b.cantidad_usada::numeric), 0) as total_usados,
+      COALESCE(SUM(b.cantidad_disponible::numeric), 0) as total_disponibles,
       CASE 
-        WHEN COALESCE(SUM(b.cantidad_asignada::numeric), 0) > 0 
-        THEN ROUND((SUM(b.cantidad_utilizada::numeric) / SUM(b.cantidad_asignada::numeric) * 100)::numeric, 2)
+        WHEN COALESCE(SUM(b.cantidad_inicial::numeric), 0) > 0 
+        THEN ROUND((SUM(b.cantidad_usada::numeric) / SUM(b.cantidad_inicial::numeric) * 100)::numeric, 2)
         ELSE 0 
       END as porcentaje_uso
     FROM departamentos d
-    LEFT JOIN usuarios u ON u.departamento_id = d.id AND u.activo = true
-    LEFT JOIN balances_ausencias b ON b.usuario_id = u.id AND b.anio = ${anio}
-    WHERE d.activo = true
+    LEFT JOIN usuarios u ON u.departamento_id = d.id AND u.activo = true AND u.deleted_at IS NULL
+    LEFT JOIN balances b ON b.usuario_id = u.id 
+      AND b.ano_laboral_id = (SELECT id FROM anos_laborales WHERE ano = ${anio} LIMIT 1)
+    WHERE d.activo = true AND d.deleted_at IS NULL
       ${departamentoId ? sql`AND d.id = ${departamentoId}` : sql``}
     GROUP BY d.id, d.nombre, d.codigo
     ORDER BY d.nombre
   `);
 
-  return {
-    departamentos: result.rows
-  };
-}
-
-// Reporte de Proyecciones y Vencimientos
-async function generarReporteProyecciones(
-  anio: number,
-  departamentoId: number | null
-) {
-  // Días próximos a vencer (próximos 90 días)
-  const vencimientos = await db.execute(sql`
-    SELECT 
-      CONCAT(u.nombre, ' ', u.apellido) as empleado,
-      d.nombre as departamento,
-      ta.nombre as tipo_ausencia,
-      (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente) as dias_disponibles,
-      b.fecha_vencimiento,
-      (b.fecha_vencimiento - CURRENT_DATE) as dias_restantes
-    FROM balances_ausencias b
-    INNER JOIN usuarios u ON u.id = b.usuario_id
-    LEFT JOIN departamentos d ON d.id = u.departamento_id
-    INNER JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
-    WHERE b.anio = ${anio}
-      AND b.fecha_vencimiento IS NOT NULL
-      AND b.fecha_vencimiento > CURRENT_DATE
-      AND b.fecha_vencimiento <= CURRENT_DATE + INTERVAL '90 days'
-      AND (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente)::numeric > 0
-      AND u.activo = true
-      ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-    ORDER BY b.fecha_vencimiento ASC
-  `);
-
-  // Días acumulados (empleados con más de 15 días disponibles)
-  const acumulados = await db.execute(sql`
-    SELECT 
-      CONCAT(u.nombre, ' ', u.apellido) as empleado,
-      d.nombre as departamento,
-      ta.nombre as tipo_ausencia,
-      (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente) as dias_acumulados
-    FROM balances_ausencias b
-    INNER JOIN usuarios u ON u.id = b.usuario_id
-    LEFT JOIN departamentos d ON d.id = u.departamento_id
-    INNER JOIN tipos_ausencia_config ta ON ta.id = b.tipo_ausencia_id
-    WHERE b.anio = ${anio}
-      AND (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente)::numeric > 15
-      AND u.activo = true
-      ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-    ORDER BY (b.cantidad_asignada - b.cantidad_utilizada - b.cantidad_pendiente)::numeric DESC
-  `);
-
-  return {
-    proximos_vencer: vencimientos.rows,
-    dias_acumulados: acumulados.rows
-  };
+  return { departamentos: [...result] };
 }
 
 // Reporte de Ausentismo
 async function generarReporteAusentismo(
   fechaInicio: string,
   fechaFin: string,
-  departamentoId: number | null,
-  tipoAusenciaId: number | null
+  departamentoId: number | null
 ) {
   // Resumen general
   const resumen = await db.execute(sql`
     SELECT 
       COUNT(*) as total_ausencias,
-      SUM(s.cantidad)::numeric as total_dias,
-      ROUND(AVG(s.cantidad)::numeric, 2) as promedio_dias,
-      COUNT(DISTINCT s.usuario_id) as total_empleados,
-      ROUND((SUM(s.cantidad)::numeric / COUNT(DISTINCT s.usuario_id)::numeric), 2) as promedio_empleado
+      COALESCE(SUM(s.dias_solicitados::numeric), 0) as total_dias,
+      ROUND(COALESCE(AVG(s.dias_solicitados::numeric), 0), 2) as promedio_dias,
+      COUNT(DISTINCT s.usuario_id) as total_empleados
     FROM solicitudes s
     INNER JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada', 'aprobada_jefe')
+      AND s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
       AND u.activo = true
+      AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-      ${tipoAusenciaId ? sql`AND s.tipo_ausencia_id = ${tipoAusenciaId}` : sql``}
   `);
 
   // Tendencia mensual
   const tendencia = await db.execute(sql`
     SELECT 
-      TO_CHAR(s.fecha_inicio, 'YYYY-MM') as mes,
+      TO_CHAR(s.fecha_inicio::timestamp, 'YYYY-MM') as mes,
       COUNT(*) as solicitudes,
-      SUM(s.cantidad)::numeric as dias,
-      ROUND(AVG(s.cantidad)::numeric, 2) as promedio
+      COALESCE(SUM(s.dias_solicitados::numeric), 0) as dias,
+      ROUND(COALESCE(AVG(s.dias_solicitados::numeric), 0), 2) as promedio
     FROM solicitudes s
     INNER JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada', 'aprobada_jefe')
+      AND s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
       AND u.activo = true
+      AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-      ${tipoAusenciaId ? sql`AND s.tipo_ausencia_id = ${tipoAusenciaId}` : sql``}
-    GROUP BY TO_CHAR(s.fecha_inicio, 'YYYY-MM')
+    GROUP BY TO_CHAR(s.fecha_inicio::timestamp, 'YYYY-MM')
     ORDER BY mes
   `);
 
-  // Tipo más usado
-  const tipoMasUsado = await db.execute(sql`
-    SELECT ta.nombre
-    FROM solicitudes s
-    INNER JOIN usuarios u ON u.id = s.usuario_id
-    INNER JOIN tipos_ausencia_config ta ON ta.id = s.tipo_ausencia_id
-    WHERE s.fecha_inicio >= ${fechaInicio}
-      AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada', 'aprobada_jefe')
-      AND u.activo = true
-      ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
-    GROUP BY ta.nombre
-    ORDER BY COUNT(*) DESC
-    LIMIT 1
-  `);
-
   return {
-    resumen: {
-      ...resumen.rows[0],
-      tipo_mas_usado: tipoMasUsado.rows[0]?.nombre || 'N/A'
-    },
-    tendencia_mensual: tendencia.rows
+    resumen: [...resumen][0] || {},
+    tendencia_mensual: [...tendencia]
   };
 }

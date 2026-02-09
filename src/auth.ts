@@ -1,10 +1,10 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
-import { usuarios } from "@/core/infrastructure/database/schema";
+import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { obtenerRolesYPermisos } from "@/core/application/rbac/rbac.service";
+import { obtenerRolesYPermisos } from "@/services/rbac.service";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -24,9 +24,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Buscar usuario
         const usuario = await db.query.usuarios.findFirst({
           where: eq(usuarios.email, email.toLowerCase()),
-          with: {
-            departamento: true
-          }
         });
 
         if (!usuario?.activo) {
@@ -34,7 +31,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // Verificar contraseña
-        const passwordValida = await bcrypt.compare(password, usuario.password);
+        const passwordValida = await bcrypt.compare(password, usuario.passwordHash);
 
         if (!passwordValida) {
           return null;
@@ -43,7 +40,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Actualizar último acceso
         await db
           .update(usuarios)
-          .set({ ultimoAcceso: new Date() })
+          .set({ ultimoAcceso: new Date().toISOString() })
           .where(eq(usuarios.id, usuario.id));
 
         // 🆕 Obtener roles y permisos RBAC
@@ -59,15 +56,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           nombre: usuario.nombre,
           apellido: usuario.apellido,
           departamentoId: usuario.departamentoId,
-          departamentoNombre: usuario.departamento?.nombre,
+          departamentoNombre: undefined, // Se resuelve por separado si se necesita
           cargo: usuario.cargo,
           // 🆕 RBAC
           roles: usuarioConRBAC?.roles || [],
           permisos: usuarioConRBAC?.permisos || [],
           // ⚠️ Legacy (calculado desde roles)
-          esAdmin: usuarioConRBAC?.roles?.some(r => r.codigo === 'ADMIN') || false,
-          esRrhh: usuarioConRBAC?.roles?.some(r => r.codigo === 'RRHH') || false,
-          esJefe: usuarioConRBAC?.roles?.some(r => r.codigo === 'JEFE') || false,
+          esAdmin: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'ADMIN') || false,
+          esRrhh: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'RRHH') || false,
+          esJefe: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'JEFE') || false,
         };
       }
     })

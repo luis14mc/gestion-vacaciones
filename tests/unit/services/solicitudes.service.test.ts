@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as SolicitudesService from '../../../src/core/application/services/solicitudes.service';
+import * as SolicitudesService from '../../../src/services/solicitudes.service';
 
 describe('solicitudes.service.ts - Estructura y Exportaciones', () => {
   it('debe exportar todas las funciones principales del servicio', () => {
@@ -15,8 +15,8 @@ describe('solicitudes.service.ts - Estructura y Exportaciones', () => {
     expect(SolicitudesService.rechazarSolicitud).toBeDefined();
     expect(typeof SolicitudesService.rechazarSolicitud).toBe('function');
     
-    expect(SolicitudesService.obtenerSolicitudes).toBeDefined();
-    expect(typeof SolicitudesService.obtenerSolicitudes).toBe('function');
+    expect(SolicitudesService.listarSolicitudes).toBeDefined();
+    expect(typeof SolicitudesService.listarSolicitudes).toBe('function');
     
     expect(SolicitudesService.obtenerSolicitudPorId).toBeDefined();
     expect(typeof SolicitudesService.obtenerSolicitudPorId).toBe('function');
@@ -25,7 +25,7 @@ describe('solicitudes.service.ts - Estructura y Exportaciones', () => {
   it('debe tener las firmas correctas (async)', () => {
     expect(SolicitudesService.crearSolicitud.constructor.name).toBe('AsyncFunction');
     expect(SolicitudesService.aprobarSolicitudJefe.constructor.name).toBe('AsyncFunction');
-    expect(SolicitudesService.obtenerSolicitudes.constructor.name).toBe('AsyncFunction');
+    expect(SolicitudesService.listarSolicitudes.constructor.name).toBe('AsyncFunction');
   });
 
   it('debe documentar casos de uso esenciales', () => {
@@ -36,7 +36,7 @@ describe('solicitudes.service.ts - Estructura y Exportaciones', () => {
       'aprobarSolicitudJefe', 
       'aprobarSolicitudRRHH',
       'rechazarSolicitud',
-      'obtenerSolicitudes',
+      'listarSolicitudes',
       'obtenerSolicitudPorId'
     ];
     
@@ -125,7 +125,7 @@ describe('solicitudes.service.ts - Casos de Uso', () => {
     });
   });
 
-  describe('obtenerSolicitudes() - Casos esperados', () => {
+  describe('listarSolicitudes() - Casos esperados', () => {
     it('✅ Admin ve todas las solicitudes', () => {
       // Filtros RBAC: Admin puede ver todo el sistema
       expect(true).toBe(true);

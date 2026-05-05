@@ -1,40 +1,32 @@
-/**
- * ============================================================
- * WORKFLOW SERVICE - Orquestador de State Machine + BD
- * ============================================================
- * @description Conecta la State Machine pura con la infraestructura.
- *   Ejecuta transiciones, aplica efectos laterales y registra historial.
- * @version 1.0
- * ============================================================
- */
-
 import { db } from '@/lib/db';
+import { solicitudes, balances } from '@/lib/db/schema';
+import { eq, and, sql, isNull } from 'drizzle-orm';
 import {
-  solicitudes,
-  balances,
-  historialBalances,
-  anosLaborales,
-} from '@/lib/db/schema';
-import { eq, and, sql, lte, gte } from 'drizzle-orm';
-import {
-  transicionar,
-  obtenerAccionesDisponibles,
-  puedeTransicionar,
   type AccionSolicitud,
-  type TransicionContexto,
-  type EfectoLateral,
-  type ResultadoTransicion,
+  type EstadoSolicitud,
+  obtenerAccionesDisponibles,
+  transicionar,
 } from '@/lib/domain/state-machine';
-import type { EstadoSolicitud } from '@/types';
 
-// =====================================================
-// TIPOS
-// =====================================================
+const TIPOS_CON_BALANCE = ['vacaciones', 'licencia_medica', 'permiso_personal', 'licencia_paternidad', 'compensacion'] as const;
 
-export interface EjecutarAccionParams {
+function tipoConsumeBalance(tipo: string): boolean {
+  return TIPOS_CON_BALANCE.includes(tipo as any);
+}
+
+interface UsuarioAccion {
+  id: number;
+  esDirector: boolean;
+  esJefe: boolean;
+  esRrhh: boolean;
+  esAdmin: boolean;
+}
+
+interface EjecutarAccionParams {
   solicitudId: number;
   accion: AccionSolicitud;
   usuarioId: number;
+  esDirector: boolean;
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
@@ -43,325 +35,232 @@ export interface EjecutarAccionParams {
   motivoCancelacion?: string;
 }
 
-export interface ResultadoWorkflow {
+interface ResultadoAccion {
   exito: boolean;
   solicitud?: any;
-  transicion?: ResultadoTransicion;
+  transicion?: { estadoAnterior: string; estadoNuevo: string };
   error?: string;
 }
 
-// =====================================================
-// SERVICIO PRINCIPAL
-// =====================================================
-
-/**
- * Ejecutar una acción sobre una solicitud.
- * Orquesta: validación → transición → persistencia → efectos laterales
- */
-export async function ejecutarAccion(
-  params: EjecutarAccionParams
-): Promise<ResultadoWorkflow> {
-  const {
-    solicitudId,
-    accion,
-    usuarioId,
-    esJefe,
-    esRrhh,
-    esAdmin,
-    comentario,
-    motivoRechazo,
-    motivoCancelacion,
-  } = params;
-
-  return await db.transaction(async (tx) => {
-    // 1. Cargar solicitud con lock optimista
-    const solicitud = await tx.query.solicitudes.findFirst({
-      where: eq(solicitudes.id, solicitudId),
-    });
-
-    if (!solicitud) {
-      return { exito: false, error: 'Solicitud no encontrada' };
-    }
-
-    const diasSolicitados = solicitud.diasSolicitados
-      ? parseFloat(solicitud.diasSolicitados)
-      : 0;
-
-    // 2. Construir contexto para la state machine
-    const contexto: TransicionContexto = {
-      usuarioId,
-      solicitanteId: solicitud.usuarioId,
-      esJefe,
-      esRrhh,
-      esAdmin,
-      fechaInicio: solicitud.fechaInicio,
-      fechaFin: solicitud.fechaFin,
-      tipo: solicitud.tipo,
-    };
-
-    // 3. Ejecutar transición (pure)
-    const resultado = transicionar(
-      solicitud.estado as EstadoSolicitud,
-      accion,
-      contexto,
-      diasSolicitados
-    );
-
-    if (!resultado.exito) {
-      return { exito: false, error: resultado.error, transicion: resultado };
-    }
-
-    // 4. Preparar datos de actualización
-    const updateData: Record<string, any> = {
-      estado: resultado.estadoNuevo,
-      estadoAnterior: resultado.estadoAnterior,
-      version: sql`${solicitudes.version} + 1`,
-      updatedAt: new Date().toISOString(),
-    };
-
-    // Campos específicos según acción
-    switch (accion) {
-      case 'aprobar_jefe':
-        updateData.aprobadaJefePor = usuarioId;
-        updateData.aprobadaJefeFecha = new Date().toISOString();
-        updateData.comentarioJefe = comentario;
-        break;
-      case 'aprobar_rrhh':
-        updateData.aprobadaRrhhPor = usuarioId;
-        updateData.aprobadaRrhhFecha = new Date().toISOString();
-        updateData.comentarioRrhh = comentario;
-        break;
-      case 'aprobar_ejecutiva':
-        updateData.autorizadaEjecutivaPor = usuarioId;
-        updateData.autorizadaEjecutivaFecha = new Date().toISOString();
-        updateData.comentarioEjecutiva = comentario;
-        break;
-      case 'rechazar_jefe':
-      case 'rechazar_rrhh':
-      case 'rechazar_ejecutiva':
-        updateData.rechazadaPor = usuarioId;
-        updateData.rechazadaFecha = new Date().toISOString();
-        updateData.motivoRechazo = motivoRechazo;
-        break;
-      case 'cancelar':
-        updateData.metadata = sql`${solicitudes.metadata} || ${JSON.stringify({
-          canceladoPor: usuarioId,
-          canceladoFecha: new Date().toISOString(),
-          motivoCancelacion: motivoCancelacion || 'Cancelada por el usuario',
-        })}::jsonb`;
-        break;
-    }
-
-    // 5. Persistir cambio de estado (optimistic locking)
-    const [updated] = await tx
-      .update(solicitudes)
-      .set(updateData)
-      .where(
-        and(
-          eq(solicitudes.id, solicitudId),
-          eq(solicitudes.version, solicitud.version)
-        )
-      )
-      .returning();
-
-    if (!updated) {
-      return {
-        exito: false,
-        error: 'Conflicto de concurrencia. La solicitud fue modificada por otro usuario.',
-      };
-    }
-
-    // 6. Ejecutar efectos laterales
-    await ejecutarEfectos(tx, resultado.efectos, {
-      solicitudId,
-      usuarioId: solicitud.usuarioId,
-      anoLaboralId: solicitud.anoLaboralId,
-      tipo: solicitud.tipo,
-      realizadoPor: usuarioId,
-    });
-
-    return { exito: true, solicitud: updated, transicion: resultado };
-  });
-}
-
-/**
- * Obtener acciones disponibles para un usuario sobre una solicitud
- */
 export async function obtenerAccionesParaSolicitud(
   solicitudId: number,
-  usuarioCtx: { id: number; esJefe: boolean; esRrhh: boolean; esAdmin: boolean }
-): Promise<AccionSolicitud[]> {
-  const solicitud = await db.query.solicitudes.findFirst({
-    where: eq(solicitudes.id, solicitudId),
-  });
+  usuario: UsuarioAccion
+): Promise<{ accion: AccionSolicitud; label: string }[]> {
+  const [solicitud] = await db
+    .select({ estado: solicitudes.estado, usuarioId: solicitudes.usuarioId })
+    .from(solicitudes)
+    .where(and(eq(solicitudes.id, solicitudId), isNull(solicitudes.deletedAt)))
+    .limit(1);
 
   if (!solicitud) return [];
 
   const estadoActual = solicitud.estado as EstadoSolicitud;
-  const accionesDisponibles = obtenerAccionesDisponibles(estadoActual);
+  const acciones = obtenerAccionesDisponibles(estadoActual);
 
-  const contexto: TransicionContexto = {
-    usuarioId: usuarioCtx.id,
-    solicitanteId: solicitud.usuarioId,
-    esJefe: usuarioCtx.esJefe,
-    esRrhh: usuarioCtx.esRrhh,
-    esAdmin: usuarioCtx.esAdmin,
-    tipo: solicitud.tipo,
+  const labels: Record<string, string> = {
+    enviar: 'Enviar solicitud',
+    aprobar_jefe: 'Aprobar (Jefe)',
+    rechazar_jefe: 'Rechazar (Jefe)',
+    aprobar_rrhh: 'Aprobar (RRHH)',
+    rechazar_rrhh: 'Rechazar (RRHH)',
+    cancelar: 'Cancelar solicitud',
+    finalizar: 'Finalizar',
   };
 
-  // Filtrar solo las que el usuario puede ejecutar
-  return accionesDisponibles.filter((accion) => {
-    const { valido } = puedeTransicionar(estadoActual, accion, contexto);
-    return valido;
-  });
+  const ctx = {
+    usuarioId: usuario.id,
+    solicitanteId: solicitud.usuarioId,
+    esDirector: usuario.esDirector,
+    esJefe: usuario.esJefe,
+    esRrhh: usuario.esRrhh,
+    esAdmin: usuario.esAdmin,
+  };
+
+  return acciones
+    .filter(accion => {
+      const result = transicionar(estadoActual, accion, ctx, 0);
+      return result.exito;
+    })
+    .map(accion => ({
+      accion,
+      label: labels[accion] || accion,
+    }));
 }
 
-// =====================================================
-// CRON: Transiciones automáticas por fecha
-// =====================================================
+export async function ejecutarAccion(params: EjecutarAccionParams): Promise<ResultadoAccion> {
+  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, comentario, motivoRechazo, motivoCancelacion } = params;
 
-/**
- * Procesa transiciones automáticas basadas en fecha.
- *  - aprobada_rrhh/aprobada_ejecutiva → finalizada (si fechaFin <= hoy)
- * Diseñado para ejecutarse diariamente via API/cron.
- */
+  const [solicitud] = await db
+    .select()
+    .from(solicitudes)
+    .where(and(eq(solicitudes.id, solicitudId), isNull(solicitudes.deletedAt)))
+    .limit(1);
+
+  if (!solicitud) {
+    return { exito: false, error: 'Solicitud no encontrada' };
+  }
+
+  const estadoActual = solicitud.estado as EstadoSolicitud;
+  const dias = Number(solicitud.diasSolicitados ?? 0);
+
+  const resultado = transicionar(estadoActual, accion, {
+    usuarioId,
+    solicitanteId: solicitud.usuarioId,
+    esDirector,
+    esJefe,
+    esRrhh,
+    esAdmin,
+  }, dias);
+
+  if (!resultado.exito || !resultado.estadoNuevo) {
+    return { exito: false, error: resultado.error || 'Transición no válida' };
+  }
+
+  const nuevoEstado = resultado.estadoNuevo;
+  const ahora = new Date().toISOString();
+
+  // Histórico de comentarios en metadata
+  const metadataActual = (solicitud.metadata as any) || {};
+  const comentariosHist = Array.isArray(metadataActual.comentarios) ? [...metadataActual.comentarios] : [];
+  
+  if (comentario || motivoRechazo || motivoCancelacion) {
+    comentariosHist.push({
+      usuarioId,
+      accion,
+      comentario: comentario || motivoRechazo || motivoCancelacion,
+      fecha: ahora
+    });
+  }
+
+  const updateData: Record<string, any> = {
+    estado: nuevoEstado,
+    estadoAnterior: estadoActual,
+    version: solicitud.version + 1,
+    updatedAt: ahora,
+    metadata: { ...metadataActual, comentarios: comentariosHist }
+  };
+
+  if (accion === 'aprobar_jefe') {
+    updateData.aprobadaJefePor = usuarioId;
+    updateData.aprobadaJefeFecha = ahora;
+    if (comentario) updateData.comentarioJefe = comentario;
+  } else if (accion === 'aprobar_rrhh') {
+    updateData.aprobadaRrhhPor = usuarioId;
+    updateData.aprobadaRrhhFecha = ahora;
+    if (comentario) updateData.comentarioRrhh = comentario;
+  } else if (accion.startsWith('rechazar')) {
+    updateData.rechazadaPor = usuarioId;
+    updateData.rechazadaFecha = ahora;
+    updateData.motivoRechazo = motivoRechazo || comentario || null;
+  } else if (accion === 'cancelar') {
+    updateData.motivoRechazo = motivoCancelacion || comentario || 'Cancelada por el usuario';
+  }
+
+  const updateResult = await db
+    .update(solicitudes)
+    .set(updateData)
+    .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
+    .returning({ id: solicitudes.id });
+
+  if (updateResult.length === 0) {
+    return { exito: false, error: 'Conflicto de versión: la solicitud fue modificada por otro usuario' };
+  }
+
+  if (['rechazada_jefe', 'rechazada_rrhh', 'cancelada'].includes(nuevoEstado) && tipoConsumeBalance(solicitud.tipo)) {
+    await devolverDiasBalance({ ...solicitud, estadoAnterior: estadoActual });
+  }
+
+  const [updated] = await db.select().from(solicitudes).where(eq(solicitudes.id, solicitudId)).limit(1);
+
+  return {
+    exito: true,
+    solicitud: updated,
+    transicion: { estadoAnterior: estadoActual, estadoNuevo: nuevoEstado },
+  };
+}
+
+async function devolverDiasBalance(solicitud: any) {
+  if (!solicitud.diasSolicitados || Number(solicitud.diasSolicitados) <= 0) return;
+  if (!tipoConsumeBalance(solicitud.tipo)) return;
+
+  const dias = Number(solicitud.diasSolicitados);
+  const estadoOrigen = solicitud.estadoAnterior || solicitud.estado;
+
+  const tipoParaBalance = solicitud.tipo as typeof TIPOS_CON_BALANCE[number];
+
+  const [balance] = await db
+    .select()
+    .from(balances)
+    .where(
+      and(
+        eq(balances.usuarioId, solicitud.usuarioId),
+        eq(balances.anoLaboralId, solicitud.anoLaboralId),
+        eq(balances.tipoAusencia, tipoParaBalance)
+      )
+    )
+    .limit(1);
+
+  if (!balance) return;
+
+  const updateData: Record<string, any> = {
+    cantidadDisponible: (Number(balance.cantidadDisponible ?? 0) + dias).toFixed(2),
+    version: balance.version + 1,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const estadosConUsada = ['aprobada_rrhh', 'finalizada'];
+  if (estadosConUsada.includes(estadoOrigen)) {
+    updateData.cantidadUsada = Math.max(0, Number(balance.cantidadUsada ?? 0) - dias).toFixed(2);
+  } else {
+    updateData.cantidadPendiente = Math.max(0, Number(balance.cantidadPendiente ?? 0) - dias).toFixed(2);
+  }
+
+  await db
+    .update(balances)
+    .set(updateData)
+    .where(eq(balances.id, balance.id));
+}
+
 export async function procesarTransicionesAutomaticas(): Promise<{
   procesadas: number;
-  errores: Array<{ solicitudId: number; error: string }>;
+  errores: number;
 }> {
-  const hoy = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-
-  // Solicitudes aprobadas cuya fecha fin ya pasó
-  const pendientes = await db.query.solicitudes.findMany({
-    where: and(
-      sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva')`,
-      lte(solicitudes.fechaFin, hoy)
-    ),
-  });
-
+  const hoy = new Date().toISOString().split('T')[0];
   let procesadas = 0;
-  const errores: Array<{ solicitudId: number; error: string }> = [];
+  let errores = 0;
 
-  for (const sol of pendientes) {
-    try {
-      const resultado = await ejecutarAccion({
-        solicitudId: sol.id,
-        accion: 'iniciar_uso',
-        usuarioId: 0, // Sistema
-        esJefe: false,
-        esRrhh: false,
-        esAdmin: true, // El cron tiene privilegios de admin
-      });
+  try {
+    const paraFinalizar = await db
+      .select()
+      .from(solicitudes)
+      .where(
+        and(
+          sql`${solicitudes.estado} = 'aprobada_rrhh'`,
+          sql`${solicitudes.fechaFin} < ${hoy}`,
+          isNull(solicitudes.deletedAt)
+        )
+      );
 
-      if (resultado.exito) {
+    for (const sol of paraFinalizar) {
+      try {
+        await db
+          .update(solicitudes)
+          .set({
+            estado: 'finalizada',
+            estadoAnterior: sol.estado,
+            version: sol.version + 1,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(solicitudes.id, sol.id));
+
         procesadas++;
-      } else {
-        errores.push({ solicitudId: sol.id, error: resultado.error || 'Error desconocido' });
+      } catch {
+        errores++;
       }
-    } catch (error) {
-      errores.push({
-        solicitudId: sol.id,
-        error: error instanceof Error ? error.message : 'Error inesperado',
-      });
     }
+  } catch {
+    errores++;
   }
 
   return { procesadas, errores };
-}
-
-// =====================================================
-// EFECTOS LATERALES (privado)
-// =====================================================
-
-interface EfectoContexto {
-  solicitudId: number;
-  usuarioId: number;
-  anoLaboralId: number;
-  tipo: string;
-  realizadoPor: number;
-}
-
-async function ejecutarEfectos(
-  tx: any,
-  efectos: EfectoLateral[],
-  ctx: EfectoContexto
-) {
-  for (const efecto of efectos) {
-    switch (efecto.tipo) {
-      case 'RESERVAR_BALANCE':
-        if (ctx.tipo === 'vacaciones' && efecto.dias > 0) {
-          await tx.execute(sql`
-            UPDATE balances
-            SET cantidad_pendiente = cantidad_pendiente + ${efecto.dias},
-                updated_at = NOW()
-            WHERE usuario_id = ${ctx.usuarioId}
-              AND ano_laboral_id = ${ctx.anoLaboralId}
-              AND tipo_ausencia = 'vacaciones'
-          `);
-        }
-        break;
-
-      case 'CONFIRMAR_BALANCE':
-        if (ctx.tipo === 'vacaciones' && efecto.dias > 0) {
-          await tx.execute(sql`
-            UPDATE balances
-            SET cantidad_pendiente = cantidad_pendiente - ${efecto.dias},
-                cantidad_usada = cantidad_usada + ${efecto.dias},
-                updated_at = NOW()
-            WHERE usuario_id = ${ctx.usuarioId}
-              AND ano_laboral_id = ${ctx.anoLaboralId}
-              AND tipo_ausencia = 'vacaciones'
-          `);
-        }
-        break;
-
-      case 'LIBERAR_BALANCE':
-        if (ctx.tipo === 'vacaciones' && efecto.dias > 0) {
-          await tx.execute(sql`
-            UPDATE balances
-            SET cantidad_pendiente = GREATEST(cantidad_pendiente - ${efecto.dias}, 0),
-                updated_at = NOW()
-            WHERE usuario_id = ${ctx.usuarioId}
-              AND ano_laboral_id = ${ctx.anoLaboralId}
-              AND tipo_ausencia = 'vacaciones'
-          `);
-        }
-        break;
-
-      case 'REGISTRAR_HISTORIAL':
-        if (ctx.tipo === 'vacaciones') {
-          // Obtener balance actual para historial
-          const [balance] = await tx.execute(sql`
-            SELECT id, cantidad_usada, cantidad_disponible
-            FROM balances
-            WHERE usuario_id = ${ctx.usuarioId}
-              AND ano_laboral_id = ${ctx.anoLaboralId}
-              AND tipo_ausencia = 'vacaciones'
-            LIMIT 1
-          `) as any[];
-
-          if (balance) {
-            await tx.insert(historialBalances).values({
-              balanceId: balance.id,
-              usuarioId: ctx.usuarioId,
-              tipoMovimiento: efecto.movimiento as any,
-              cantidad: '0',
-              cantidadAnterior: balance.cantidad_disponible?.toString() || '0',
-              cantidadNueva: balance.cantidad_disponible?.toString() || '0',
-              solicitudId: ctx.solicitudId,
-              referencia: `SOL-${ctx.solicitudId}`,
-              descripcion: `Movimiento automático: ${efecto.movimiento}`,
-              realizadoPor: ctx.realizadoPor,
-              metadata: {},
-            });
-          }
-        }
-        break;
-
-      case 'NOTIFICAR':
-        // Las notificaciones se gestionan en la capa de presentación.
-        // Aquí solo registramos en metadata si es necesario.
-        break;
-    }
-  }
 }

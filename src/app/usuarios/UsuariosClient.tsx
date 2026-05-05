@@ -1,30 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Users,
-  UserPlus,
   Search,
-  Filter,
   Edit,
   Trash2,
-  Eye,
-  EyeOff,
-  X,
-  Save,
   ShieldCheck,
   Briefcase,
   Calendar,
   Plus,
 } from "lucide-react";
 import type { Session } from "next-auth";
-import Swal from "sweetalert2";
-import DatePicker from "react-datepicker";
-import { registerLocale } from "react-datepicker";
-import { es } from "date-fns/locale/es";
-
-registerLocale("es", es);
+import { notify, confirmAction } from '@/lib/swal';
+import { UsuarioDialog } from "./UsuarioDialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface Usuario {
   id: number;
@@ -33,11 +27,13 @@ interface Usuario {
   apellido: string;
   esAdmin: boolean;
   esRrhh: boolean;
+  esDirector: boolean;
   esJefe: boolean;
   activo: boolean;
   departamentoId?: number;
   cargo?: string | null;
   fechaIngreso?: string | null;
+  jefeSuperiorId?: number | null;
   departamento?: {
     id: number;
     nombre: string;
@@ -57,7 +53,6 @@ interface Departamento {
 }
 
 export default function UsuariosClient({ session }: UsuariosClientProps) {
-  const router = useRouter();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +89,6 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
       if (res.ok) {
         const response = await res.json();
         const data = response.data || response;
-        console.log("Departamentos cargados:", data);
         setDepartamentos(Array.isArray(data) ? data : []);
       } else {
         console.error("Error en respuesta de departamentos:", res.status);
@@ -108,12 +102,14 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     try {
       setLoading(true);
       const res = await fetch("/api/usuarios");
-      if (res.ok) {
-        const response = await res.json();
-        // El endpoint devuelve { success: true, usuarios: [...] }
-        const data = response.usuarios || response.data || response;
-        console.log("✅ Usuarios cargados:", data?.length || 0);
+      const response = await res.json();
+
+      if (res.ok && response.success) {
+        const data = response.usuarios || response.data || [];
         setUsuarios(Array.isArray(data) ? data : []);
+      } else {
+        console.error("❌ Error API usuarios:", response.error || res.status);
+        setUsuarios([]);
       }
     } catch (error) {
       console.error("Error cargando usuarios:", error);
@@ -166,73 +162,38 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
       if (res.ok) {
         await cargarUsuarios();
         cerrarModal();
-        await Swal.fire({
-          icon: "success",
-          title: editingUser ? "Usuario actualizado" : "Usuario creado",
-          text: editingUser
+        notify.success(
+          editingUser
             ? "El usuario ha sido actualizado exitosamente"
-            : "El usuario ha sido creado exitosamente",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+            : "El usuario ha sido creado exitosamente"
+        );
       } else {
         const errorData = await res.json();
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: errorData.error || "No se pudo guardar el usuario",
-        });
+        notify.error(errorData.error || "No se pudo guardar el usuario");
       }
     } catch (error) {
       console.error("Error guardando usuario:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error guardando usuario",
-      });
+      notify.error("Error guardando usuario");
     }
   };
 
   const handleDelete = async (id: number) => {
-    const result = await Swal.fire({
-      icon: "warning",
-      title: "¿Estás seguro?",
-      text: "Esta acción no se puede deshacer",
-      showCancelButton: true,
-      confirmButtonText: "Sí, eliminar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-    });
+    const result = await confirmAction('Confirmar eliminación', '¿Está seguro de eliminar este usuario? Esta acción no se puede deshacer.', { confirmText: 'Eliminar', icon: 'warning' });
 
-    if (!result.isConfirmed) return;
+    if (!result.confirmed) return;
 
     try {
       const res = await fetch(`/api/usuarios?id=${id}`, { method: "DELETE" });
       if (res.ok) {
         await cargarUsuarios();
-        await Swal.fire({
-          icon: "success",
-          title: "Eliminado",
-          text: "El usuario ha sido eliminado exitosamente",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        notify.success("El usuario ha sido eliminado exitosamente");
       } else {
         const data = await res.json();
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: data.error || "Error eliminando usuario",
-        });
+        notify.error(data.error || "Error eliminando usuario");
       }
     } catch (error) {
       console.error("Error eliminando usuario:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al procesar la solicitud",
-      });
+      notify.error("Error al procesar la solicitud");
     }
   };
 
@@ -290,8 +251,9 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
       filtroRol === "todos" ||
       (filtroRol === "admin" && u.esAdmin) ||
       (filtroRol === "rrhh" && u.esRrhh) ||
+      (filtroRol === "director" && u.esDirector) ||
       (filtroRol === "jefe" && u.esJefe) ||
-      (filtroRol === "empleado" && !u.esAdmin && !u.esRrhh && !u.esJefe);
+      (filtroRol === "empleado" && !u.esAdmin && !u.esRrhh && !u.esDirector && !u.esJefe);
 
     const matchEstado =
       filtroEstado === "todos" ||
@@ -307,42 +269,36 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
   const administradores = usuarios.filter((u) => u.esAdmin).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4">
+    <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">
-              <Users className="w-8 h-8" />
+            <div className="bg-muted p-2.5 rounded-xl">
+              <Users className="w-5 h-5 text-muted-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Gestión de Usuarios</h1>
-              <p className="text-base-content/70">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Gestión de Usuarios</h1>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
                 Administra usuarios del sistema
               </p>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost"
-          >
-            ← Volver
-          </button>
         </div>
 
         {/* Barra de búsqueda y filtros */}
-        <div className="card bg-base-100 shadow-xl mb-6">
-          <div className="card-body">
+        <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
+          <div className="p-5">
             <div className="grid grid-cols-1 gap-4">
               {/* Búsqueda */}
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                  <Search className="w-5 h-5 text-base-content/50" />
+                  <Search className="w-4 h-4 text-muted-foreground" />
                 </div>
-                <input
+                <Input
                   type="text"
                   placeholder="Buscar por nombre, apellido o email..."
-                  className="input input-bordered w-full pl-12"
+                  className="w-full pl-11 h-10"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -351,38 +307,41 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
               {/* Filtros y Botón */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Filtro por rol */}
-                <select
-                  className="select select-bordered w-full"
-                  value={filtroRol}
-                  onChange={(e) => setFiltroRol(e.target.value)}
-                >
-                  <option value="todos">Todos los roles</option>
-                  <option value="admin">Administradores</option>
-                  <option value="rrhh">RRHH</option>
-                  <option value="jefe">Jefes</option>
-                  <option value="empleado">Empleados</option>
-                </select>
+                <Select value={filtroRol} onValueChange={setFiltroRol}>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="Todos los roles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los roles</SelectItem>
+                    <SelectItem value="admin">Administradores</SelectItem>
+                    <SelectItem value="rrhh">RRHH</SelectItem>
+                    <SelectItem value="director">Directores</SelectItem>
+                    <SelectItem value="jefe">Jefes</SelectItem>
+                    <SelectItem value="empleado">Empleados</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {/* Filtro por estado */}
-                <select
-                  className="select select-bordered w-full"
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
-                >
-                  <option value="todos">Todos</option>
-                  <option value="activos">Activos</option>
-                  <option value="inactivos">Inactivos</option>
-                </select>
+                <Select value={filtroEstado} onValueChange={setFiltroEstado}>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="activos">Activos</SelectItem>
+                    <SelectItem value="inactivos">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {/* Botón nuevo usuario */}
-                <button
+                <Button
                   onClick={abrirModalNuevo}
-                  className="btn btn-primary gap-2 w-full sm:w-auto"
+                  className="w-full sm:w-auto h-10"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Nuevo Usuario</span>
                   <span className="sm:hidden">Nuevo</span>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -390,183 +349,178 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
 
         {/* Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="card bg-gradient-to-br from-primary to-primary/80 text-primary-content shadow-xl">
-            <div className="card-body p-6">
-              <h3 className="text-sm opacity-90 font-medium mb-2 h-8 flex items-center">Total Usuarios</h3>
-              <p className="text-4xl font-bold">{totalUsuarios}</p>
-            </div>
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <h3 className="text-[13px] text-muted-foreground font-medium mb-2 h-8 flex items-center">Total Usuarios</h3>
+            <p className="text-xl font-semibold text-primary">{totalUsuarios}</p>
           </div>
-          <div className="card bg-gradient-to-br from-success to-success/80 text-success-content shadow-xl">
-            <div className="card-body p-6">
-              <h3 className="text-sm opacity-90 font-medium mb-2 h-8 flex items-center">Activos</h3>
-              <p className="text-4xl font-bold">{usuariosActivos}</p>
-            </div>
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <h3 className="text-[13px] text-muted-foreground font-medium mb-2 h-8 flex items-center">Activos</h3>
+            <p className="text-xl font-semibold text-green-500">{usuariosActivos}</p>
           </div>
-          <div className="card bg-gradient-to-br from-secondary to-secondary/80 text-secondary-content shadow-xl">
-            <div className="card-body p-6">
-              <h3 className="text-sm opacity-90 font-medium mb-2 h-8 flex items-center">
-                Administradores
-              </h3>
-              <p className="text-4xl font-bold">{administradores}</p>
-            </div>
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <h3 className="text-[13px] text-muted-foreground font-medium mb-2 h-8 flex items-center">
+              Administradores
+            </h3>
+            <p className="text-xl font-semibold text-blue-500">{administradores}</p>
           </div>
-          <div className="card bg-gradient-to-br from-accent to-accent/80 text-accent-content shadow-xl">
-            <div className="card-body p-6">
-              <h3 className="text-sm opacity-90 font-medium mb-2 h-8 flex items-center">Filtrados</h3>
-              <p className="text-4xl font-bold">{usuariosFiltrados.length}</p>
-            </div>
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <h3 className="text-[13px] text-muted-foreground font-medium mb-2 h-8 flex items-center">Filtrados</h3>
+            <p className="text-xl font-semibold text-orange-500">{usuariosFiltrados.length}</p>
           </div>
         </div>
 
         {/* Tabla de usuarios */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
+        <div className="bg-card text-card-foreground border shadow-sm rounded-xl">
+          <div className="p-5">
+            <h2 className="text-lg font-semibold mb-4">
               Lista de Usuarios ({usuariosFiltrados.length})
             </h2>
 
             {loading ? (
               <div className="flex justify-center py-12">
-                <span className="loading loading-spinner loading-lg"></span>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
               </div>
             ) : (
               <>
                 {/* Vista Desktop/Tablet - Tabla */}
                 <div className="hidden lg:block overflow-x-auto">
-                  <table className="table table-zebra">
-                    <thead>
-                      <tr>
-                        <th>Usuario</th>
-                        <th>Email</th>
-                        <th>Rol</th>
-                        <th>Departamento</th>
-                        <th>Estado</th>
-                        <th>Días Disponibles</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Rol</TableHead>
+                        <TableHead>Departamento</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Días Disponibles</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {usuariosFiltrados.map((usuario) => (
-                        <tr key={usuario.id}>
-                          <td>
+                        <TableRow key={usuario.id}>
+                          <TableCell>
                             <div className="font-semibold">
                               {usuario.nombre} {usuario.apellido}
                             </div>
-                          </td>
-                          <td>{usuario.email}</td>
-                          <td>
+                          </TableCell>
+                          <TableCell>{usuario.email}</TableCell>
+                          <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {usuario.esAdmin && (
-                                <span className="badge badge-error gap-1">
+                                <Badge variant="destructive" className="gap-1">
                                   <ShieldCheck className="w-3 h-3" />
                                   Admin
-                                </span>
+                                </Badge>
                               )}
                               {usuario.esRrhh && (
-                                <span className="badge badge-warning gap-1">
+                                <Badge variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600">
                                   <Users className="w-3 h-3" />
                                   RRHH
-                                </span>
+                                </Badge>
+                              )}
+                              {usuario.esDirector && (
+                                <Badge variant="default" className="gap-1 bg-purple-500 hover:bg-purple-600">
+                                  <Briefcase className="w-3 h-3" />
+                                  Director
+                                </Badge>
                               )}
                               {usuario.esJefe && (
-                                <span className="badge badge-info gap-1">
+                                <Badge variant="default" className="gap-1 bg-blue-500 hover:bg-blue-600">
                                   <Briefcase className="w-3 h-3" />
                                   Jefe
-                                </span>
+                                </Badge>
                               )}
-                              {!usuario.esAdmin &&
-                                !usuario.esRrhh &&
-                                !usuario.esJefe && (
-                                  <span className="badge badge-ghost">
-                                    Empleado
-                                  </span>
-                                )}
+                              {!usuario.esAdmin && !usuario.esRrhh && !usuario.esDirector && !usuario.esJefe && (
+                                <Badge variant="outline" className="text-muted-foreground">
+                                  Empleado
+                                </Badge>
+                              )}
                             </div>
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
                             {usuario.departamento ? (
-                              typeof usuario.departamento === 'string' 
-                                ? usuario.departamento 
+                              typeof usuario.departamento === 'string'
+                                ? usuario.departamento
                                 : usuario.departamento.nombre
                             ) : (
-                              <span className="text-base-content/50">
-                                Sin departamento
-                              </span>
+                              <span className="text-muted-foreground">Sin departamento</span>
                             )}
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
                             {usuario.activo ? (
-                              <span className="badge badge-success">Activo</span>
+                              <Badge variant="default" className="bg-green-500 hover:bg-green-600">Activo</Badge>
                             ) : (
-                              <span className="badge badge-error">Inactivo</span>
+                              <Badge variant="destructive">Inactivo</Badge>
                             )}
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
                             <span className="font-semibold">
-                              {usuario.diasDisponibles !== undefined
-                                ? usuario.diasDisponibles
-                                : "-"}
+                              {usuario.diasDisponibles !== undefined ? usuario.diasDisponibles : "-"}
                             </span>
-                          </td>
-                          <td>
-                            <div className="flex gap-2">
-                              <button
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => abrirModalEditar(usuario)}
-                                className="btn btn-sm btn-ghost"
                               >
                                 <Edit className="w-4 h-4" />
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
                                 onClick={() => handleDelete(usuario.id)}
-                                className="btn btn-sm btn-ghost text-error"
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </button>
+                              </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
 
                 {/* Vista Mobile - Cards */}
                 <div className="lg:hidden space-y-4">
                   {usuariosFiltrados.map((usuario) => (
-                    <div key={usuario.id} className="card bg-base-100 border border-base-300">
-                      <div className="card-body p-4">
+                    <div key={usuario.id} className="bg-card text-card-foreground border shadow-sm rounded-xl">
+                      <div className="p-4">
                         {/* Header */}
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <div className="font-bold text-base">
+                            <div className="font-semibold text-[13px]">
                               {usuario.nombre} {usuario.apellido}
                             </div>
-                            <div className="text-sm text-base-content/70">
+                            <div className="text-sm text-muted-foreground">
                               {usuario.email}
                             </div>
                           </div>
                           {usuario.activo ? (
-                            <span className="badge badge-success badge-sm">Activo</span>
+                            <Badge variant="default" className="bg-green-500 hover:bg-green-600">Activo</Badge>
                           ) : (
-                            <span className="badge badge-error badge-sm">Inactivo</span>
+                            <Badge variant="destructive">Inactivo</Badge>
                           )}
                         </div>
 
                         {/* Info */}
                         <div className="space-y-2 text-sm">
                           <div>
-                            <span className="text-base-content/60">Departamento:</span>{" "}
+                            <span className="text-muted-foreground">Departamento:</span>{" "}
                             <span className="font-medium">
                               {usuario.departamento ? (
-                                typeof usuario.departamento === 'string' 
-                                  ? usuario.departamento 
+                                typeof usuario.departamento === 'string'
+                                  ? usuario.departamento
                                   : usuario.departamento.nombre
                               ) : "Sin departamento"}
                             </span>
                           </div>
                           <div>
-                            <span className="text-base-content/60">Días disponibles:</span>{" "}
-                            <span className="font-bold">
+                            <span className="text-muted-foreground">Días disponibles:</span>{" "}
+                            <span className="font-semibold">
                               {usuario.diasDisponibles !== undefined
                                 ? usuario.diasDisponibles
                                 : "-"}
@@ -577,48 +531,56 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                         {/* Roles */}
                         <div className="flex flex-wrap gap-1 mt-2">
                           {usuario.esAdmin && (
-                            <span className="badge badge-error badge-sm gap-1">
+                            <Badge variant="destructive" className="gap-1">
                               <ShieldCheck className="w-3 h-3" />
                               Admin
-                            </span>
+                            </Badge>
                           )}
                           {usuario.esRrhh && (
-                            <span className="badge badge-warning badge-sm gap-1">
+                            <Badge variant="default" className="gap-1 bg-amber-500 hover:bg-amber-600">
                               <Users className="w-3 h-3" />
                               RRHH
-                            </span>
+                            </Badge>
+                          )}
+                          {usuario.esDirector && (
+                            <Badge variant="default" className="gap-1 bg-purple-500 hover:bg-purple-600">
+                              <Briefcase className="w-3 h-3" />
+                              Director
+                            </Badge>
                           )}
                           {usuario.esJefe && (
-                            <span className="badge badge-info badge-sm gap-1">
+                            <Badge variant="default" className="gap-1 bg-blue-500 hover:bg-blue-600">
                               <Briefcase className="w-3 h-3" />
                               Jefe
-                            </span>
+                            </Badge>
                           )}
-                          {!usuario.esAdmin &&
-                            !usuario.esRrhh &&
-                            !usuario.esJefe && (
-                              <span className="badge badge-ghost badge-sm">
-                                Empleado
-                              </span>
-                            )}
+                          {!usuario.esAdmin && !usuario.esRrhh && !usuario.esDirector && !usuario.esJefe && (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Empleado
+                            </Badge>
+                          )}
                         </div>
 
                         {/* Acciones */}
-                        <div className="flex gap-2 mt-4 pt-3 border-t border-base-300">
-                          <button
+                        <div className="flex gap-2 mt-4 pt-3 border-t border-border">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1 gap-2"
                             onClick={() => abrirModalEditar(usuario)}
-                            className="btn btn-sm btn-primary flex-1 gap-2"
                           >
                             <Edit className="w-4 h-4" />
                             Editar
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="flex-1 gap-2"
                             onClick={() => handleDelete(usuario.id)}
-                            className="btn btn-sm btn-error flex-1 gap-2"
                           >
                             <Trash2 className="w-4 h-4" />
                             Eliminar
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -626,7 +588,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                 </div>
 
                 {usuariosFiltrados.length === 0 && (
-                  <div className="text-center py-12 text-base-content/70">
+                  <div className="text-center py-12 text-muted-foreground">
                     No se encontraron usuarios
                   </div>
                 )}
@@ -636,251 +598,18 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
         </div>
       </div>
 
-      {/* Modal Crear/Editar Usuario */}
-      {modalOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="font-bold text-lg mb-4">
-              {editingUser ? "Editar Usuario" : "Nuevo Usuario"}
-            </h3>
-
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 gap-4">
-                {/* Email */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Email *</span>
-                  </label>
-                  <input
-                    type="email"
-                    className="input input-bordered w-full"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-
-                {/* Password */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">
-                      Contraseña {!editingUser && "*"}
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      className="input input-bordered w-full pr-10"
-                      value={formData.password}
-                      onChange={(e) =>
-                        setFormData({ ...formData, password: e.target.value })
-                      }
-                      required={!editingUser}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-5 h-5" />
-                      ) : (
-                        <Eye className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Nombre y Apellido - Grid en desktop */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Nombre *</span>
-                    </label>
-                    <input
-                      type="text"
-                      className="input input-bordered"
-                      value={formData.nombre}
-                      onChange={(e) =>
-                        setFormData({ ...formData, nombre: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Apellido *</span>
-                    </label>
-                    <input
-                      type="text"
-                      className="input input-bordered"
-                      value={formData.apellido}
-                      onChange={(e) =>
-                        setFormData({ ...formData, apellido: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Departamento y Cargo - Grid en desktop */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Departamento *</span>
-                    </label>
-                    <select
-                      className="select select-bordered"
-                      value={formData.departamento_id}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          departamento_id: e.target.value,
-                        })
-                      }
-                      required
-                    >
-                      <option value="">Seleccione un departamento</option>
-                      {departamentos.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Cargo</span>
-                    </label>
-                    <input
-                      type="text"
-                      className="input input-bordered"
-                      value={formData.cargo}
-                      onChange={(e) =>
-                        setFormData({ ...formData, cargo: e.target.value })
-                      }
-                      placeholder="Ej: Desarrollador"
-                    />
-                  </div>
-                </div>
-
-                {/* Fecha de Ingreso */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Fecha de Ingreso</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none z-10">
-                      <Calendar className="w-5 h-5 text-base-content/50" />
-                    </div>
-                    <DatePicker
-                      selected={formData.fechaIngreso ? new Date(formData.fechaIngreso) : null}
-                      onChange={(date) =>
-                        setFormData({
-                          ...formData,
-                          fechaIngreso: date ? date.toISOString().split('T')[0] : "",
-                        })
-                      }
-                      dateFormat="dd/MM/yyyy"
-                      locale="es"
-                      placeholderText="Seleccione una fecha"
-                      className="input input-bordered w-full pl-10"
-                      showYearDropdown
-                      showMonthDropdown
-                      dropdownMode="select"
-                      maxDate={new Date()}
-                      isClearable
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Roles (Checkboxes) */}
-              <div className="divider">Roles y Permisos</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label cursor-pointer justify-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-primary"
-                      checked={formData.esAdmin}
-                      onChange={(e) =>
-                        setFormData({ ...formData, esAdmin: e.target.checked })
-                      }
-                    />
-                    <span className="label-text">Administrador</span>
-                  </label>
-                </div>
-
-                <div className="form-control">
-                  <label className="label cursor-pointer justify-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-warning"
-                      checked={formData.esRrhh}
-                      onChange={(e) =>
-                        setFormData({ ...formData, esRrhh: e.target.checked })
-                      }
-                    />
-                    <span className="label-text">RRHH</span>
-                  </label>
-                </div>
-
-                <div className="form-control">
-                  <label className="label cursor-pointer justify-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-info"
-                      checked={formData.esJefe}
-                      onChange={(e) =>
-                        setFormData({ ...formData, esJefe: e.target.checked })
-                      }
-                    />
-                    <span className="label-text">Jefe</span>
-                  </label>
-                </div>
-
-                <div className="form-control">
-                  <label className="label cursor-pointer justify-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-success"
-                      checked={formData.estaActivo}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          estaActivo: e.target.checked,
-                        })
-                      }
-                    />
-                    <span className="label-text">Usuario Activo</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Botones */}
-              <div className="modal-action flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={cerrarModal}
-                  className="btn btn-ghost gap-2 w-full sm:w-auto"
-                >
-                  <X className="w-4 h-4" />
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary gap-2 w-full sm:w-auto">
-                  <Save className="w-4 h-4" />
-                  Guardar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <UsuarioDialog
+        open={modalOpen}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) cerrarModal();
+          else setModalOpen(true);
+        }}
+        usuario={editingUser}
+        departamentos={departamentos}
+        onSuccess={() => {
+          cargarUsuarios();
+        }}
+      />
     </div>
   );
 }

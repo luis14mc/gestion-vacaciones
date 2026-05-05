@@ -1,0 +1,130 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { usuarios, balances, anosLaborales } from '@/lib/db/schema';
+import { getSession } from '@/lib/auth';
+import { eq, and, isNull } from 'drizzle-orm';
+
+export const runtime = 'nodejs';
+
+function calcularDiasSegunAntiguedad(fechaIngreso: string): number {
+  const ingreso = new Date(fechaIngreso);
+  const hoy = new Date();
+  
+  let anos = hoy.getFullYear() - ingreso.getFullYear();
+  const mes = hoy.getMonth() - ingreso.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < ingreso.getDate())) {
+    anos--;
+  }
+
+  if (anos < 1) return 0; // Menos de 1 año no recibe días completos automáticamente (o prorrateo según política)
+  if (anos === 1) return 10;
+  if (anos === 2) return 12;
+  if (anos === 3) return 15;
+  return 20; // 4 años o más
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session || !session.esRrhh) {
+      return NextResponse.json({ success: false, error: 'No autorizado. Se requiere rol RRHH.' }, { status: 403 });
+    }
+
+    // Obtener año laboral activo
+    const [anoLaboral] = await db
+      .select()
+      .from(anosLaborales)
+      .where(eq(anosLaborales.activo, true))
+      .limit(1);
+
+    if (!anoLaboral) {
+      return NextResponse.json({ success: false, error: 'No hay un año laboral activo.' }, { status: 400 });
+    }
+
+    // Obtener todos los usuarios activos
+    const usuariosActivos = await db
+      .select({
+        id: usuarios.id,
+        fechaIngreso: usuarios.fechaIngreso,
+        nombre: usuarios.nombre,
+        apellido: usuarios.apellido
+      })
+      .from(usuarios)
+      .where(and(eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
+
+    let asignados = 0;
+    let actualizados = 0;
+    let omitidos = 0;
+
+    for (const user of usuariosActivos) {
+      if (!user.fechaIngreso) {
+        omitidos++;
+        continue;
+      }
+
+      const diasAsignados = calcularDiasSegunAntiguedad(user.fechaIngreso);
+      if (diasAsignados === 0) {
+        omitidos++;
+        continue;
+      }
+
+      // Buscar si ya tiene balance
+      const [balanceExistente] = await db
+        .select()
+        .from(balances)
+        .where(
+          and(
+            eq(balances.usuarioId, user.id),
+            eq(balances.anoLaboralId, anoLaboral.id),
+            eq(balances.tipoAusencia, 'vacaciones')
+          )
+        )
+        .limit(1);
+
+      if (balanceExistente) {
+        // Actualizar balance
+        await db
+          .update(balances)
+          .set({
+            cantidadInicial: diasAsignados.toString(),
+            cantidadDisponible: (
+              diasAsignados - 
+              Number(balanceExistente.cantidadUsada || 0) - 
+              Number(balanceExistente.cantidadPendiente || 0)
+            ).toString(),
+            updatedAt: new Date().toISOString(),
+            version: balanceExistente.version + 1
+          })
+          .where(eq(balances.id, balanceExistente.id));
+        actualizados++;
+      } else {
+        // Crear nuevo balance
+        await db
+          .insert(balances)
+          .values({
+            usuarioId: user.id,
+            anoLaboralId: anoLaboral.id,
+            tipoAusencia: 'vacaciones',
+            cantidadInicial: diasAsignados.toString(),
+            cantidadUsada: '0',
+            cantidadPendiente: '0',
+            cantidadDisponible: diasAsignados.toString()
+          });
+        asignados++;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Asignación de días completada',
+      resultados: { asignados, actualizados, omitidos }
+    });
+
+  } catch (error) {
+    console.error('Error al asignar días:', error);
+    return NextResponse.json(
+      { success: false, error: 'Error interno al procesar la asignación de días.' },
+      { status: 500 }
+    );
+  }
+}

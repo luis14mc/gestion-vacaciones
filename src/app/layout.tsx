@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
-import { ToastProvider } from "@/components/providers/ToastProvider";
+import QueryProvider from "@/providers/QueryProvider";
+import { Toaster } from "sileo";
 
 export const metadata: Metadata = {
   title: "Sistema Vacaciones CNI",
@@ -14,13 +15,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" data-theme="light">
+    <html lang="es">
       <body className="antialiased" suppressHydrationWarning>
-        <AuthProvider session={null}>
-          <ToastProvider>
+        <QueryProvider>
+          <AuthProvider session={null}>
             {children}
-          </ToastProvider>
-        </AuthProvider>
+          </AuthProvider>
+          <Toaster />
+        </QueryProvider>
       </body>
     </html>
   );

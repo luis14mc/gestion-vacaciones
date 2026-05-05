@@ -10,19 +10,16 @@ export async function GET(request: NextRequest) {
     // 1. Verificar autenticación
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
     // 2. Verificar permiso reportes.exportar
     if (!tienePermiso(session, 'reportes.exportar')) {
-      console.log(`❌ Usuario ${session.email} sin permiso reportes.exportar`);
       return NextResponse.json(
-        { error: 'No tienes permiso para exportar reportes' },
+        { success: false, error: 'No tienes permiso para exportar reportes' },
         { status: 403 }
       );
     }
-
-    console.log(`✅ Usuario ${session.email} exportando reporte`);
 
     const { searchParams } = new URL(request.url);
     const formato = searchParams.get('formato');
@@ -51,7 +48,7 @@ export async function GET(request: NextRequest) {
           csvData = await generarCSVAusentismo(fechaInicio, fechaFin, departamentoId);
           break;
         default:
-          return NextResponse.json({ error: 'Tipo de reporte no válido' }, { status: 400 });
+          return NextResponse.json({ success: false, error: 'Tipo de reporte no válido' }, { status: 400 });
       }
 
       // Agregar BOM UTF-8 para correcta visualización de tildes en Excel

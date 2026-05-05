@@ -62,9 +62,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           roles: usuarioConRBAC?.roles || [],
           permisos: usuarioConRBAC?.permisos || [],
           // ⚠️ Legacy (calculado desde roles)
-          esAdmin: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'ADMIN') || false,
-          esRrhh: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'RRHH') || false,
-          esJefe: usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'JEFE') || false,
+          esAdmin:
+            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'ADMIN') ||
+            usuario.esAdmin ||
+            false,
+          esRrhh:
+            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'RRHH') ||
+            usuario.esRrhh ||
+            false,
+          esDirector:
+            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'DIRECTOR') ||
+            usuario.esDirector ||
+            false,
+          esJefe:
+            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'JEFE') ||
+            usuario.esJefe ||
+            false,
         };
       }
     })
@@ -82,7 +95,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // 🆕 RBAC
         token.roles = (user as any).roles;
         token.permisos = (user as any).permisos;
-        // Legacy
+        token.esDirector = (user as any).esDirector;
         token.esJefe = (user as any).esJefe;
         token.esRrhh = (user as any).esRrhh;
         token.esAdmin = (user as any).esAdmin;
@@ -97,13 +110,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           id: Number.parseInt(token.id as string),
           nombre: token.nombre as string,
           apellido: token.apellido as string,
-          departamentoId: token.departamentoId as number,
+          departamentoId: (token.departamentoId as number) ?? null,
           departamentoNombre: token.departamentoNombre as string,
           cargo: token.cargo as string | null,
           // 🆕 RBAC
           roles: token.roles as any[],
           permisos: token.permisos as string[],
-          // Legacy
+          esDirector: token.esDirector as boolean,
           esJefe: token.esJefe as boolean,
           esRrhh: token.esRrhh as boolean,
           esAdmin: token.esAdmin as boolean

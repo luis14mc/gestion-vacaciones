@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  User,
   Mail,
   Phone,
   Calendar,
@@ -16,12 +15,24 @@ import {
   Lock,
   Eye,
   EyeOff,
-  ArrowLeft,
   UserCircle,
   MapPin,
   Hash,
+  Loader2,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify } from "@/lib/swal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface UserProfile {
   id: number;
@@ -32,19 +43,9 @@ interface UserProfile {
   fechaContratacion: string;
   diasVacacionesAnuales: number;
   diasAcumulados: number;
-  departamento: {
-    id: number;
-    nombre: string;
-  };
-  puesto: {
-    id: number;
-    nombre: string;
-  };
-  roles: Array<{
-    id: number;
-    nombre: string;
-    codigo: string;
-  }>;
+  departamento: { id: number; nombre: string };
+  puesto: { id: number; nombre: string };
+  roles: Array<{ id: number; nombre: string; codigo: string }>;
 }
 
 interface PasswordChange {
@@ -53,20 +54,30 @@ interface PasswordChange {
   confirmPassword: string;
 }
 
-export default function MiPerfilClient() {
+type BadgeVariant = NonNullable<React.ComponentProps<typeof Badge>["variant"]>;
+
+function getRoleBadgeVariant(codigo: string): BadgeVariant {
+  const map: Record<string, BadgeVariant> = {
+    ADMIN: "destructive",
+    RRHH: "secondary",
+    JEFE: "outline",
+    EMPLEADO: "default",
+  };
+  return map[codigo] ?? "outline";
+}
+
+export default function MiPerfilClient({ session }: { session?: any } = {}) {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  
-  // Datos editables
+
   const [editedData, setEditedData] = useState({
     telefono: "",
     direccion: "",
   });
 
-  // Cambio de contraseña
   const [passwordData, setPasswordData] = useState<PasswordChange>({
     currentPassword: "",
     newPassword: "",
@@ -95,11 +106,11 @@ export default function MiPerfilClient() {
           direccion: data.usuario.direccion || "",
         });
       } else {
-        Swal.fire("Error", data.error || "No se pudo cargar el perfil", "error");
+        notify.error("Error", data.error || "No se pudo cargar el perfil");
       }
     } catch (error) {
       console.error("Error al cargar perfil:", error);
-      Swal.fire("Error", "No se pudo cargar el perfil", "error");
+      notify.error("Error", "No se pudo cargar el perfil");
     } finally {
       setLoading(false);
     }
@@ -116,32 +127,31 @@ export default function MiPerfilClient() {
       const data = await response.json();
 
       if (data.success) {
-        await Swal.fire("¡Éxito!", "Perfil actualizado correctamente", "success");
+        notify.success("¡Éxito!", "Perfil actualizado correctamente");
         setProfile(data.usuario);
         setIsEditing(false);
       } else {
-        Swal.fire("Error", data.error || "No se pudo actualizar el perfil", "error");
+        notify.error("Error", data.error || "No se pudo actualizar el perfil");
       }
     } catch (error) {
       console.error("Error al actualizar perfil:", error);
-      Swal.fire("Error", "No se pudo actualizar el perfil", "error");
+      notify.error("Error", "No se pudo actualizar el perfil");
     }
   };
 
   const handleChangePassword = async () => {
-    // Validaciones
     if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
-      Swal.fire("Error", "Todos los campos son obligatorios", "error");
+      notify.error("Error", "Todos los campos son obligatorios");
       return;
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      Swal.fire("Error", "Las contraseñas nuevas no coinciden", "error");
+      notify.error("Error", "Las contraseñas nuevas no coinciden");
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      Swal.fire("Error", "La contraseña debe tener al menos 6 caracteres", "error");
+      notify.error("Error", "La contraseña debe tener al menos 6 caracteres");
       return;
     }
 
@@ -158,7 +168,7 @@ export default function MiPerfilClient() {
       const data = await response.json();
 
       if (data.success) {
-        await Swal.fire("¡Éxito!", "Contraseña actualizada correctamente", "success");
+        notify.success("¡Éxito!", "Contraseña actualizada correctamente");
         setIsChangingPassword(false);
         setPasswordData({
           currentPassword: "",
@@ -166,11 +176,11 @@ export default function MiPerfilClient() {
           confirmPassword: "",
         });
       } else {
-        Swal.fire("Error", data.error || "No se pudo cambiar la contraseña", "error");
+        notify.error("Error", data.error || "No se pudo cambiar la contraseña");
       }
     } catch (error) {
       console.error("Error al cambiar contraseña:", error);
-      Swal.fire("Error", "No se pudo cambiar la contraseña", "error");
+      notify.error("Error", "No se pudo cambiar la contraseña");
     }
   };
 
@@ -182,185 +192,181 @@ export default function MiPerfilClient() {
     });
   };
 
-  const getRoleBadgeClass = (codigo: string) => {
-    const classes: Record<string, string> = {
-      ADMIN: "badge-error",
-      RRHH: "badge-warning",
-      JEFE: "badge-info",
-      EMPLEADO: "badge-primary",
-    };
-    return classes[codigo] || "badge-ghost";
-  };
+  const initials = profile
+    ? profile.nombre
+        .split(" ")
+        .slice(0, 2)
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : "";
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-base-200 to-base-300">
-        <span className="loading loading-spinner loading-lg"></span>
+      <div className="flex flex-col items-center justify-center gap-4 py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-hidden />
+        <div className="flex w-full max-w-md flex-col gap-3">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-base-200 to-base-300">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
-          <UserCircle className="w-16 h-16 mx-auto text-base-content/20 mb-4" />
-          <p className="text-base-content/60">No se pudo cargar el perfil</p>
-          <button onClick={() => router.push("/dashboard")} className="btn btn-primary mt-4">
+          <UserCircle className="mx-auto mb-4 h-16 w-16 text-muted-foreground/30" />
+          <p className="text-muted-foreground">No se pudo cargar el perfil</p>
+          <Button className="mt-4" onClick={() => router.push("/dashboard")}>
             Volver al Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-2 sm:p-4 md:p-6">
-      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-          <div className="bg-gradient-to-br from-primary to-secondary p-3 sm:p-4 rounded-2xl shadow-lg">
-            <UserCircle className="w-6 h-6 sm:w-8 sm:h-8 text-primary-content" />
+    <div>
+      <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div className="rounded-xl bg-muted p-2.5">
+            <UserCircle className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Mi Perfil</h1>
-            <p className="text-sm sm:text-base text-base-content/70">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Mi Perfil</h1>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Información personal y configuración de cuenta
             </p>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-sm sm:btn-md btn-ghost gap-2 self-start sm:self-auto"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Volver
-          </button>
         </div>
 
-        {/* Información Principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Avatar y Datos Básicos */}
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
           <div className="lg:col-span-1">
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body items-center text-center p-4 sm:p-6">
-                <div className="avatar placeholder mb-4">
-                  <div className="bg-gradient-to-br from-primary to-secondary text-primary-content rounded-full w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center shadow-lg">
-                    <span className="text-4xl sm:text-5xl font-bold">
-                      {profile.nombre.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-                <h2 className="card-title text-xl sm:text-2xl">{profile.nombre}</h2>
-                <div className="text-sm text-base-content/70 flex items-center gap-1 flex-wrap justify-center">
-                  <Mail className="w-4 h-4 flex-shrink-0" />
+            <Card className="gap-0 rounded-2xl py-0 shadow-sm">
+              <CardContent className="flex flex-col items-center p-5 pt-6 text-center">
+                <Avatar className="mb-4 h-24 w-24">
+                  <AvatarFallback className="bg-primary/10 text-3xl font-semibold text-primary">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <h2 className="text-base font-semibold text-foreground">{profile.nombre}</h2>
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-1 text-sm text-muted-foreground">
+                  <Mail className="h-4 w-4 shrink-0" />
                   <span className="break-all">{profile.email}</span>
                 </div>
-                
-                {/* Roles */}
-                <div className="divider my-2"></div>
+
+                <Separator className="my-4" />
+
                 <div className="w-full">
-                  <div className="text-xs text-base-content/60 mb-2 font-semibold">Roles asignados:</div>
-                  <div className="flex flex-wrap gap-2 justify-center">
+                  <div className="mb-2 text-xs font-semibold text-muted-foreground">
+                    Roles asignados:
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2">
                     {profile.roles.map((rol) => (
-                      <div key={rol.id} className={`badge ${getRoleBadgeClass(rol.codigo)} gap-1`}>
-                        <Shield className="w-3 h-3" />
+                      <Badge key={rol.id} variant={getRoleBadgeVariant(rol.codigo)}>
+                        <Shield className="size-3" />
                         {rol.nombre}
-                      </div>
+                      </Badge>
                     ))}
                   </div>
                 </div>
 
-                {/* Balance de Vacaciones */}
-                <div className="divider my-2"></div>
-                <div className="grid grid-cols-2 gap-3 w-full">
-                  <div className="bg-primary/10 rounded-lg p-3 text-center">
-                    <div className="text-xs text-base-content/60 mb-1">Días Anuales</div>
-                    <div className="text-3xl font-bold text-primary">{profile.diasVacacionesAnuales || 0}</div>
-                    <div className="text-xs text-base-content/50 mt-1">asignados</div>
+                <Separator className="my-4" />
+
+                <div className="grid w-full grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-primary/10 p-3 text-center">
+                    <div className="mb-1 text-xs text-muted-foreground">Días Anuales</div>
+                    <div className="text-xl font-semibold text-primary">
+                      {profile.diasVacacionesAnuales || 0}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">asignados</div>
                   </div>
-                  <div className="bg-secondary/10 rounded-lg p-3 text-center">
-                    <div className="text-xs text-base-content/60 mb-1">Disponibles</div>
-                    <div className="text-3xl font-bold text-secondary">{profile.diasAcumulados || 0}</div>
-                    <div className="text-xs text-base-content/50 mt-1">restantes</div>
+                  <div className="rounded-xl bg-muted p-3 text-center">
+                    <div className="mb-1 text-xs text-muted-foreground">Disponibles</div>
+                    <div className="text-xl font-semibold text-foreground">
+                      {profile.diasAcumulados || 0}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">restantes</div>
                   </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Información Detallada */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Información Laboral */}
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="card-title text-lg">Información Laboral</h3>
-                  <Briefcase className="w-5 h-5 text-primary" />
+          <div className="space-y-4 lg:col-span-2">
+            <Card className="gap-0 rounded-2xl py-0 shadow-sm">
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[13px] font-semibold text-foreground">Información Laboral</h3>
+                  <Briefcase className="h-5 w-5 text-primary" />
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="flex items-start gap-3">
-                    <Building className="w-5 h-5 text-base-content/50 mt-1 flex-shrink-0" />
+                    <Building className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="text-xs text-base-content/60">Departamento</div>
-                      <div className="font-medium truncate">{profile.departamento.nombre}</div>
+                      <div className="text-xs text-muted-foreground">Departamento</div>
+                      <div className="truncate font-medium text-foreground">
+                        {profile.departamento.nombre}
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <Briefcase className="w-5 h-5 text-base-content/50 mt-1 flex-shrink-0" />
+                    <Briefcase className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="text-xs text-base-content/60">Puesto</div>
-                      <div className="font-medium truncate">{profile.puesto.nombre}</div>
+                      <div className="text-xs text-muted-foreground">Puesto</div>
+                      <div className="truncate font-medium text-foreground">{profile.puesto.nombre}</div>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-base-content/50 mt-1 flex-shrink-0" />
+                    <Calendar className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="text-xs text-base-content/60">Fecha de Contratación</div>
-                      <div className="font-medium">{formatearFecha(profile.fechaContratacion)}</div>
+                      <div className="text-xs text-muted-foreground">Fecha de Contratación</div>
+                      <div className="font-medium text-foreground">
+                        {formatearFecha(profile.fechaContratacion)}
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <Hash className="w-5 h-5 text-base-content/50 mt-1 flex-shrink-0" />
+                    <Hash className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="text-xs text-base-content/60">ID de Empleado</div>
-                      <div className="font-medium">#{profile.id.toString().padStart(4, '0')}</div>
+                      <div className="text-xs text-muted-foreground">ID de Empleado</div>
+                      <div className="font-medium text-foreground">
+                        #{profile.id.toString().padStart(4, "0")}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            {/* Información Personal Editable */}
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="card-title text-lg">Información de Contacto</h3>
+            <Card className="gap-0 rounded-2xl py-0 shadow-sm">
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[13px] font-semibold text-foreground">Información de Contacto</h3>
                   {!isEditing && (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="btn btn-sm btn-ghost gap-2"
-                    >
-                      <Edit2 className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" className="gap-2" onClick={() => setIsEditing(true)}>
+                      <Edit2 className="h-4 w-4" />
                       Editar
-                    </button>
+                    </Button>
                   )}
                 </div>
 
                 <div className="space-y-4">
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        Teléfono
-                      </span>
-                    </label>
-                    <input
+                  <div className="space-y-2">
+                    <Label htmlFor="perfil-telefono" className="text-foreground">
+                      <Phone className="inline h-4 w-4 align-text-bottom" />
+                      <span className="ml-1">Teléfono</span>
+                    </Label>
+                    <Input
+                      id="perfil-telefono"
                       type="tel"
-                      className="input input-bordered"
                       value={editedData.telefono}
                       onChange={(e) => setEditedData({ ...editedData, telefono: e.target.value })}
                       disabled={!isEditing}
@@ -368,15 +374,14 @@ export default function MiPerfilClient() {
                     />
                   </div>
 
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        Dirección
-                      </span>
-                    </label>
-                    <textarea
-                      className="textarea textarea-bordered h-20"
+                  <div className="space-y-2">
+                    <Label htmlFor="perfil-direccion" className="text-foreground">
+                      <MapPin className="inline h-4 w-4 align-text-bottom" />
+                      <span className="ml-1">Dirección</span>
+                    </Label>
+                    <Textarea
+                      id="perfil-direccion"
+                      className="min-h-20"
                       value={editedData.direccion}
                       onChange={(e) => setEditedData({ ...editedData, direccion: e.target.value })}
                       disabled={!isEditing}
@@ -385,8 +390,11 @@ export default function MiPerfilClient() {
                   </div>
 
                   {isEditing && (
-                    <div className="flex gap-2 justify-end">
-                      <button
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
                         onClick={() => {
                           setIsEditing(false);
                           setEditedData({
@@ -394,125 +402,141 @@ export default function MiPerfilClient() {
                             direccion: profile.direccion || "",
                           });
                         }}
-                        className="btn btn-ghost btn-sm gap-2"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="h-4 w-4" />
                         Cancelar
-                      </button>
-                      <button
-                        onClick={handleSaveProfile}
-                        className="btn btn-primary btn-sm gap-2"
-                      >
-                        <Save className="w-4 h-4" />
+                      </Button>
+                      <Button size="sm" className="gap-2" onClick={handleSaveProfile}>
+                        <Save className="h-4 w-4" />
                         Guardar
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            {/* Cambiar Contraseña */}
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="card-title text-lg">Seguridad</h3>
-                  <Lock className="w-5 h-5 text-warning" />
+            <Card className="gap-0 rounded-2xl py-0 shadow-sm">
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[13px] font-semibold text-foreground">Seguridad</h3>
+                  <Lock className="h-5 w-5 text-muted-foreground" />
                 </div>
 
                 {!isChangingPassword ? (
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-amber-500/40 text-foreground hover:bg-muted"
                     onClick={() => setIsChangingPassword(true)}
-                    className="btn btn-outline btn-warning btn-sm gap-2"
                   >
-                    <Lock className="w-4 h-4" />
+                    <Lock className="h-4 w-4" />
                     Cambiar Contraseña
-                  </button>
+                  </Button>
                 ) : (
                   <div className="space-y-4">
-                    <div className="form-control">
-                      <label className="label">
-                        <span className="label-text">Contraseña Actual</span>
-                      </label>
+                    <div className="space-y-2">
+                      <Label htmlFor="pwd-current" className="text-foreground">
+                        Contraseña Actual
+                      </Label>
                       <div className="relative">
-                        <input
+                        <Input
+                          id="pwd-current"
                           type={showPasswords.current ? "text" : "password"}
-                          className="input input-bordered w-full pr-10"
+                          className="pr-10"
                           value={passwordData.currentPassword}
                           onChange={(e) =>
                             setPasswordData({ ...passwordData, currentPassword: e.target.value })
                           }
                           placeholder="••••••••"
                         />
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn-ghost btn-sm absolute right-0 top-0"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="absolute right-0 top-0"
                           onClick={() =>
                             setShowPasswords({ ...showPasswords, current: !showPasswords.current })
                           }
+                          aria-label={showPasswords.current ? "Ocultar contraseña" : "Mostrar contraseña"}
                         >
-                          {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                          {showPasswords.current ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
 
-                    <div className="form-control">
-                      <label className="label">
-                        <span className="label-text">Nueva Contraseña</span>
-                      </label>
+                    <div className="space-y-2">
+                      <Label htmlFor="pwd-new" className="text-foreground">
+                        Nueva Contraseña
+                      </Label>
                       <div className="relative">
-                        <input
+                        <Input
+                          id="pwd-new"
                           type={showPasswords.new ? "text" : "password"}
-                          className="input input-bordered w-full pr-10"
+                          className="pr-10"
                           value={passwordData.newPassword}
                           onChange={(e) =>
                             setPasswordData({ ...passwordData, newPassword: e.target.value })
                           }
                           placeholder="••••••••"
                         />
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn-ghost btn-sm absolute right-0 top-0"
-                          onClick={() =>
-                            setShowPasswords({ ...showPasswords, new: !showPasswords.new })
-                          }
+                          variant="ghost"
+                          size="icon-sm"
+                          className="absolute right-0 top-0"
+                          onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
+                          aria-label={showPasswords.new ? "Ocultar contraseña" : "Mostrar contraseña"}
                         >
-                          {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                          {showPasswords.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </div>
-                      <label className="label">
-                        <span className="label-text-alt">Mínimo 6 caracteres</span>
-                      </label>
+                      <p className="text-xs text-muted-foreground">Mínimo 6 caracteres</p>
                     </div>
 
-                    <div className="form-control">
-                      <label className="label">
-                        <span className="label-text">Confirmar Nueva Contraseña</span>
-                      </label>
+                    <div className="space-y-2">
+                      <Label htmlFor="pwd-confirm" className="text-foreground">
+                        Confirmar Nueva Contraseña
+                      </Label>
                       <div className="relative">
-                        <input
+                        <Input
+                          id="pwd-confirm"
                           type={showPasswords.confirm ? "text" : "password"}
-                          className="input input-bordered w-full pr-10"
+                          className="pr-10"
                           value={passwordData.confirmPassword}
                           onChange={(e) =>
                             setPasswordData({ ...passwordData, confirmPassword: e.target.value })
                           }
                           placeholder="••••••••"
                         />
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn-ghost btn-sm absolute right-0 top-0"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="absolute right-0 top-0"
                           onClick={() =>
                             setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })
                           }
+                          aria-label={showPasswords.confirm ? "Ocultar contraseña" : "Mostrar contraseña"}
                         >
-                          {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                          {showPasswords.confirm ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 justify-end">
-                      <button
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2"
                         onClick={() => {
                           setIsChangingPassword(false);
                           setPasswordData({
@@ -521,23 +545,19 @@ export default function MiPerfilClient() {
                             confirmPassword: "",
                           });
                         }}
-                        className="btn btn-ghost btn-sm gap-2"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="h-4 w-4" />
                         Cancelar
-                      </button>
-                      <button
-                        onClick={handleChangePassword}
-                        className="btn btn-warning btn-sm gap-2"
-                      >
-                        <Save className="w-4 h-4" />
+                      </Button>
+                      <Button size="sm" className="gap-2" onClick={handleChangePassword}>
+                        <Save className="h-4 w-4" />
                         Cambiar Contraseña
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

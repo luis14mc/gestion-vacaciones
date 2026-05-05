@@ -10,13 +10,13 @@ export async function GET(request: NextRequest) {
     // 1. Autenticación
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
     // 2. Verificar permiso
     if (!tienePermiso(session, 'reportes.exportar')) {
       return NextResponse.json(
-        { error: 'No tienes permiso para ver reportes' },
+        { success: false, error: 'No tienes permiso para ver reportes' },
         { status: 403 }
       );
     }
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         break;
       default:
         return NextResponse.json(
-          { error: 'Tipo de reporte no válido. Use: balances, solicitudes, departamentos, ausentismo' },
+          { success: false, error: 'Tipo de reporte no válido. Use: balances, solicitudes, departamentos, ausentismo' },
           { status: 400 }
         );
     }

@@ -1,13 +1,18 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import AppShell from "@/components/layout/AppShell";
 import SolicitudesClient from "./SolicitudesClient";
 
 export default async function SolicitudesPage() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/auth/login");
+    redirect("/login");
   }
 
-  return <SolicitudesClient />;
+  return (
+    <AppShell session={session}>
+      <SolicitudesClient session={session} />
+    </AppShell>
+  );
 }

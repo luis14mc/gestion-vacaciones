@@ -5,9 +5,11 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'jsdom',
+    // Detectar automáticamente el entorno según el archivo de test
+    environment: 'node', // Por defecto node para tests de integración
     globals: true,
     setupFiles: './tests/setup.ts',
+    pool: 'forks',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -18,8 +20,11 @@ export default defineConfig({
         '**/*.config.*',
         '**/mockData',
         'src/app/**', // Excluir Next.js app routes del coverage
+        'scripts/',
+        'drizzle/',
       ],
     },
+    testTimeout: 30000, // 30 segundos para tests de integración
   },
   resolve: {
     alias: {

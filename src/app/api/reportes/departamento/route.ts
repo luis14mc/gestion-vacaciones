@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { usuarios, balances, solicitudes, anosLaborales } from "@/lib/db/schema";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 
 export const runtime = 'nodejs';
 
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
     if (!tienePermiso(session, 'reportes.departamento')) {
@@ -26,15 +26,15 @@ export async function GET(request: NextRequest) {
 
     // Filtro contextual: Si es JEFE, solo su departamento
     let departamentoCondition = undefined;
-    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
+    const esDirectorOJefe = session.roles?.some(r => ['JEFE', 'DIRECTOR'].includes(r.codigo)) || session.esDirector || session.esJefe;
     const esAdminORrhh = session.roles?.some(r => ['ADMIN', 'RRHH'].includes(r.codigo));
-    
-    if (esJefe && !esAdminORrhh) {
+
+    if (esDirectorOJefe && !esAdminORrhh) {
       if (session.departamentoId) {
         departamentoCondition = eq(usuarios.departamentoId, session.departamentoId);
       } else {
         return NextResponse.json(
-          { error: 'Usuario JEFE sin departamento asignado' },
+          { success: false, error: 'Usuario JEFE sin departamento asignado' },
           { status: 403 }
         );
       }
@@ -64,8 +64,8 @@ export async function GET(request: NextRequest) {
       const balancesData = await db.query.balances.findMany({
         where: and(
           eq(balances.anoLaboralId, anoLaboral.id),
-          eq(balances.tipoAusencia, 'vacaciones'),
-          sql`${balances.usuarioId} IN ${usuariosIds}`
+          eq(balances.tipoAusencia, 'vacaciones' as any),
+          inArray(balances.usuarioId, usuariosIds)
         )
       });
 
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(usuarios, eq(solicitudes.usuarioId, usuarios.id))
       .where(
         and(
-          sql`${solicitudes.usuarioId} IN ${usuariosIds}`,
+          inArray(solicitudes.usuarioId, usuariosIds),
           sql`${solicitudes.fechaInicio} <= ${ultimoDia}`,
           sql`${solicitudes.fechaFin} >= ${primerDia}`
         )

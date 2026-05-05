@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Session } from "next-auth";
-import { 
-  FileText, 
+import {
+  FileText,
   Search,
   Filter,
   Calendar,
@@ -16,7 +16,13 @@ import {
   Clock,
   Eye
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify } from '@/lib/swal';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 interface AuditoriaClientProps {
   session: Session;
@@ -46,6 +52,7 @@ type TablaAfectada = "todas" | "usuarios" | "solicitudes" | "balances" | "depart
 export default function AuditoriaClient({ session }: AuditoriaClientProps) {
   const router = useRouter();
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
+  const [selectedLog, setSelectedLog] = useState<RegistroAuditoria | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroAccion, setFiltroAccion] = useState<TipoAccion>("todas");
@@ -83,11 +90,7 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
       }
     } catch (error) {
       console.error("Error cargando registros:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al cargar los registros de auditoría",
-      });
+      notify.error("Error", "Error al cargar los registros de auditoría");
     } finally {
       setLoading(false);
     }
@@ -108,57 +111,54 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
     setTimeout(() => cargarRegistros(), 100);
   };
 
-  const verDetalles = async (registro: RegistroAuditoria) => {
-    await Swal.fire({
-      title: `Detalles de ${registro.accion}`,
-      html: `
-        <div class="text-left space-y-2">
-          <p><strong>Usuario:</strong> ${registro.usuario.nombre} ${registro.usuario.apellido}</p>
-          <p><strong>Email:</strong> ${registro.usuario.email}</p>
-          <p><strong>Acción:</strong> ${registro.accion}</p>
-          <p><strong>Tabla:</strong> ${registro.tabla_afectada}</p>
-          <p><strong>ID Registro:</strong> ${registro.registro_id || "N/A"}</p>
-          <p><strong>Fecha:</strong> ${new Date(registro.fecha_creacion).toLocaleString("es-ES")}</p>
-          <p><strong>IP:</strong> ${registro.ip_address || "N/A"}</p>
-          ${registro.detalles ? `<p><strong>Detalles:</strong><br><pre class="text-xs bg-base-200 p-2 rounded mt-1">${JSON.stringify(JSON.parse(registro.detalles), null, 2)}</pre></p>` : ""}
-        </div>
-      `,
-      width: 600,
-      confirmButtonText: "Cerrar",
-    });
+  const verDetalles = (registro: RegistroAuditoria) => {
+    setSelectedLog(registro);
   };
 
   const getIconoAccion = (accion: string) => {
     switch (accion.toLowerCase()) {
       case "crear":
-        return <CheckCircle className="w-4 h-4 text-success" />;
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
       case "actualizar":
-        return <AlertCircle className="w-4 h-4 text-warning" />;
+        return <AlertCircle className="w-4 h-4 text-amber-500" />;
       case "eliminar":
-        return <XCircle className="w-4 h-4 text-error" />;
+        return <XCircle className="w-4 h-4 text-red-500" />;
       case "login":
-        return <User className="w-4 h-4 text-info" />;
+        return <User className="w-4 h-4 text-blue-500" />;
       case "logout":
-        return <User className="w-4 h-4 text-base-content/50" />;
+        return <User className="w-4 h-4 text-muted-foreground" />;
       default:
-        return <Activity className="w-4 h-4 text-base-content" />;
+        return <Activity className="w-4 h-4 text-foreground" />;
     }
   };
 
-  const getBadgeAccion = (accion: string) => {
+  const getBadgeVariant = (accion: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (accion.toLowerCase()) {
       case "crear":
-        return "badge-success";
+        return "default"; // Will add bg-green-500 manually if wanted, or just default
       case "actualizar":
-        return "badge-warning";
+        return "default"; // bg-yellow-500
       case "eliminar":
-        return "badge-error";
+        return "destructive";
       case "login":
-        return "badge-info";
+        return "secondary";
       case "logout":
-        return "badge-ghost";
+        return "outline";
       default:
-        return "badge-neutral";
+        return "secondary";
+    }
+  };
+
+  const getBadgeColorClass = (accion: string) => {
+    switch (accion.toLowerCase()) {
+      case "crear":
+        return "bg-green-500 hover:bg-green-600";
+      case "actualizar":
+        return "bg-amber-500 hover:bg-amber-600";
+      case "login":
+        return "bg-blue-500 hover:bg-blue-600 text-white";
+      default:
+        return "";
     }
   };
 
@@ -185,86 +185,90 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 flex items-center justify-center">
-        <span className="loading loading-spinner loading-lg"></span>
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4">
+    <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-warning to-warning/80 text-warning-content">
-              <FileText className="w-8 h-8" />
+            <div className="bg-muted p-2.5 rounded-xl">
+              <FileText className="w-4 h-4 text-muted-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Auditoría del Sistema</h1>
-              <p className="text-base-content/70">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Auditoría del Sistema</h1>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
                 Registro detallado de todas las acciones realizadas en el sistema
               </p>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost"
-          >
-            ← Volver
-          </button>
         </div>
 
         {/* Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-primary">
-              <Activity className="w-8 h-8" />
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg text-primary">
+                <Activity className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[13px] text-muted-foreground font-medium">Registros Totales</p>
+                <p className="text-2xl font-bold">{totalRegistros}</p>
+                <p className="text-xs text-muted-foreground mt-1">En esta página</p>
+              </div>
             </div>
-            <div className="stat-title">Registros Totales</div>
-            <div className="stat-value text-primary">{totalRegistros}</div>
-            <div className="stat-desc">En esta página</div>
           </div>
 
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-info">
-              <Clock className="w-8 h-8" />
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-500/10 rounded-lg text-blue-500">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[13px] text-muted-foreground font-medium">Acciones Hoy</p>
+                <p className="text-2xl font-bold">{registrosHoy}</p>
+                <p className="text-xs text-muted-foreground mt-1">En las últimas 24 horas</p>
+              </div>
             </div>
-            <div className="stat-title">Acciones Hoy</div>
-            <div className="stat-value text-info">{registrosHoy}</div>
-            <div className="stat-desc">En las últimas 24 horas</div>
           </div>
 
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-secondary">
-              <Calendar className="w-8 h-8" />
+          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-amber-500/10 rounded-lg text-amber-500">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[13px] text-muted-foreground font-medium">Página Actual</p>
+                <p className="text-2xl font-bold">{paginaActual}</p>
+                <p className="text-xs text-muted-foreground mt-1">de {totalPaginas} páginas</p>
+              </div>
             </div>
-            <div className="stat-title">Página Actual</div>
-            <div className="stat-value text-secondary">{paginaActual}</div>
-            <div className="stat-desc">de {totalPaginas} páginas</div>
           </div>
         </div>
 
         {/* Filtros */}
-        <div className="card bg-base-100 shadow-xl mb-6">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
-              <Filter className="w-5 h-5" />
+        <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
+          <div className="p-5">
+            <h2 className="text-[13px] font-semibold mb-4 flex items-center gap-2">
+              <Filter className="w-4 h-4" />
               Filtros de Búsqueda
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Búsqueda de texto */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Buscar</span>
-                </label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Buscar</label>
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50" />
-                  <input
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
                     type="text"
                     placeholder="Usuario, acción, tabla..."
-                    className="input input-bordered w-full pl-10"
+                    className="w-full pl-9 h-10"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -272,87 +276,86 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
               </div>
 
               {/* Filtro por acción */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Tipo de Acción</span>
-                </label>
-                <select
-                  className="select select-bordered"
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tipo de Acción</label>
+                <Select
                   value={filtroAccion}
-                  onChange={(e) => setFiltroAccion(e.target.value as TipoAccion)}
+                  onValueChange={(val) => setFiltroAccion(val as TipoAccion)}
                 >
-                  <option value="todas">Todas las acciones</option>
-                  <option value="crear">Crear</option>
-                  <option value="actualizar">Actualizar</option>
-                  <option value="eliminar">Eliminar</option>
-                  <option value="login">Login</option>
-                  <option value="logout">Logout</option>
-                </select>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="Todas las acciones" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas las acciones</SelectItem>
+                    <SelectItem value="crear">Crear</SelectItem>
+                    <SelectItem value="actualizar">Actualizar</SelectItem>
+                    <SelectItem value="eliminar">Eliminar</SelectItem>
+                    <SelectItem value="login">Login</SelectItem>
+                    <SelectItem value="logout">Logout</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Filtro por tabla */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Tabla Afectada</span>
-                </label>
-                <select
-                  className="select select-bordered"
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tabla Afectada</label>
+                <Select
                   value={filtroTabla}
-                  onChange={(e) => setFiltroTabla(e.target.value as TablaAfectada)}
+                  onValueChange={(val) => setFiltroTabla(val as TablaAfectada)}
                 >
-                  <option value="todas">Todas las tablas</option>
-                  <option value="usuarios">Usuarios</option>
-                  <option value="solicitudes">Solicitudes</option>
-                  <option value="balances">Balances</option>
-                  <option value="departamentos">Departamentos</option>
-                  <option value="tipos_ausencia">Tipos de Ausencia</option>
-                </select>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="Todas las tablas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas las tablas</SelectItem>
+                    <SelectItem value="usuarios">Usuarios</SelectItem>
+                    <SelectItem value="solicitudes">Solicitudes</SelectItem>
+                    <SelectItem value="balances">Balances</SelectItem>
+                    <SelectItem value="departamentos">Departamentos</SelectItem>
+                    <SelectItem value="tipos_ausencia">Tipos de Ausencia</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Fecha inicio */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Fecha Inicio</span>
-                </label>
-                <input
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fecha Inicio</label>
+                <Input
                   type="date"
-                  className="input input-bordered"
+                  className="h-10"
                   value={fechaInicio}
                   onChange={(e) => setFechaInicio(e.target.value)}
                 />
               </div>
 
               {/* Fecha fin */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Fecha Fin</span>
-                </label>
-                <input
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fecha Fin</label>
+                <Input
                   type="date"
-                  className="input input-bordered"
+                  className="h-10"
                   value={fechaFin}
                   onChange={(e) => setFechaFin(e.target.value)}
                 />
               </div>
 
               {/* Botones */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">&nbsp;</span>
-                </label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium hidden md:block">&nbsp;</label>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={aplicarFiltros}
-                    className="btn btn-primary flex-1"
+                    className="flex-1 h-10"
                   >
                     Aplicar
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={limpiarFiltros}
-                    className="btn btn-ghost"
+                    className="flex-1 h-10"
                   >
                     Limpiar
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -360,43 +363,43 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
         </div>
 
         {/* Tabla de registros */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
+        <div className="bg-card text-card-foreground border shadow-sm rounded-xl">
+          <div className="p-5">
+            <h2 className="text-[13px] font-semibold mb-4">
               Registros de Auditoría
             </h2>
 
             <div className="overflow-x-auto">
-              <table className="table table-zebra">
-                <thead>
-                  <tr>
-                    <th>Fecha y Hora</th>
-                    <th>Usuario</th>
-                    <th>Acción</th>
-                    <th>Tabla</th>
-                    <th>ID Registro</th>
-                    <th>IP</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha y Hora</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Acción</TableHead>
+                    <TableHead>Tabla</TableHead>
+                    <TableHead className="text-center">ID Registro</TableHead>
+                    <TableHead>IP</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {registrosFiltrados.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-8">
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
                         <div className="flex flex-col items-center gap-2">
-                          <AlertCircle className="w-12 h-12 text-base-content/30" />
-                          <p className="text-base-content/60">
+                          <AlertCircle className="w-12 h-12 text-muted-foreground/30" />
+                          <p className="text-muted-foreground">
                             No se encontraron registros de auditoría
                           </p>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     registrosFiltrados.map((registro) => (
-                      <tr key={registro.id} className="hover">
-                        <td>
+                      <TableRow key={registro.id}>
+                        <TableCell>
                           <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-base-content/50" />
+                            <Clock className="w-4 h-4 text-muted-foreground" />
                             {new Date(registro.fecha_creacion).toLocaleString("es-ES", {
                               day: "2-digit",
                               month: "2-digit",
@@ -405,63 +408,65 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
                               minute: "2-digit",
                             })}
                           </div>
-                        </td>
-                        <td>
+                        </TableCell>
+                        <TableCell>
                           <div>
                             <div className="font-semibold">
                               {registro.usuario.nombre} {registro.usuario.apellido}
                             </div>
-                            <div className="text-sm text-base-content/60">
+                            <div className="text-sm text-muted-foreground">
                               {registro.usuario.email}
                             </div>
                           </div>
-                        </td>
-                        <td>
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             {getIconoAccion(registro.accion)}
-                            <span className={`badge ${getBadgeAccion(registro.accion)}`}>
+                            <Badge variant={getBadgeVariant(registro.accion)} className={getBadgeColorClass(registro.accion)}>
                               {registro.accion}
-                            </span>
+                            </Badge>
                           </div>
-                        </td>
-                        <td>
-                          <span className="badge badge-outline">
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
                             {registro.tabla_afectada}
-                          </span>
-                        </td>
-                        <td className="text-center">
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
                           {registro.registro_id || "—"}
-                        </td>
-                        <td className="font-mono text-xs">
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
                           {registro.ip_address || "—"}
-                        </td>
-                        <td>
-                          <button
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => verDetalles(registro)}
-                            className="btn btn-ghost btn-sm"
                             title="Ver detalles"
                           >
                             <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     ))
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             {/* Paginación */}
             {totalPaginas > 1 && (
               <div className="flex justify-center gap-2 mt-6">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
                   disabled={paginaActual === 1}
-                  className="btn btn-sm"
                 >
                   Anterior
-                </button>
-                
+                </Button>
+
                 <div className="flex gap-1">
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                     let pagina;
@@ -476,30 +481,82 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
                     }
 
                     return (
-                      <button
+                      <Button
                         key={pagina}
+                        variant={paginaActual === pagina ? "default" : "outline"}
+                        size="sm"
                         onClick={() => setPaginaActual(pagina)}
-                        className={`btn btn-sm ${
-                          paginaActual === pagina ? "btn-primary" : ""
-                        }`}
                       >
                         {pagina}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
 
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
                   disabled={paginaActual === totalPaginas}
-                  className="btn btn-sm"
                 >
                   Siguiente
-                </button>
+                </Button>
               </div>
             )}
           </div>
         </div>
+
+        {/* Detail Modal */}
+        <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Detalle de Auditoría</DialogTitle>
+            </DialogHeader>
+            {selectedLog && (
+              <div className="space-y-4 py-4">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">Acción:</span>
+                  <Badge variant={getBadgeVariant(selectedLog.accion)} className={getBadgeColorClass(selectedLog.accion)}>{selectedLog.accion}</Badge>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">Usuario:</span>
+                  <span className="font-semibold text-sm">{selectedLog.usuario.nombre} {selectedLog.usuario.apellido}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">Email:</span>
+                  <span className="font-medium text-sm">{selectedLog.usuario.email}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">Tabla:</span>
+                  <Badge variant="outline">{selectedLog.tabla_afectada}</Badge>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">ID Registro:</span>
+                  <span className="font-medium text-sm">{selectedLog.registro_id || "N/A"}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">Fecha:</span>
+                  <span className="font-medium text-sm">{new Date(selectedLog.fecha_creacion).toLocaleString("es-ES")}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground text-sm">IP:</span>
+                  <span className="font-mono text-xs">{selectedLog.ip_address || "N/A"}</span>
+                </div>
+                {selectedLog.detalles && (
+                  <div className="pt-2">
+                    <span className="text-muted-foreground text-sm block mb-2">Detalles:</span>
+                    <pre className="text-xs bg-muted p-3 rounded-xl overflow-x-auto border">
+                      {JSON.stringify(JSON.parse(selectedLog.detalles), null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedLog(null)}>Cerrar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

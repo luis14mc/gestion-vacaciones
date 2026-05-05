@@ -18,9 +18,9 @@ export async function GET(request: NextRequest) {
 
     // 2. Verificar permisos - calendario es público para usuarios autenticados
     // Pero filtraremos datos según permisos
-    const puedeVerTodo = tienePermiso(session, 'vacaciones.solicitudes.ver_todas');
-    const esJefe = session.roles?.some(r => r.codigo === 'JEFE');
-    const esEmpleado = !puedeVerTodo && !esJefe;
+    const puedeVerTodo = tienePermiso(session, 'solicitudes.ver_todas');
+    const esDirectorOJefe = session.roles?.some(r => r.codigo === 'JEFE' || r.codigo === 'DIRECTOR') || session.esDirector || session.esJefe;
+    const esEmpleado = !puedeVerTodo && !esDirectorOJefe;
 
     const searchParams = request.nextUrl.searchParams;
     const mes = searchParams.get("mes") || String(new Date().getMonth() + 1);
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       whereConditions = and(whereConditions, eq(solicitudes.usuarioId, session.id));
     }
     // Si es jefe, ver solo su departamento
-    else if (esJefe && session.departamentoId && !puedeVerTodo) {
+    else if (esDirectorOJefe && session.departamentoId && !puedeVerTodo) {
       const usuariosDept = await db
         .select({ id: usuarios.id })
         .from(usuarios)

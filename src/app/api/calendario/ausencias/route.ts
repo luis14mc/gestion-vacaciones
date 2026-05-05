@@ -4,15 +4,15 @@
  * Query: mes (1-12), anio (YYYY)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
     const { searchParams } = req.nextUrl;
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const departamentoId = searchParams.get('departamentoId');
 
     if (mes < 1 || mes > 12 || anio < 2020 || anio > 2100) {
-      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 });
     }
 
     // Primer y último día del mes
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error calendario:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error interno' },
+      { success: false, error: error instanceof Error ? error.message : 'Error interno' },
       { status: 500 }
     );
   }

@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import AppShell from "@/components/layout/AppShell";
 import ReportesClient from "./ReportesClient";
 
 export default async function ReportesPage() {
@@ -13,5 +14,9 @@ export default async function ReportesPage() {
     redirect("/dashboard");
   }
 
-  return <ReportesClient session={session} />;
+  return (
+    <AppShell session={session}>
+      <ReportesClient session={session} />
+    </AppShell>
+  );
 }

@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getSession();
 
-    if (!session?.user?.esRrhh || session.user?.esAdmin) {
+    if (!session) {
       return NextResponse.json(
-        { success: false, error: "No autorizado - Solo para RRHH" },
-        { status: 403 }
+        { success: false, error: "No autenticado" },
+        { status: 401 }
       );
     }
 
-    console.log('👥 RRHH Dashboard - Obteniendo métricas globales');
+    if (!session.esRrhh && !session.esAdmin) {
+      return NextResponse.json(
+        { success: false, error: "No autorizado" },
+        { status: 403 }
+      );
+    }
 
     // Obtener total de usuarios (RRHH ve todo)
     const [totalUsuarios] = await db
@@ -35,18 +40,21 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh')`,
           isNull(solicitudes.deletedAt)
         )
       );
 
-    // Obtener usuarios en vacaciones
+    // Obtener usuarios en vacaciones hoy
+    const hoy = new Date().toISOString().split('T')[0];
     const [enVacaciones] = await db
       .select({ count: sql<number>`count(DISTINCT ${solicitudes.usuarioId})` })
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.estado, "finalizada"),
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')`,
+          sql`${solicitudes.fechaInicio} <= ${hoy}`,
+          sql`${solicitudes.fechaFin} >= ${hoy}`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -77,7 +85,7 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.aprobadaRrhhPor, session.user.id),
+          eq(solicitudes.aprobadaRrhhPor, session.id),
           sql`${solicitudes.aprobadaRrhhFecha} >= ${hoyInicio.toISOString()}`,
           sql`${solicitudes.aprobadaRrhhFecha} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
@@ -91,7 +99,7 @@ export async function GET() {
       .where(
         and(
           sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh')`,
-          eq(solicitudes.rechazadaPor, session.user.id),
+          eq(solicitudes.rechazadaPor, session.id),
           sql`${solicitudes.updatedAt} >= ${hoyInicio.toISOString()}`,
           sql`${solicitudes.updatedAt} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
@@ -107,8 +115,6 @@ export async function GET() {
       aprobadas_hoy: Number(aprobadasHoy?.count || 0),
       rechazadas_hoy: Number(rechazadasHoy?.count || 0),
     };
-
-    console.log('✅ RRHH métricas:', metricas);
 
     return NextResponse.json({
       success: true,

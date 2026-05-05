@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { 
+import {
   BarChart3,
   Users,
   Calendar,
@@ -14,11 +13,31 @@ import {
   Download,
   Filter,
   PieChart,
-  Activity
+  Activity,
+  Loader2,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify, confirmAction } from '@/lib/swal';
 import autoTable from 'jspdf-autotable';
 import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
 
 // Constante para nombres de meses
 const meses = [
@@ -50,10 +69,10 @@ interface ReporteDepartamento {
   }>;
 }
 
-export default function ReportesDepartamentoClient() {
-  const router = useRouter();
+export default function ReportesDepartamentoClient({ session }: { session?: any } = {}) {
   const [reporte, setReporte] = useState<ReporteDepartamento | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
 
@@ -72,7 +91,7 @@ export default function ReportesDepartamentoClient() {
       }
     } catch (error) {
       console.error("Error al cargar reporte:", error);
-      Swal.fire("Error", "No se pudo cargar el reporte", "error");
+      notify.error("No se pudo cargar el reporte");
     } finally {
       setLoading(false);
     }
@@ -80,39 +99,18 @@ export default function ReportesDepartamentoClient() {
 
   const exportarReporte = async (formato: 'csv' | 'pdf' = 'csv') => {
     if (!reporte) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Sin datos",
-        text: "No hay datos para exportar",
-      });
+      notify.warning("No hay datos para exportar");
       return;
     }
 
     // Confirmación antes de exportar
     const formatoTexto = formato === 'csv' ? 'CSV' : 'PDF';
-    const result = await Swal.fire({
-      title: "¿Exportar reporte?",
-      html: `Se descargará el reporte del departamento<br><strong>${meses[mesSeleccionado - 1]} ${anioSeleccionado}</strong> en formato ${formatoTexto}`,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "<i class='fas fa-download'></i> Sí, exportar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#10b981",
-      cancelButtonColor: "#6b7280",
-    });
+    const result = await confirmAction("¿Exportar reporte?", `Se descargará el reporte del departamento ${meses[mesSeleccionado - 1]} ${anioSeleccionado} en formato ${formatoTexto}`, { confirmText: "Exportar", icon: 'info' });
 
-    if (!result.isConfirmed) return;
+    if (!result.confirmed) return;
 
     try {
-      // Mostrar indicador de carga
-      Swal.fire({
-        title: 'Generando exportación...',
-        html: 'Por favor espera',
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        },
-      });
+      setExportLoading(true);
 
       if (formato === 'pdf') {
         // Preparar datos para PDF
@@ -183,14 +181,8 @@ export default function ReportesDepartamentoClient() {
 
         descargarPDF(doc, `reporte_departamento_${mesSeleccionado}_${anioSeleccionado}.pdf`);
 
-        Swal.close(); // Cerrar el loading
-        Swal.fire({
-          icon: "success",
-          title: "¡Exportado!",
-          text: "El reporte PDF completo se ha descargado exitosamente",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        setExportLoading(false);
+        notify.success("El reporte PDF completo se ha descargado exitosamente");
       } else {
         // Exportar CSV desde API
         const params = new URLSearchParams({
@@ -201,7 +193,7 @@ export default function ReportesDepartamentoClient() {
         });
 
         const response = await fetch(`/api/reportes/exportar?${params}`);
-        
+
         if (!response.ok) {
           throw new Error('Error al exportar');
         }
@@ -214,28 +206,19 @@ export default function ReportesDepartamentoClient() {
         a.target = '_blank';
         document.body.appendChild(a);
         a.click();
-        
+
         setTimeout(() => {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 100);
 
-        Swal.close(); // Cerrar el loading
-        Swal.fire({
-          icon: "success",
-          title: "¡Exportado!",
-          text: "El reporte CSV completo se ha descargado exitosamente",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        setExportLoading(false);
+        notify.success("El reporte CSV completo se ha descargado exitosamente");
       }
     } catch (error) {
       console.error('Error exportando:', error);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo exportar el reporte",
-      });
+      setExportLoading(false);
+      notify.error("No se pudo exportar el reporte");
     }
   };
 
@@ -244,306 +227,358 @@ export default function ReportesDepartamentoClient() {
     return Math.round((usado / total) * 100);
   };
 
+  const totalSolicitudes =
+    reporte !== null
+      ? reporte.solicitudesPendientes + reporte.solicitudesAprobadas + reporte.solicitudesRechazadas
+      : 0;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4 md:p-6">
+    <div>
       <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-          <div className="bg-gradient-to-br from-secondary to-secondary/70 p-3 md:p-4 rounded-2xl shadow-lg">
-            <BarChart3 className="w-6 h-6 md:w-8 md:h-8 text-white" />
+          <div className="bg-muted/50 p-2.5 rounded-xl">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl md:text-3xl font-bold text-base-content">Reportes del Departamento</h1>
-            <p className="text-sm md:text-base text-base-content/70">Estadísticas y análisis de uso de vacaciones</p>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Reportes del Departamento</h1>
+            <p className="text-[13px] text-muted-foreground mt-0.5">Estadísticas y análisis de uso de vacaciones</p>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost btn-sm gap-2 self-start md:self-auto"
-          >
-            ← Volver
-          </button>
         </div>
 
         {/* Filtros de período */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body p-4 md:p-6">
+        <Card className="rounded-2xl">
+          <CardContent className="p-5">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <h2 className="card-title text-base md:text-lg">
-                <Filter className="w-4 h-4 md:w-5 md:h-5" />
+              <h2 className="text-[13px] font-semibold flex items-center gap-2">
+                <Filter className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                 Período de análisis
               </h2>
               <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                <select
-                  className="select select-bordered select-sm flex-1 min-w-[140px]"
-                  value={mesSeleccionado}
-                  onChange={(e) => setMesSeleccionado(Number(e.target.value))}
+                <Select
+                  value={String(mesSeleccionado)}
+                  onValueChange={(v) => setMesSeleccionado(Number(v))}
                 >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m}>
-                      {new Date(2000, m - 1, 1).toLocaleDateString("es-ES", { month: "long" })}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="select select-bordered select-sm w-24"
-                  value={anioSeleccionado}
-                  onChange={(e) => setAnioSeleccionado(Number(e.target.value))}
+                  <SelectTrigger className="flex-1 min-w-[140px]" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {new Date(2000, m - 1, 1).toLocaleDateString("es-ES", { month: "long" })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={String(anioSeleccionado)}
+                  onValueChange={(v) => setAnioSeleccionado(Number(v))}
                 >
-                  {[2024, 2025, 2026].map(a => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-24" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2024, 2025, 2026].map((a) => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <div className="flex gap-2">
-                  <button 
-                    className="btn btn-sm btn-success gap-1 shadow-lg hover:shadow-xl transition-all" 
+                  <Button
+                    size="sm"
+                    className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
                     onClick={() => exportarReporte('csv')}
                     title="Descargar reporte en formato CSV"
+                    disabled={exportLoading}
                   >
-                    <Download className="w-4 h-4" />
+                    {exportLoading ? <Loader2 className="size-4 animate-spin" /> : <Download className="w-4 h-4" />}
                     CSV
-                  </button>
-                  <button 
-                    className="btn btn-sm btn-error gap-1 shadow-lg hover:shadow-xl transition-all" 
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="gap-1"
                     onClick={() => exportarReporte('pdf')}
                     title="Descargar reporte en formato PDF"
+                    disabled={exportLoading}
                   >
-                    <Download className="w-4 h-4" />
+                    {exportLoading ? <Loader2 className="size-4 animate-spin" /> : <Download className="w-4 h-4" />}
                     PDF
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {loading ? (
-          <div className="text-center py-12">
-            <span className="loading loading-spinner loading-lg"></span>
+          <div className="flex justify-center py-12">
+            <Loader2 className="size-10 animate-spin text-muted-foreground" />
           </div>
         ) : !reporte ? (
-          <div className="alert alert-warning">
-            <AlertCircle className="w-5 h-5" />
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[13px] text-foreground">
+            <AlertCircle className="w-5 h-5 shrink-0 text-amber-600" />
             <span>No se pudo cargar el reporte</span>
           </div>
         ) : (
           <>
             {/* Métricas principales */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              <div className="stat bg-base-100 rounded-lg shadow p-4">
-                <div className="stat-figure text-info">
-                  <Users className="w-6 h-6 md:w-8 md:h-8" />
-                </div>
-                <div className="stat-title text-xs md:text-sm">Total Equipo</div>
-                <div className="stat-value text-2xl md:text-3xl text-info">{reporte.totalColaboradores}</div>
-                <div className="stat-desc text-xs">{reporte.colaboradoresActivos} activos</div>
-              </div>
+              <Card className="rounded-2xl">
+                <CardContent className="p-5 pt-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm text-muted-foreground">Total Equipo</p>
+                      <p className="text-3xl font-bold tabular-nums text-sky-600 dark:text-sky-400">{reporte.totalColaboradores}</p>
+                      <p className="text-xs text-muted-foreground">{reporte.colaboradoresActivos} activos</p>
+                    </div>
+                    <div className="text-sky-600 dark:text-sky-400 shrink-0">
+                      <Users className="w-6 h-6 md:w-8 md:h-8" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="stat bg-base-100 rounded-lg shadow p-4">
-                <div className="stat-figure text-accent">
-                  <Activity className="w-6 h-6 md:w-8 md:h-8" />
-                </div>
-                <div className="stat-title text-xs md:text-sm">De Vacaciones</div>
-                <div className="stat-value text-2xl md:text-3xl text-accent">{reporte.enVacacionesHoy}</div>
-                <div className="stat-desc text-xs">Actualmente ausentes</div>
-              </div>
+              <Card className="rounded-2xl">
+                <CardContent className="p-5 pt-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm text-muted-foreground">De Vacaciones</p>
+                      <p className="text-3xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{reporte.enVacacionesHoy}</p>
+                      <p className="text-xs text-muted-foreground">Actualmente ausentes</p>
+                    </div>
+                    <div className="text-violet-600 dark:text-violet-400 shrink-0">
+                      <Activity className="w-6 h-6 md:w-8 md:h-8" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="stat bg-base-100 rounded-lg shadow p-4">
-                <div className="stat-figure text-warning">
-                  <Clock className="w-6 h-6 md:w-8 md:h-8" />
-                </div>
-                <div className="stat-title text-xs md:text-sm">Pendientes</div>
-                <div className="stat-value text-2xl md:text-3xl text-warning">{reporte.solicitudesPendientes}</div>
-                <div className="stat-desc text-xs">Por aprobar</div>
-              </div>
+              <Card className="rounded-2xl">
+                <CardContent className="p-5 pt-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm text-muted-foreground">Pendientes</p>
+                      <p className="text-3xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{reporte.solicitudesPendientes}</p>
+                      <p className="text-xs text-muted-foreground">Por aprobar</p>
+                    </div>
+                    <div className="text-amber-600 dark:text-amber-400 shrink-0">
+                      <Clock className="w-6 h-6 md:w-8 md:h-8" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="stat bg-base-100 rounded-lg shadow p-4">
-                <div className="stat-figure text-primary">
-                  <TrendingUp className="w-6 h-6 md:w-8 md:h-8" />
-                </div>
-                <div className="stat-title text-xs md:text-sm">Uso Promedio</div>
-                <div className="stat-value text-2xl md:text-3xl text-primary">{reporte.promedioUsoPorPersona}%</div>
-                <div className="stat-desc text-xs">Por colaborador</div>
-              </div>
+              <Card className="rounded-2xl">
+                <CardContent className="p-5 pt-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm text-muted-foreground">Uso Promedio</p>
+                      <p className="text-3xl font-bold tabular-nums text-primary">{reporte.promedioUsoPorPersona}%</p>
+                      <p className="text-xs text-muted-foreground">Por colaborador</p>
+                    </div>
+                    <div className="text-primary shrink-0">
+                      <TrendingUp className="w-6 h-6 md:w-8 md:h-8" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Gráficos de uso */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
               {/* Balance total de días */}
-              <div className="card bg-base-100 shadow-xl">
-                <div className="card-body p-4 md:p-6">
-                  <h2 className="card-title text-base md:text-lg">
-                    <PieChart className="w-4 h-4 md:w-5 md:h-5" />
+              <Card className="rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
+                    <PieChart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                     Balance Total de Días
-                  </h2>
-                  
-                  <div className="space-y-4 mt-4">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium">Asignados</span>
-                        <span className="text-2xl font-bold text-primary">{reporte.diasTotalesAsignados}</span>
-                      </div>
-                      <progress className="progress progress-primary w-full" value={100} max={100}></progress>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Asignados</span>
+                      <span className="text-lg font-semibold tracking-tight text-primary">{reporte.diasTotalesAsignados}</span>
                     </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium">Usados</span>
-                        <span className="text-2xl font-bold text-error">{reporte.diasTotalesUsados}</span>
-                      </div>
-                      <progress 
-                        className="progress progress-error w-full" 
-                        value={reporte.diasTotalesUsados} 
-                        max={reporte.diasTotalesAsignados}
-                      ></progress>
-                      <span className="text-xs text-base-content/60">
-                        {calcularPorcentaje(reporte.diasTotalesUsados, reporte.diasTotalesAsignados)}% utilizado
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium">Disponibles</span>
-                        <span className="text-2xl font-bold text-success">{reporte.diasTotalesDisponibles}</span>
-                      </div>
-                      <progress 
-                        className="progress progress-success w-full" 
-                        value={reporte.diasTotalesDisponibles} 
-                        max={reporte.diasTotalesAsignados}
-                      ></progress>
-                      <span className="text-xs text-base-content/60">
-                        {calcularPorcentaje(reporte.diasTotalesDisponibles, reporte.diasTotalesAsignados)}% disponible
-                      </span>
-                    </div>
+                    <Progress value={100} />
                   </div>
-                </div>
-              </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Usados</span>
+                      <span className="text-lg font-semibold tracking-tight text-destructive">{reporte.diasTotalesUsados}</span>
+                    </div>
+                    <Progress
+                      className="bg-destructive/20 [&_[data-slot=progress-indicator]]:bg-destructive"
+                      value={calcularPorcentaje(reporte.diasTotalesUsados, reporte.diasTotalesAsignados)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {calcularPorcentaje(reporte.diasTotalesUsados, reporte.diasTotalesAsignados)}% utilizado
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Disponibles</span>
+                      <span className="text-lg font-semibold tracking-tight text-emerald-600 dark:text-emerald-400">{reporte.diasTotalesDisponibles}</span>
+                    </div>
+                    <Progress
+                      className="bg-emerald-500/20 [&_[data-slot=progress-indicator]]:bg-emerald-500"
+                      value={calcularPorcentaje(reporte.diasTotalesDisponibles, reporte.diasTotalesAsignados)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {calcularPorcentaje(reporte.diasTotalesDisponibles, reporte.diasTotalesAsignados)}% disponible
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Estado de solicitudes */}
-              <div className="card bg-base-100 shadow-xl">
-                <div className="card-body p-4 md:p-6">
-                  <h2 className="card-title text-base md:text-lg">
-                    <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
+              <Card className="rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                     Estado de Solicitudes
-                  </h2>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                    <Card className="rounded-2xl shadow-none">
+                      <CardContent className="p-4 pt-5">
+                        <div className="flex flex-col items-center text-center gap-2">
+                          <div className="text-amber-600 dark:text-amber-400">
+                            <Clock className="w-5 h-5 md:w-6 md:h-6 mx-auto" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">Pendientes</p>
+                          <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{reporte.solicitudesPendientes}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4">
-                    <div className="stat bg-base-200 rounded p-3 md:p-4">
-                      <div className="stat-figure text-warning">
-                        <Clock className="w-5 h-5 md:w-6 md:h-6" />
-                      </div>
-                      <div className="stat-title text-xs">Pendientes</div>
-                      <div className="stat-value text-xl md:text-2xl text-warning">{reporte.solicitudesPendientes}</div>
-                    </div>
+                    <Card className="rounded-2xl shadow-none">
+                      <CardContent className="p-4 pt-5">
+                        <div className="flex flex-col items-center text-center gap-2">
+                          <div className="text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle className="w-5 h-5 md:w-6 md:h-6 mx-auto" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">Aprobadas</p>
+                          <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{reporte.solicitudesAprobadas}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-                    <div className="stat bg-base-200 rounded p-3 md:p-4">
-                      <div className="stat-figure text-success">
-                        <CheckCircle className="w-5 h-5 md:w-6 md:h-6" />
-                      </div>
-                      <div className="stat-title text-xs">Aprobadas</div>
-                      <div className="stat-value text-xl md:text-2xl text-success">{reporte.solicitudesAprobadas}</div>
-                    </div>
-
-                    <div className="stat bg-base-200 rounded p-3 md:p-4">
-                      <div className="stat-figure text-error">
-                        <XCircle className="w-5 h-5 md:w-6 md:h-6" />
-                      </div>
-                      <div className="stat-title text-xs">Rechazadas</div>
-                      <div className="stat-value text-xl md:text-2xl text-error">{reporte.solicitudesRechazadas}</div>
-                    </div>
+                    <Card className="rounded-2xl shadow-none">
+                      <CardContent className="p-4 pt-5">
+                        <div className="flex flex-col items-center text-center gap-2">
+                          <div className="text-destructive">
+                            <XCircle className="w-5 h-5 md:w-6 md:h-6 mx-auto" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">Rechazadas</p>
+                          <p className="text-2xl font-bold tabular-nums text-destructive">{reporte.solicitudesRechazadas}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
 
                   <div className="mt-4">
-                    <progress 
-                      className="progress progress-success w-full" 
-                      value={reporte.solicitudesAprobadas} 
-                      max={reporte.solicitudesPendientes + reporte.solicitudesAprobadas + reporte.solicitudesRechazadas}
-                    ></progress>
-                    <p className="text-xs text-center text-base-content/60 mt-2">
+                    <Progress
+                      className="bg-emerald-500/20 [&_[data-slot=progress-indicator]]:bg-emerald-500"
+                      value={calcularPorcentaje(reporte.solicitudesAprobadas, totalSolicitudes)}
+                    />
+                    <p className="text-xs text-center text-muted-foreground mt-2">
                       Tasa de aprobación: {calcularPorcentaje(
-                        reporte.solicitudesAprobadas, 
-                        reporte.solicitudesPendientes + reporte.solicitudesAprobadas + reporte.solicitudesRechazadas
+                        reporte.solicitudesAprobadas,
+                        totalSolicitudes
                       )}%
                     </p>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Tablas */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
               {/* Próximas vacaciones */}
-              <div className="card bg-base-100 shadow-xl">
-                <div className="card-body p-4 md:p-6">
-                  <h2 className="card-title text-base md:text-lg">
-                    <Calendar className="w-4 h-4 md:w-5 md:h-5" />
+              <Card className="rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
+                    <Calendar className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                     Próximas Vacaciones
-                  </h2>
-
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   {reporte.proximasVacaciones.length === 0 ? (
-                    <div className="text-center py-8 text-base-content/60">
+                    <div className="text-center py-8 text-muted-foreground">
                       <Calendar className="w-12 h-12 mx-auto mb-2 opacity-20" />
                       <p className="text-sm">No hay vacaciones programadas</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto -mx-4 md:mx-0 mt-4">
-                      <table className="table table-xs md:table-sm">
-                        <thead>
-                          <tr>
-                            <th>Colaborador</th>
-                            <th>Período</th>
-                            <th>Días</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <div className="-mx-2 md:mx-0 mt-2">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Colaborador</TableHead>
+                            <TableHead>Período</TableHead>
+                            <TableHead>Días</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {reporte.proximasVacaciones.map((vac, i) => (
-                            <tr key={i}>
-                              <td className="font-medium">{vac.usuario}</td>
-                              <td className="text-xs">
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{vac.usuario}</TableCell>
+                              <TableCell className="text-xs whitespace-normal">
                                 {new Date(vac.fechaInicio).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} - {new Date(vac.fechaFin).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                              </td>
-                              <td>
-                                <div className="badge badge-primary badge-sm">{vac.dias}</div>
-                              </td>
-                            </tr>
+                              </TableCell>
+                              <TableCell>
+                                <Badge>{vac.dias}</Badge>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Top colaboradores por uso */}
-              <div className="card bg-base-100 shadow-xl">
-                <div className="card-body p-4 md:p-6">
-                  <h2 className="card-title text-base md:text-lg">
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" />
+              <Card className="rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                     Mayor Uso de Días
-                  </h2>
-
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   {reporte.topUsuarios.length === 0 ? (
-                    <div className="text-center py-8 text-base-content/60">
+                    <div className="text-center py-8 text-muted-foreground">
                       <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />
                       <p className="text-sm">No hay datos disponibles</p>
                     </div>
                   ) : (
-                    <div className="space-y-2 md:space-y-3 mt-4">
+                    <div className="space-y-2 md:space-y-3 mt-2">
                       {reporte.topUsuarios.map((usuario, i) => (
-                        <div key={i} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-base-200 rounded gap-2">
+                        <div
+                          key={i}
+                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-muted/50 rounded-xl gap-2"
+                        >
                           <div className="flex items-center gap-2 md:gap-3">
-                            <div className="badge badge-neutral badge-sm">{i + 1}</div>
+                            <Badge variant="secondary">{i + 1}</Badge>
                             <span className="font-medium text-sm md:text-base">{usuario.usuario}</span>
                           </div>
                           <div className="text-left sm:text-right">
-                            <p className="font-bold text-error text-sm md:text-base">{usuario.diasUsados} usados</p>
-                            <p className="text-xs text-base-content/60">{usuario.diasDisponibles} disponibles</p>
+                            <p className="font-semibold text-destructive text-[13px]">{usuario.diasUsados} usados</p>
+                            <p className="text-xs text-muted-foreground">{usuario.diasDisponibles} disponibles</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             </div>
           </>
         )}

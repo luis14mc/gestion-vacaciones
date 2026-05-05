@@ -1,31 +1,37 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Session } from "next-auth";
-import { 
-  FileText, 
-  Calendar, 
-  TrendingUp, 
-  Users, 
+import {
+  FileText,
+  Calendar,
+  TrendingUp,
+  Users,
   Download,
   Filter,
   BarChart3,
   PieChart,
   AlertTriangle
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify, confirmAction } from '@/lib/swal';
 import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface ReportesClientProps {
   session: Session;
 }
 
-type TipoReporte = 
-  | "balances" 
-  | "solicitudes" 
-  | "departamentos" 
-  | "proyecciones" 
+type TipoReporte =
+  | "balances"
+  | "solicitudes"
+  | "departamentos"
+  | "proyecciones"
   | "ausentismo";
 
 interface Departamento {
@@ -51,11 +57,11 @@ interface FiltrosReporte {
 }
 
 export default function ReportesClient({ session }: ReportesClientProps) {
-  const router = useRouter();
   const [reporteSeleccionado, setReporteSeleccionado] = useState<TipoReporte>("balances");
   const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
   const [tiposAusencia, setTiposAusencia] = useState<TipoAusencia[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [datosReporte, setDatosReporte] = useState<any>(null);
 
   const [filtros, setFiltros] = useState<FiltrosReporte>({
@@ -106,19 +112,11 @@ export default function ReportesClient({ session }: ReportesClientProps) {
       if (data.success) {
         setDatosReporte(data.data);
       } else {
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: data.error || "Error al generar reporte",
-        });
+        notify.error("Error", data.error || "Error al generar reporte");
       }
     } catch (error) {
       console.error("Error generando reporte:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al generar reporte",
-      });
+      notify.error("Error", "Error al generar reporte");
     } finally {
       setCargando(false);
     }
@@ -126,38 +124,18 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 
   const exportarReporte = async (formato: "excel" | "pdf") => {
     if (!reporteSeleccionado) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Sin selección",
-        text: "Primero selecciona un tipo de reporte",
-      });
+      notify.warning("Sin selección", "Primero selecciona un tipo de reporte");
       return;
     }
 
     // Confirmación antes de exportar
     const formatoTexto = formato === "excel" ? "CSV" : "PDF";
-    const result = await Swal.fire({
-      title: "¿Exportar reporte?",
-      text: `Se descargará el reporte de ${tiposReporte.find(t => t.id === reporteSeleccionado)?.nombre} en formato ${formatoTexto}`,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "Sí, exportar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#3b82f6",
-    });
+    const result = await confirmAction('¿Exportar reporte?', `Se descargará el reporte de ${tiposReporte.find(t => t.id === reporteSeleccionado)?.nombre} en formato ${formatoTexto}`, { confirmText: `Descargar ${formatoTexto}`, icon: 'info' });
 
-    if (!result.isConfirmed) return;
+    if (!result.confirmed) return;
 
+    setExportLoading(true);
     try {
-      // Mostrar indicador de carga
-      Swal.fire({
-        title: 'Generando exportación...',
-        html: 'Por favor espera mientras se obtienen todos los datos',
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading();
-        },
-      });
 
       if (formato === "pdf") {
         // Obtener datos COMPLETOS de la API para PDF (sin limitaciones del frontend)
@@ -178,7 +156,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         // Generar PDF con TODOS los datos de la API
         let config: any = {};
         const tituloReporte = tiposReporte.find(t => t.id === reporteSeleccionado)?.nombre || '';
-        
+
         switch (reporteSeleccionado) {
           case "balances":
             config = {
@@ -230,14 +208,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         const doc = generarPDFReporte(config);
         descargarPDF(doc, `reporte_${reporteSeleccionado}_${Date.now()}.pdf`);
 
-        Swal.close(); // Cerrar el loading
-        await Swal.fire({
-          icon: "success",
-          title: "Exportado",
-          html: `<strong>${config.datos.length}</strong> registros exportados exitosamente`,
-          timer: 3000,
-          showConfirmButton: false,
-        });
+        notify.success("Exportado", `${config.datos.length} registros exportados exitosamente`);
       } else {
         // Exportar CSV desde API (ya obtiene todos los datos)
         const params = new URLSearchParams({
@@ -247,11 +218,11 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         } as any);
 
         const res = await fetch(`/api/reportes/exportar?${params}`);
-        
+
         if (!res.ok) {
           throw new Error('Error al exportar');
         }
-        
+
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -260,28 +231,19 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         a.target = '_blank';
         document.body.appendChild(a);
         a.click();
-        
+
         setTimeout(() => {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 100);
 
-        Swal.close(); // Cerrar el loading
-        await Swal.fire({
-          icon: "success",
-          title: "Exportado",
-          text: "Archivo CSV descargado exitosamente con todos los registros",
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        notify.success("Exportado", "Archivo CSV descargado exitosamente con todos los registros");
       }
     } catch (error) {
       console.error("Error exportando reporte:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al exportar reporte",
-      });
+      notify.error("Error", "Error al exportar reporte");
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -298,53 +260,47 @@ export default function ReportesClient({ session }: ReportesClientProps) {
       nombre: "Historial de Solicitudes",
       descripcion: "Todas las solicitudes de ausencia por período",
       icono: Calendar,
-      color: "text-info",
+      color: "text-blue-500",
     },
     {
       id: "departamentos" as TipoReporte,
       nombre: "Uso por Departamento",
       descripcion: "Consolidado de uso de días por departamento",
       icono: Users,
-      color: "text-success",
+      color: "text-green-500",
     },
     {
       id: "proyecciones" as TipoReporte,
       nombre: "Proyecciones y Vencimientos",
       descripcion: "Días próximos a vencer y alertas",
       icono: AlertTriangle,
-      color: "text-warning",
+      color: "text-amber-500",
     },
     {
       id: "ausentismo" as TipoReporte,
       nombre: "Análisis de Ausentismo",
       descripcion: "Tendencias y estadísticas de ausencias",
       icono: TrendingUp,
-      color: "text-error",
+      color: "text-red-500",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4">
+    <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">
-              <BarChart3 className="w-8 h-8" />
+            <div className="bg-muted p-2.5 rounded-xl">
+              <BarChart3 className="w-4 h-4 text-muted-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Reportes Avanzados</h1>
-              <p className="text-base-content/70">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Reportes Avanzados</h1>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
                 Genera reportes detallados y exporta información del sistema
               </p>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost"
-          >
-            ← Volver
-          </button>
         </div>
 
         {/* Selección de Tipo de Reporte */}
@@ -359,27 +315,24 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                   setFiltros({ ...filtros, tipoReporte: tipo.id });
                   setDatosReporte(null);
                 }}
-                className={`card cursor-pointer transition-all hover:shadow-lg ${
-                  reporteSeleccionado === tipo.id
-                    ? "bg-primary text-primary-content ring-2 ring-primary"
-                    : "bg-base-100 hover:bg-base-200"
-                }`}
+                className={`rounded-2xl border cursor-pointer transition-colors shadow-sm ${reporteSeleccionado === tipo.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card hover:border-primary/30"
+                  }`}
               >
-                <div className="card-body">
+                <div className="p-5">
                   <div className="flex items-start gap-3">
                     <Icono
-                      className={`w-8 h-8 ${
-                        reporteSeleccionado === tipo.id ? "text-primary-content" : tipo.color
-                      }`}
+                      className={`w-5 h-5 ${reporteSeleccionado === tipo.id ? "text-primary-foreground" : tipo.color
+                        }`}
                     />
                     <div className="flex-1">
-                      <h3 className="font-bold text-lg">{tipo.nombre}</h3>
+                      <h3 className="font-semibold text-sm">{tipo.nombre}</h3>
                       <p
-                        className={`text-sm ${
-                          reporteSeleccionado === tipo.id
-                            ? "text-primary-content/80"
-                            : "text-base-content/60"
-                        }`}
+                        className={`text-[13px] mt-0.5 ${reporteSeleccionado === tipo.id
+                            ? "text-primary-foreground/80"
+                            : "text-muted-foreground"
+                          }`}
                       >
                         {tipo.descripcion}
                       </p>
@@ -392,10 +345,10 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         </div>
 
         {/* Panel de Filtros */}
-        <div className="card bg-base-100 shadow-xl mb-6">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
-              <Filter className="w-5 h-5" />
+        <Card className="mb-6 shadow-sm border">
+          <CardContent className="p-5">
+            <h2 className="flex items-center gap-2 font-semibold text-sm mb-4">
+              <Filter className="w-4 h-4 text-muted-foreground" />
               Filtros
             </h2>
 
@@ -403,24 +356,18 @@ export default function ReportesClient({ session }: ReportesClientProps) {
               {/* Rango de Fechas */}
               {(reporteSeleccionado === "solicitudes" || reporteSeleccionado === "ausentismo") && (
                 <>
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Fecha Inicio</span>
-                    </label>
-                    <input
+                  <div className="space-y-2">
+                    <Label>Fecha Inicio</Label>
+                    <Input
                       type="date"
-                      className="input input-bordered"
                       value={filtros.fechaInicio}
                       onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
                     />
                   </div>
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Fecha Fin</span>
-                    </label>
-                    <input
+                  <div className="space-y-2">
+                    <Label>Fecha Fin</Label>
+                    <Input
                       type="date"
-                      className="input input-bordered"
                       value={filtros.fechaFin}
                       onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
                     />
@@ -430,131 +377,150 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 
               {/* Año */}
               {(reporteSeleccionado === "balances" || reporteSeleccionado === "proyecciones") && (
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Año</span>
-                  </label>
-                  <select
-                    className="select select-bordered"
-                    value={filtros.anio}
-                    onChange={(e) => setFiltros({ ...filtros, anio: Number(e.target.value) })}
+                <div className="space-y-2">
+                  <Label>Año</Label>
+                  <Select
+                    value={filtros.anio.toString()}
+                    onValueChange={(val) => setFiltros({ ...filtros, anio: Number(val) })}
                   >
-                    {[2024, 2025, 2026].map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2024, 2025, 2026].map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 
               {/* Departamento */}
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Departamento</span>
-                </label>
-                <select
-                  className="select select-bordered"
-                  value={filtros.departamentoId}
-                  onChange={(e) => setFiltros({ ...filtros, departamentoId: e.target.value })}
+              <div className="space-y-2">
+                <Label>Departamento</Label>
+                <Select
+                  value={filtros.departamentoId || "todos"}
+                  onValueChange={(val) => setFiltros({ ...filtros, departamentoId: val === "todos" ? "" : val })}
                 >
-                  <option value="">Todos</option>
-                  {departamentos.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.nombre}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {departamentos.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id.toString()}>
+                        {dept.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Tipo de Ausencia */}
               {reporteSeleccionado !== "departamentos" && (
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Tipo de Ausencia</span>
-                  </label>
-                  <select
-                    className="select select-bordered"
-                    value={filtros.tipoAusenciaId}
-                    onChange={(e) => setFiltros({ ...filtros, tipoAusenciaId: e.target.value })}
+                <div className="space-y-2">
+                  <Label>Tipo de Ausencia</Label>
+                  <Select
+                    value={filtros.tipoAusenciaId || "todos"}
+                    onValueChange={(val) => setFiltros({ ...filtros, tipoAusenciaId: val === "todos" ? "" : val })}
                   >
-                    <option value="">Todos</option>
-                    {tiposAusencia.map((tipo) => (
-                      <option key={tipo.id} value={tipo.id}>
-                        {tipo.nombre}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      {tiposAusencia.map((tipo) => (
+                        <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                          {tipo.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 
               {/* Estado (solo para solicitudes) */}
               {reporteSeleccionado === "solicitudes" && (
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Estado</span>
-                  </label>
-                  <select
-                    className="select select-bordered"
-                    value={filtros.estado}
-                    onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+                <div className="space-y-2">
+                  <Label>Estado</Label>
+                  <Select
+                    value={filtros.estado || "todos"}
+                    onValueChange={(val) => setFiltros({ ...filtros, estado: val === "todos" ? "" : val })}
                   >
-                    <option value="">Todos</option>
-                    <option value="pendiente">Pendiente</option>
-                    <option value="aprobado_jefe">Aprobado Jefe</option>
-                    <option value="aprobado">Aprobado</option>
-                    <option value="rechazado">Rechazado</option>
-                    <option value="cancelado">Cancelado</option>
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="pendiente">Pendiente</SelectItem>
+                      <SelectItem value="aprobado_jefe">Aprobado Jefe</SelectItem>
+                      <SelectItem value="aprobado">Aprobado</SelectItem>
+                      <SelectItem value="rechazado">Rechazado</SelectItem>
+                      <SelectItem value="cancelado">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
 
             {/* Botones de Acción */}
-            <div className="flex gap-2 mt-4">
-              <button
+            <div className="flex flex-wrap gap-2 mt-4 pt-2">
+              <Button
                 onClick={generarReporte}
-                className="btn btn-primary gap-2"
                 disabled={cargando}
               >
                 {cargando ? (
-                  <span className="loading loading-spinner loading-sm"></span>
+                  <span className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
                 ) : (
-                  <BarChart3 className="w-4 h-4" />
+                  <BarChart3 className="w-4 h-4 mr-2" />
                 )}
                 Generar Reporte
-              </button>
+              </Button>
 
               {datosReporte && (
                 <>
-                  <button
+                  <Button
                     onClick={() => exportarReporte("excel")}
-                    className="btn btn-success gap-2 shadow-lg hover:shadow-xl transition-all"
+                    variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50"
                     title="Descargar reporte en formato CSV"
+                    disabled={exportLoading}
                   >
-                    <Download className="w-4 h-4" />
+                    {exportLoading ? (
+                      <span className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
                     Exportar CSV
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => exportarReporte("pdf")}
-                    className="btn btn-error gap-2 shadow-lg hover:shadow-xl transition-all"
+                    variant="outline"
+                    className="text-red-600 border-red-200 hover:bg-red-50"
                     title="Descargar reporte en formato PDF"
+                    disabled={exportLoading}
                   >
-                    <Download className="w-4 h-4" />
+                    {exportLoading ? (
+                      <span className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
                     Exportar PDF
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Área de Resultados */}
         {datosReporte && (
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body">
-              <h2 className="card-title mb-4">
-                <PieChart className="w-5 h-5" />
+          <Card className="mb-6 shadow-sm border">
+            <CardContent className="p-5">
+              <h2 className="flex items-center gap-2 font-semibold text-sm mb-4">
+                <PieChart className="w-4 h-4 text-muted-foreground" />
                 Resultados
               </h2>
 
@@ -574,17 +540,17 @@ export default function ReportesClient({ session }: ReportesClientProps) {
               {reporteSeleccionado === "ausentismo" && (
                 <ReporteAusentismo datos={datosReporte} />
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {cargando && (
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body flex items-center justify-center py-12">
-              <span className="loading loading-spinner loading-lg"></span>
-              <p className="mt-4 text-base-content/60">Generando reporte...</p>
-            </div>
-          </div>
+          <Card className="rounded-2xl shadow-sm border mt-6">
+            <CardContent className="p-5 flex items-center justify-center py-12 flex-col">
+              <span className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></span>
+              <p className="mt-4 text-[13px] text-muted-foreground">Generando reporte...</p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
@@ -594,38 +560,38 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 // Componentes de visualización de reportes
 function ReporteBalances({ datos }: { datos: any }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="table table-zebra">
-        <thead>
-          <tr>
-            <th>Empleado</th>
-            <th>Departamento</th>
-            <th>Tipo Ausencia</th>
-            <th className="text-center">Asignados</th>
-            <th className="text-center">Utilizados</th>
-            <th className="text-center">Pendientes</th>
-            <th className="text-center">Disponibles</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Empleado</TableHead>
+            <TableHead>Departamento</TableHead>
+            <TableHead>Tipo Ausencia</TableHead>
+            <TableHead className="text-center">Asignados</TableHead>
+            <TableHead className="text-center">Utilizados</TableHead>
+            <TableHead className="text-center">Pendientes</TableHead>
+            <TableHead className="text-center">Disponibles</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {datos.balances?.map((balance: any, index: number) => (
-            <tr key={index}>
-              <td>
+            <TableRow key={index}>
+              <TableCell>
                 <div className="font-medium">{balance.empleado}</div>
-                <div className="text-xs opacity-60">{balance.email}</div>
-              </td>
-              <td>{balance.departamento}</td>
-              <td>
-                <span className="badge badge-ghost">{balance.tipo_ausencia}</span>
-              </td>
-              <td className="text-center font-semibold">{balance.asignados}</td>
-              <td className="text-center text-error">{balance.utilizados}</td>
-              <td className="text-center text-warning">{balance.pendientes}</td>
-              <td className="text-center text-success font-bold">{balance.disponibles}</td>
-            </tr>
+                <div className="text-xs text-muted-foreground">{balance.email}</div>
+              </TableCell>
+              <TableCell>{balance.departamento}</TableCell>
+              <TableCell>
+                <Badge variant="secondary">{balance.tipo_ausencia}</Badge>
+              </TableCell>
+              <TableCell className="text-center font-semibold">{balance.asignados}</TableCell>
+              <TableCell className="text-center text-red-500">{balance.utilizados}</TableCell>
+              <TableCell className="text-center text-amber-500">{balance.pendientes}</TableCell>
+              <TableCell className="text-center text-green-600 font-semibold">{balance.disponibles}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -633,53 +599,53 @@ function ReporteBalances({ datos }: { datos: any }) {
 function ReporteSolicitudes({ datos }: { datos: any }) {
   const getEstadoBadge = (estado: string) => {
     const badges: Record<string, string> = {
-      pendiente: "badge-warning",
-      aprobado_jefe: "badge-info",
-      aprobado: "badge-success",
-      rechazado: "badge-error",
-      cancelado: "badge-ghost",
+      pendiente: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+      aprobado_jefe: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+      aprobado: "bg-green-100 text-green-800 hover:bg-green-100",
+      rechazado: "bg-red-100 text-red-800 hover:bg-red-100",
+      cancelado: "bg-gray-100 text-gray-800 hover:bg-gray-100",
     };
-    return badges[estado] || "badge-ghost";
+    return badges[estado] || "bg-gray-100 text-gray-800 hover:bg-gray-100";
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="table table-zebra">
-        <thead>
-          <tr>
-            <th>Empleado</th>
-            <th>Tipo</th>
-            <th>Fecha Inicio</th>
-            <th>Fecha Fin</th>
-            <th className="text-center">Días</th>
-            <th>Estado</th>
-            <th>Fecha Solicitud</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Empleado</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Fecha Inicio</TableHead>
+            <TableHead>Fecha Fin</TableHead>
+            <TableHead className="text-center">Días</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Fecha Solicitud</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {datos.solicitudes?.map((solicitud: any, index: number) => (
-            <tr key={index}>
-              <td>
+            <TableRow key={index}>
+              <TableCell>
                 <div className="font-medium">{solicitud.empleado}</div>
-              </td>
-              <td>
-                <span className="badge badge-ghost">{solicitud.tipo_ausencia}</span>
-              </td>
-              <td>{new Date(solicitud.fecha_inicio).toLocaleDateString()}</td>
-              <td>{new Date(solicitud.fecha_fin).toLocaleDateString()}</td>
-              <td className="text-center font-semibold">{solicitud.dias_solicitados}</td>
-              <td>
-                <span className={`badge ${getEstadoBadge(solicitud.estado)}`}>
+              </TableCell>
+              <TableCell>
+                <Badge variant="secondary">{solicitud.tipo_ausencia}</Badge>
+              </TableCell>
+              <TableCell>{new Date(solicitud.fecha_inicio).toLocaleDateString()}</TableCell>
+              <TableCell>{new Date(solicitud.fecha_fin).toLocaleDateString()}</TableCell>
+              <TableCell className="text-center font-semibold">{solicitud.dias_solicitados}</TableCell>
+              <TableCell>
+                <Badge className={getEstadoBadge(solicitud.estado)}>
                   {solicitud.estado}
-                </span>
-              </td>
-              <td className="text-sm opacity-60">
+                </Badge>
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
                 {new Date(solicitud.fecha_solicitud).toLocaleDateString()}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -688,29 +654,29 @@ function ReporteDepartamentos({ datos }: { datos: any }) {
   return (
     <div className="space-y-6">
       {datos.departamentos?.map((dept: any, index: number) => (
-        <div key={index} className="card bg-base-200">
-          <div className="card-body">
-            <h3 className="card-title">{dept.nombre}</h3>
+        <Card key={index} className="shadow-sm border">
+          <CardContent className="p-5">
+            <h3 className="font-semibold text-sm mb-3">{dept.nombre}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="stat bg-base-100 rounded-lg">
-                <div className="stat-title">Empleados</div>
-                <div className="stat-value text-primary">{dept.total_empleados}</div>
+              <div className="bg-background rounded-xl p-3 border shadow-sm">
+                <div className="text-xs text-muted-foreground">Empleados</div>
+                <div className="text-lg font-bold text-primary mt-1">{dept.total_empleados}</div>
               </div>
-              <div className="stat bg-base-100 rounded-lg">
-                <div className="stat-title">Días Asignados</div>
-                <div className="stat-value text-info">{dept.total_asignados}</div>
+              <div className="bg-background rounded-xl p-3 border shadow-sm">
+                <div className="text-xs text-muted-foreground">Días Asignados</div>
+                <div className="text-lg font-bold text-blue-500 mt-1">{dept.total_asignados}</div>
               </div>
-              <div className="stat bg-base-100 rounded-lg">
-                <div className="stat-title">Días Usados</div>
-                <div className="stat-value text-error">{dept.total_usados}</div>
+              <div className="bg-background rounded-xl p-3 border shadow-sm">
+                <div className="text-xs text-muted-foreground">Días Usados</div>
+                <div className="text-lg font-bold text-red-500 mt-1">{dept.total_usados}</div>
               </div>
-              <div className="stat bg-base-100 rounded-lg">
-                <div className="stat-title">% Uso</div>
-                <div className="stat-value text-success">{dept.porcentaje_uso}%</div>
+              <div className="bg-background rounded-xl p-3 border shadow-sm">
+                <div className="text-xs text-muted-foreground">% Uso</div>
+                <div className="text-lg font-bold text-green-600 mt-1">{dept.porcentaje_uso}%</div>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ))}
     </div>
   );
@@ -722,37 +688,37 @@ function ReporteProyecciones({ datos }: { datos: any }) {
       {/* Días próximos a vencer */}
       {datos.proximos_vencer && datos.proximos_vencer.length > 0 && (
         <div>
-          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-warning" />
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
             Días Próximos a Vencer
           </h3>
-          <div className="overflow-x-auto">
-            <table className="table table-zebra">
-              <thead>
-                <tr>
-                  <th>Empleado</th>
-                  <th>Tipo</th>
-                  <th className="text-center">Días Disponibles</th>
-                  <th>Fecha Vencimiento</th>
-                  <th>Días Restantes</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empleado</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead className="text-center">Días Disponibles</TableHead>
+                  <TableHead>Fecha Vencimiento</TableHead>
+                  <TableHead>Días Restantes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {datos.proximos_vencer.map((item: any, index: number) => (
-                  <tr key={index}>
-                    <td>{item.empleado}</td>
-                    <td><span className="badge badge-ghost">{item.tipo_ausencia}</span></td>
-                    <td className="text-center font-semibold text-warning">{item.dias_disponibles}</td>
-                    <td>{new Date(item.fecha_vencimiento).toLocaleDateString()}</td>
-                    <td>
-                      <span className={`badge ${item.dias_restantes < 30 ? 'badge-error' : 'badge-warning'}`}>
+                  <TableRow key={index}>
+                    <TableCell>{item.empleado}</TableCell>
+                    <TableCell><Badge variant="secondary">{item.tipo_ausencia}</Badge></TableCell>
+                    <TableCell className="text-center font-semibold text-amber-500">{item.dias_disponibles}</TableCell>
+                    <TableCell>{new Date(item.fecha_vencimiento).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Badge variant={item.dias_restantes < 30 ? "destructive" : "secondary"} className={item.dias_restantes >= 30 ? "bg-amber-100 text-amber-800 hover:bg-amber-100" : ""}>
                         {item.dias_restantes} días
-                      </span>
-                    </td>
-                  </tr>
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -760,18 +726,18 @@ function ReporteProyecciones({ datos }: { datos: any }) {
       {/* Empleados con días acumulados */}
       {datos.dias_acumulados && datos.dias_acumulados.length > 0 && (
         <div>
-          <h3 className="text-lg font-bold mb-3">Empleados con Días Acumulados</h3>
+          <h3 className="text-sm font-semibold mb-3">Empleados con Días Acumulados</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {datos.dias_acumulados.map((item: any, index: number) => (
-              <div key={index} className="card bg-base-200">
-                <div className="card-body">
-                  <h4 className="font-bold">{item.empleado}</h4>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm opacity-60">{item.tipo_ausencia}</span>
-                    <span className="badge badge-lg badge-primary">{item.dias_acumulados} días</span>
+              <Card key={index} className="shadow-sm border">
+                <CardContent className="p-5">
+                  <h4 className="font-semibold text-sm">{item.empleado}</h4>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-[13px] text-muted-foreground">{item.tipo_ausencia}</span>
+                    <Badge variant="default" className="bg-primary hover:bg-primary">{item.dias_acumulados} días</Badge>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </div>
@@ -785,49 +751,57 @@ function ReporteAusentismo({ datos }: { datos: any }) {
     <div className="space-y-6">
       {/* Resumen general */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="stat bg-base-200 rounded-lg">
-          <div className="stat-title">Total Ausencias</div>
-          <div className="stat-value text-primary">{datos.resumen?.total_ausencias || 0}</div>
-        </div>
-        <div className="stat bg-base-200 rounded-lg">
-          <div className="stat-title">Días Totales</div>
-          <div className="stat-value text-info">{datos.resumen?.total_dias || 0}</div>
-        </div>
-        <div className="stat bg-base-200 rounded-lg">
-          <div className="stat-title">Promedio/Empleado</div>
-          <div className="stat-value text-success">{datos.resumen?.promedio_empleado || 0}</div>
-        </div>
-        <div className="stat bg-base-200 rounded-lg">
-          <div className="stat-title">Tipo Más Usado</div>
-          <div className="stat-value text-sm">{datos.resumen?.tipo_mas_usado || "-"}</div>
-        </div>
+        <Card className="shadow-sm border">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">Total Ausencias</div>
+            <div className="text-2xl font-bold text-primary mt-1">{datos.resumen?.total_ausencias || 0}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">Días Totales</div>
+            <div className="text-2xl font-bold text-blue-500 mt-1">{datos.resumen?.total_dias || 0}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">Promedio/Empleado</div>
+            <div className="text-2xl font-bold text-green-500 mt-1">{datos.resumen?.promedio_empleado || 0}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border">
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">Tipo Más Usado</div>
+            <div className="text-xl font-bold mt-1 truncate">{datos.resumen?.tipo_mas_usado || "-"}</div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tendencia por mes */}
       {datos.tendencia_mensual && (
         <div>
-          <h3 className="text-lg font-bold mb-3">Tendencia Mensual</h3>
-          <div className="overflow-x-auto">
-            <table className="table table-zebra">
-              <thead>
-                <tr>
-                  <th>Mes</th>
-                  <th className="text-center">Solicitudes</th>
-                  <th className="text-center">Días</th>
-                  <th className="text-center">Promedio Días/Solicitud</th>
-                </tr>
-              </thead>
-              <tbody>
+          <h3 className="text-sm font-semibold mb-3">Tendencia Mensual</h3>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mes</TableHead>
+                  <TableHead className="text-center">Solicitudes</TableHead>
+                  <TableHead className="text-center">Días</TableHead>
+                  <TableHead className="text-center">Promedio Días/Solicitud</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {datos.tendencia_mensual.map((mes: any, index: number) => (
-                  <tr key={index}>
-                    <td className="font-medium">{mes.mes}</td>
-                    <td className="text-center">{mes.solicitudes}</td>
-                    <td className="text-center font-semibold">{mes.dias}</td>
-                    <td className="text-center">{mes.promedio}</td>
-                  </tr>
+                  <TableRow key={index}>
+                    <TableCell className="font-medium">{mes.mes}</TableCell>
+                    <TableCell className="text-center">{mes.solicitudes}</TableCell>
+                    <TableCell className="text-center font-semibold">{mes.dias}</TableCell>
+                    <TableCell className="text-center">{mes.promedio}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

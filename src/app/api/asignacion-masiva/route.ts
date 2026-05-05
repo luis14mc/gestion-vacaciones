@@ -1,31 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { balances, usuarios } from "@/lib/db/schema";
+import { balances, usuarios, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getSession();
     if (!session) {
-      return NextResponse.json({ success: false, error: "No autorizado" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
     }
 
-    if (!session.user.esAdmin && !session.user.esRrhh) {
+    if (!session.esAdmin && !session.esRrhh) {
       return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
     }
 
     const body = await request.json();
-    const { departamentoId, tipoAusencia, anoLaboralId, cantidadAsignada, operacion = "reemplazar" } = body;
+    const { departamentoId, tipoAusencia, cantidadAsignada, operacion = "reemplazar" } = body;
+    let anoLaboralId = body.anoLaboralId;
+    const anio = body.anio;
 
-    if (!departamentoId || !tipoAusencia || !anoLaboralId || cantidadAsignada === undefined) {
+    if (!departamentoId || !tipoAusencia || cantidadAsignada === undefined) {
       return NextResponse.json(
         { success: false, error: "Faltan campos requeridos" },
         { status: 400 }
       );
     }
 
-    // Obtener todos los usuarios activos del departamento
+    if (!anoLaboralId && anio) {
+      const anoResult = await db
+        .select({ id: anosLaborales.id })
+        .from(anosLaborales)
+        .where(eq(anosLaborales.ano, Number(anio)))
+        .limit(1);
+
+      if (anoResult.length === 0) {
+        return NextResponse.json(
+          { success: false, error: `No existe año laboral configurado para ${anio}` },
+          { status: 400 }
+        );
+      }
+      anoLaboralId = anoResult[0].id;
+    }
+
+    if (!anoLaboralId) {
+      return NextResponse.json(
+        { success: false, error: "Se requiere anoLaboralId o anio" },
+        { status: 400 }
+      );
+    }
+
     const usuariosDepartamento = await db
       .select({ id: usuarios.id, nombre: usuarios.nombre, apellido: usuarios.apellido })
       .from(usuarios)
@@ -42,10 +66,8 @@ export async function POST(request: NextRequest) {
     let usuariosActualizados = 0;
     const errores: string[] = [];
 
-    // Procesar cada usuario
     for (const usuario of usuariosDepartamento) {
       try {
-        // Verificar si ya existe un balance para este usuario/tipo/año
         const balanceExistente = await db.query.balances.findFirst({
           where: and(
             eq(balances.usuarioId, usuario.id),
@@ -57,40 +79,41 @@ export async function POST(request: NextRequest) {
         let cantidadFinal = Number.parseFloat(cantidadAsignada.toString());
 
         if (balanceExistente) {
-          // Actualizar existente
           const balanceActual = balanceExistente;
           
-          // Calcular cantidad final según operación
           if (operacion === "sumar") {
-            const cantidadActual = Number.parseFloat(balanceActual.cantidadInicial);
-            cantidadFinal = cantidadActual + cantidadFinal;
+            cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) + cantidadFinal;
           } else if (operacion === "restar") {
-            const cantidadActual = Number.parseFloat(balanceActual.cantidadInicial);
-            cantidadFinal = cantidadActual - cantidadFinal;
+            cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) - cantidadFinal;
             if (cantidadFinal < 0) cantidadFinal = 0;
           }
+
+          const disponibleAnterior = Number.parseFloat(balanceActual.cantidadDisponible ?? '0');
+          const inicialAnterior = Number.parseFloat(balanceActual.cantidadInicial ?? '0');
+          const nuevoDisponible = disponibleAnterior + (cantidadFinal - inicialAnterior);
 
           await db
             .update(balances)
             .set({
-              cantidadInicial: cantidadFinal.toString(),
+              cantidadInicial: cantidadFinal.toFixed(2),
+              cantidadDisponible: Math.max(0, nuevoDisponible).toFixed(2),
               version: balanceActual.version + 1,
               updatedAt: new Date().toISOString()
             })
             .where(eq(balances.id, balanceActual.id));
           usuariosActualizados++;
         } else {
-          // Crear nuevo (solo si es reemplazar o sumar, restar no tiene sentido si no existe)
           if (operacion === "restar") {
-            // No crear balance si se intenta restar y no existe
             continue;
           }
 
+          const cantidadStr = cantidadFinal.toFixed(2);
           await db.insert(balances).values({
             usuarioId: usuario.id,
             tipoAusencia: tipoAusencia as any,
             anoLaboralId,
-            cantidadInicial: cantidadFinal.toString()
+            cantidadInicial: cantidadStr,
+            cantidadDisponible: cantidadStr,
           });
           usuariosCreados++;
         }

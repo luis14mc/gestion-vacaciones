@@ -41,9 +41,13 @@ export const usuarios = pgTable(
     cargo: varchar('cargo', { length: 100 }),
     
     // Flags de rol (simplificación para queries rápidas)
+    esDirector: boolean('es_director').notNull().default(false),
     esJefe: boolean('es_jefe').notNull().default(false),
     esRrhh: boolean('es_rrhh').notNull().default(false),
     esAdmin: boolean('es_admin').notNull().default(false),
+    
+    // Jerarquía: quién aprueba las solicitudes de este usuario
+    jefeSuperiorId: bigint('jefe_superior_id', { mode: 'number' }),
     
     // Estado y metadatos
     activo: boolean('activo').notNull().default(true),
@@ -66,8 +70,10 @@ export const usuarios = pgTable(
     idxEmail: index('idx_usuarios_email').on(table.email),
     idxActivo: index('idx_usuarios_activo').on(table.activo),
     idxDepartamento: index('idx_usuarios_departamento').on(table.departamentoId),
+    idxDirector: index('idx_usuarios_director').on(table.esDirector, table.activo),
     idxJefe: index('idx_usuarios_jefe').on(table.esJefe, table.activo),
     idxRrhh: index('idx_usuarios_rrhh').on(table.esRrhh, table.activo),
+    idxJefeSuperior: index('idx_usuarios_jefe_superior').on(table.jefeSuperiorId),
   })
 );
 

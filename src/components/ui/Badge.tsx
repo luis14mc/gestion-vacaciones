@@ -1,46 +1,48 @@
-'use client';
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
 
-import type { ReactNode } from 'react';
+import { cn } from "@/lib/utils"
 
-type BadgeVariant = 'primary' | 'secondary' | 'accent' | 'ghost' | 'info' | 'success' | 'warning' | 'error';
-type BadgeSize = 'xs' | 'sm' | 'md' | 'lg';
+const badgeVariants = cva(
+  "inline-flex items-center justify-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary:
+          "bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        destructive:
+          "bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 [a&]:hover:underline",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
 
-interface BadgeProps {
-  variant?: BadgeVariant;
-  size?: BadgeSize;
-  outline?: boolean;
-  children: ReactNode;
-  className?: string;
+function Badge({
+  className,
+  variant = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "span"
+
+  return (
+    <Comp
+      data-slot="badge"
+      data-variant={variant}
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  )
 }
 
-const variantMap: Record<BadgeVariant, string> = {
-  primary: 'badge-primary',
-  secondary: 'badge-secondary',
-  accent: 'badge-accent',
-  ghost: 'badge-ghost',
-  info: 'badge-info',
-  success: 'badge-success',
-  warning: 'badge-warning',
-  error: 'badge-error',
-};
-
-const sizeMap: Record<BadgeSize, string> = {
-  xs: 'badge-xs',
-  sm: 'badge-sm',
-  md: '',
-  lg: 'badge-lg',
-};
-
-export function Badge({ variant = 'ghost', size = 'md', outline, children, className = '' }: BadgeProps) {
-  const classes = [
-    'badge',
-    variantMap[variant],
-    sizeMap[size],
-    outline ? 'badge-outline' : '',
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return <span className={classes}>{children}</span>;
-}
+export { Badge, badgeVariants }

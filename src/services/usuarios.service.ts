@@ -25,6 +25,10 @@ export interface CrearUsuarioParams {
   cargo?: string;
   fechaIngreso?: string;
   activo?: boolean;
+  esAdmin?: boolean;
+  esRrhh?: boolean;
+  esDirector?: boolean;
+  esJefe?: boolean;
 }
 
 export interface ActualizarUsuarioParams {
@@ -53,36 +57,74 @@ export async function crearUsuario(params: CrearUsuarioParams) {
     cargo,
     fechaIngreso,
     activo = true,
+    esAdmin = false,
+    esRrhh = false,
+    esDirector = false,
+    esJefe = false,
   } = params;
 
-  // Validar email único
-  const existente = await db.query.usuarios.findFirst({
-    where: eq(usuarios.email, email.toLowerCase()),
+  return await db.transaction(async (tx) => {
+    // Validar email único
+    const existente = await tx.query.usuarios.findFirst({
+      where: eq(usuarios.email, email.toLowerCase()),
+    });
+
+    if (existente) {
+      throw new Error('El email ya está registrado');
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const [nuevoUsuario] = await tx
+      .insert(usuarios)
+      .values({
+        email: email.toLowerCase(),
+        passwordHash,
+        nombre,
+        apellido,
+        departamentoId,
+        cargo,
+        fechaIngreso,
+        activo,
+        esAdmin,
+        esRrhh,
+        esDirector,
+        esJefe,
+        metadata: {},
+      })
+      .returning();
+
+    // Asignar roles si se especificaron
+    const rolesAAsignar = [];
+    if (esAdmin) rolesAAsignar.push('ADMIN');
+    if (esRrhh) rolesAAsignar.push('RRHH');
+    if (esDirector) rolesAAsignar.push('DIRECTOR');
+    if (esJefe) rolesAAsignar.push('JEFE');
+    
+    // Si no se asignó ningún rol, asignar EMPLEADO por defecto
+    if (rolesAAsignar.length === 0) {
+      rolesAAsignar.push('EMPLEADO');
+    }
+
+    // Buscar los IDs de los roles y asignarlos
+    for (const nombreRol of rolesAAsignar) {
+      const rol = await tx.query.roles.findFirst({
+        where: eq(roles.codigo, nombreRol),
+      });
+
+      if (rol) {
+        await tx.insert(usuariosRoles).values({
+          usuarioId: nuevoUsuario.id,
+          rolId: rol.id,
+          fechaAsignacion: new Date().toISOString(),
+          activo: true,
+        });
+      }
+    }
+
+    return nuevoUsuario;
   });
-
-  if (existente) {
-    throw new Error('El email ya está registrado');
-  }
-
-  // Hash password
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  const [nuevoUsuario] = await db
-    .insert(usuarios)
-    .values({
-      email: email.toLowerCase(),
-      passwordHash,
-      nombre,
-      apellido,
-      departamentoId,
-      cargo,
-      fechaIngreso,
-      activo,
-      metadata: {},
-    })
-    .returning();
-
-  return nuevoUsuario;
 }
 
 /**

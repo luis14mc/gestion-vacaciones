@@ -24,6 +24,17 @@ import {
 const empleado: TransicionContexto = {
   usuarioId: 10,
   solicitanteId: 10,
+  esDirector: false,
+  esJefe: false,
+  esRrhh: false,
+  esAdmin: false,
+  tipo: 'vacaciones',
+};
+
+const director: TransicionContexto = {
+  usuarioId: 15,
+  solicitanteId: 10,
+  esDirector: true,
   esJefe: false,
   esRrhh: false,
   esAdmin: false,
@@ -33,6 +44,7 @@ const empleado: TransicionContexto = {
 const jefe: TransicionContexto = {
   usuarioId: 20,
   solicitanteId: 10,
+  esDirector: false,
   esJefe: true,
   esRrhh: false,
   esAdmin: false,
@@ -42,6 +54,7 @@ const jefe: TransicionContexto = {
 const rrhh: TransicionContexto = {
   usuarioId: 30,
   solicitanteId: 10,
+  esDirector: false,
   esJefe: false,
   esRrhh: true,
   esAdmin: false,
@@ -51,6 +64,7 @@ const rrhh: TransicionContexto = {
 const admin: TransicionContexto = {
   usuarioId: 1,
   solicitanteId: 10,
+  esDirector: false,
   esJefe: false,
   esRrhh: false,
   esAdmin: true,
@@ -118,13 +132,61 @@ describe('State Machine - Solicitudes', () => {
     it('empleado NO puede aprobar como jefe', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', empleado, 5);
       expect(resultado.exito).toBe(false);
-      expect(resultado.error).toContain('jefe de departamento');
+      expect(resultado.error).toContain('Jefe o Director');
+    });
+
+    it('director puede aprobar solicitud pendiente', () => {
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', director, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('aprobada_jefe');
     });
 
     it('jefe NO puede aprobar como RRHH', () => {
       const resultado = transicionar('aprobada_jefe', 'aprobar_rrhh', jefe, 5);
       expect(resultado.exito).toBe(false);
       expect(resultado.error).toContain('RRHH');
+    });
+
+    it('jefe NO puede aprobar su propia solicitud', () => {
+      const jefeSolicitante: TransicionContexto = {
+        usuarioId: 20,
+        solicitanteId: 20,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeSolicitante, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('propia solicitud');
+    });
+
+    it('jefe NO puede rechazar su propia solicitud', () => {
+      const jefeSolicitante: TransicionContexto = {
+        usuarioId: 20,
+        solicitanteId: 20,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'rechazar_jefe', jefeSolicitante, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('propia solicitud');
+    });
+
+    it('director NO puede aprobar su propia solicitud', () => {
+      const directorSolicitante: TransicionContexto = {
+        usuarioId: 15,
+        solicitanteId: 15,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorSolicitante, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('propia solicitud');
     });
 
     it('admin puede hacer cualquier acción', () => {

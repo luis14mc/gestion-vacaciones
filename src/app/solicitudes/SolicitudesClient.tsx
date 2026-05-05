@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  FileText, 
-  Filter, 
-  Search, 
-  Calendar, 
-  User, 
+import type { Session } from "next-auth";
+import type { LucideIcon } from "lucide-react";
+import {
+  FileText,
+  Filter,
+  Search,
+  Calendar,
+  User,
   Clock,
   Check,
   X,
@@ -17,9 +19,42 @@ import {
   Eye,
   CheckCircle,
   XCircle,
-  Hourglass
+  Hourglass,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify } from "@/lib/swal";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 interface Solicitud {
   id: number;
@@ -41,6 +76,7 @@ interface Solicitud {
   tipoAusencia: string;
   aprobadorJefe: string | null;
   aprobadorRrhh: string | null;
+  metadata?: any;
 }
 
 interface Stats {
@@ -50,26 +86,94 @@ interface Stats {
   rechazadas: number;
 }
 
-export default function SolicitudesClient() {
+interface Props {
+  session?: Session;
+}
+
+const estadoBadgeMap: Record<
+  string,
+  { label: string; icon: LucideIcon; className: string }
+> = {
+  borrador: {
+    label: "Borrador",
+    icon: Clock,
+    className:
+      "border-transparent bg-muted text-muted-foreground hover:bg-muted",
+  },
+  pendiente_jefe: {
+    label: "Pendiente Jefe",
+    icon: Clock,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  aprobada_jefe: {
+    label: "Pendiente RRHH",
+    icon: Hourglass,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  rechazada_jefe: {
+    label: "Rechazada Jefe",
+    icon: XCircle,
+    className:
+      "border-transparent bg-red-600/15 text-red-800 dark:text-red-200 hover:bg-red-600/20",
+  },
+  pendiente_rrhh: {
+    label: "Pendiente RRHH",
+    icon: Hourglass,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  aprobada_rrhh: {
+    label: "Aprobada RRHH",
+    icon: Check,
+    className:
+      "border-transparent bg-emerald-500/15 text-emerald-900 dark:text-emerald-100 hover:bg-emerald-500/20",
+  },
+  rechazada_rrhh: {
+    label: "Rechazada RRHH",
+    icon: X,
+    className:
+      "border-transparent bg-red-600/15 text-red-800 dark:text-red-200 hover:bg-red-600/20",
+  },
+
+  cancelada: {
+    label: "Cancelada",
+    icon: X,
+    className:
+      "border-transparent bg-muted text-muted-foreground hover:bg-muted/80",
+  },
+  finalizada: {
+    label: "Finalizada",
+    icon: CheckCircle,
+    className:
+      "border-transparent bg-emerald-500/15 text-emerald-900 dark:text-emerald-100 hover:bg-emerald-500/20",
+  },
+};
+
+export default function SolicitudesClient({ session }: Props) {
   const router = useRouter();
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, pendientes: 0, aprobadas: 0, rechazadas: 0 });
+  const [stats, setStats] = useState<Stats>({
+    total: 0,
+    pendientes: 0,
+    aprobadas: 0,
+    rechazadas: 0,
+  });
   const [loading, setLoading] = useState(true);
-  
-  // Filtros
+
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [tipoFiltro, setTipoFiltro] = useState("todos");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
-  
-  // Paginación
+
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
   const itemsPorPagina = 20;
 
-  // Detalles
-  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<Solicitud | null>(null);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] =
+    useState<Solicitud | null>(null);
 
   useEffect(() => {
     cargarSolicitudes();
@@ -103,32 +207,28 @@ export default function SolicitudesClient() {
       }
     } catch (error) {
       console.error("Error al cargar solicitudes:", error);
-      Swal.fire("Error", "No se pudieron cargar las solicitudes", "error");
+      notify.error("Error", "No se pudieron cargar las solicitudes");
     } finally {
       setLoading(false);
     }
   };
 
-  // No filtrar localmente, mostrar lo que viene del servidor
   const solicitudesFiltradas = solicitudes || [];
 
   const getEstadoBadge = (estado: string) => {
-    const badges: Record<string, { class: string; text: string; icon: any }> = {
-      pendiente: { class: "badge-warning", text: "Pendiente", icon: Clock },
-      aprobada_jefe: { class: "badge-info", text: "Aprobada por Jefe", icon: CheckCircle },
-      aprobada: { class: "badge-success", text: "Aprobada", icon: Check },
-      rechazada_jefe: { class: "badge-error", text: "Rechazada por Jefe", icon: XCircle },
-      rechazada: { class: "badge-error", text: "Rechazada", icon: X },
-      en_uso: { class: "badge-primary", text: "En uso", icon: Hourglass },
-      completada: { class: "badge-neutral", text: "Completada", icon: CheckCircle },
-    };
-    const config = badges[estado] || { class: "badge-ghost", text: estado, icon: AlertCircle };
+    const config =
+      estadoBadgeMap[estado] ?? {
+        label: estado,
+        icon: AlertCircle,
+        className:
+          "border-transparent bg-muted text-muted-foreground hover:bg-muted",
+      };
     const Icon = config.icon;
     return (
-      <div className={`badge ${config.class} gap-1`}>
-        <Icon className="w-3 h-3" />
-        {config.text}
-      </div>
+      <Badge variant="outline" className={cn("gap-1 font-normal", config.className)}>
+        <Icon className="size-3 shrink-0" />
+        {config.label}
+      </Badge>
     );
   };
 
@@ -152,119 +252,146 @@ export default function SolicitudesClient() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-2 sm:p-4 md:p-6">
-      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-          <div className="bg-gradient-to-br from-primary to-secondary p-3 sm:p-4 rounded-2xl shadow-lg">
-            <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-primary-content" />
+    <div>
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div className="rounded-xl bg-muted p-2.5">
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-base-content">Solicitudes de Vacaciones</h1>
-            <p className="text-sm sm:text-base text-base-content/70">Gestión y seguimiento de todas las solicitudes</p>
-          </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-sm sm:btn-md btn-ghost gap-2 self-start sm:self-auto"
-          >
-            ← Volver
-          </button>
-        </div>
-
-        {/* Estadísticas */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
-          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
-            <div className="stat-figure text-primary hidden sm:block">
-              <FileText className="w-6 h-6 sm:w-8 sm:h-8" />
-            </div>
-            <div className="stat-title text-xs sm:text-sm">Total</div>
-            <div className="stat-value text-primary text-2xl sm:text-3xl">{stats.total}</div>
-            <div className="stat-desc text-xs hidden sm:block">Todas las solicitudes</div>
-          </div>
-          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
-            <div className="stat-figure text-warning hidden sm:block">
-              <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
-            </div>
-            <div className="stat-title text-xs sm:text-sm">Pendientes</div>
-            <div className="stat-value text-warning text-2xl sm:text-3xl">{stats.pendientes}</div>
-            <div className="stat-desc text-xs hidden sm:block">En revisión</div>
-          </div>
-          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
-            <div className="stat-figure text-success hidden sm:block">
-              <Check className="w-6 h-6 sm:w-8 sm:h-8" />
-            </div>
-            <div className="stat-title text-xs sm:text-sm">Aprobadas</div>
-            <div className="stat-value text-success text-2xl sm:text-3xl">{stats.aprobadas}</div>
-            <div className="stat-desc text-xs hidden sm:block">Confirmadas</div>
-          </div>
-          <div className="stat bg-base-100 rounded-lg shadow p-3 sm:p-4">
-            <div className="stat-figure text-error hidden sm:block">
-              <X className="w-6 h-6 sm:w-8 sm:h-8" />
-            </div>
-            <div className="stat-title text-xs sm:text-sm">Rechazadas</div>
-            <div className="stat-value text-error text-2xl sm:text-3xl">{stats.rechazadas}</div>
-            <div className="stat-desc text-xs hidden sm:block">Denegadas</div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Solicitudes de Vacaciones
+            </h1>
+            <p className="text-[13px] text-muted-foreground">
+              Gestión y seguimiento de todas las solicitudes
+            </p>
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body p-3 sm:p-6">
-            <h2 className="card-title text-base sm:text-lg mb-3 sm:mb-4">
-              <Filter className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">Filtros de búsqueda</span>
-              <span className="sm:hidden">Filtros</span>
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Buscar (presiona Enter)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Usuario, tipo, motivo..."
-                  className="input input-bordered w-full"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setPaginaActual(1);
-                      cargarSolicitudes();
-                    }
-                  }}
-                />
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
+          <Card className="gap-0 rounded-2xl py-4 sm:py-5">
+            <CardContent className="space-y-1 px-4 sm:px-5">
+              <FileText className="mb-1 hidden h-4 w-4 text-primary sm:block" />
+              <p className="text-xs font-medium text-muted-foreground">Total</p>
+              <p className="text-2xl font-semibold tabular-nums text-primary">
+                {stats.total}
+              </p>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                Todas las solicitudes
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="gap-0 rounded-2xl py-4 sm:py-5">
+            <CardContent className="space-y-1 px-4 sm:px-5">
+              <Clock className="mb-1 hidden h-4 w-4 text-amber-600 dark:text-amber-500 sm:block" />
+              <p className="text-xs font-medium text-muted-foreground">
+                Pendientes
+              </p>
+              <p className="text-2xl font-semibold tabular-nums text-amber-600 dark:text-amber-500">
+                {stats.pendientes}
+              </p>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                En revisión
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="gap-0 rounded-2xl py-4 sm:py-5">
+            <CardContent className="space-y-1 px-4 sm:px-5">
+              <Check className="mb-1 hidden h-4 w-4 text-emerald-600 dark:text-emerald-500 sm:block" />
+              <p className="text-xs font-medium text-muted-foreground">
+                Aprobadas
+              </p>
+              <p className="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-500">
+                {stats.aprobadas}
+              </p>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                Confirmadas
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="gap-0 rounded-2xl py-4 sm:py-5">
+            <CardContent className="space-y-1 px-4 sm:px-5">
+              <X className="mb-1 hidden h-4 w-4 text-red-600 dark:text-red-500 sm:block" />
+              <p className="text-xs font-medium text-muted-foreground">
+                Rechazadas
+              </p>
+              <p className="text-2xl font-semibold tabular-nums text-red-600 dark:text-red-500">
+                {stats.rechazadas}
+              </p>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                Denegadas
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="gap-0 rounded-2xl py-0">
+          <CardHeader className="space-y-0 p-3 sm:p-6">
+            <CardTitle className="text-[13px] font-semibold">
+              <span className="flex items-center gap-2">
+                <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Filtros de búsqueda</span>
+                <span className="sm:hidden">Filtros</span>
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-6 sm:px-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="buscar-solicitudes">
+                  Buscar (presiona Enter)
+                </Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="buscar-solicitudes"
+                    type="text"
+                    placeholder="Usuario, tipo, motivo..."
+                    className="pl-9"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setPaginaActual(1);
+                        cargarSolicitudes();
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Estado</span>
-                </label>
-                <select
-                  className="select select-bordered"
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="estado-solicitud">Estado</Label>
+                <Select
                   value={estadoFiltro}
-                  onChange={(e) => {
-                    setEstadoFiltro(e.target.value);
+                  onValueChange={(v) => {
+                    setEstadoFiltro(v);
                     setPaginaActual(1);
                   }}
                 >
-                  <option value="todos">Todos</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="aprobada_jefe">Aprobada por Jefe</option>
-                  <option value="aprobada">Aprobada</option>
-                  <option value="rechazada_jefe">Rechazada por Jefe</option>
-                  <option value="rechazada">Rechazada</option>
-                  <option value="en_uso">En uso</option>
-                  <option value="completada">Completada</option>
-                </select>
+                  <SelectTrigger id="estado-solicitud" className="w-full">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="borrador">Borrador</SelectItem>
+                    <SelectItem value="pendiente_jefe">Pendiente Jefe</SelectItem>
+                    <SelectItem value="aprobada_jefe">Aprobada por Jefe</SelectItem>
+                    <SelectItem value="pendiente_rrhh">Pendiente RRHH</SelectItem>
+                    <SelectItem value="aprobada_rrhh">Aprobada RRHH</SelectItem>
+                    <SelectItem value="rechazada_jefe">Rechazada por Jefe</SelectItem>
+                    <SelectItem value="rechazada_rrhh">Rechazada por RRHH</SelectItem>
+                    <SelectItem value="cancelada">Cancelada</SelectItem>
+                    <SelectItem value="finalizada">Finalizada</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Fecha inicio</span>
-                </label>
-                <input
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="fecha-inicio">Fecha inicio</Label>
+                <Input
+                  id="fecha-inicio"
                   type="date"
-                  className="input input-bordered"
                   value={fechaInicio}
                   onChange={(e) => {
                     setFechaInicio(e.target.value);
@@ -273,13 +400,11 @@ export default function SolicitudesClient() {
                 />
               </div>
 
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Fecha fin</span>
-                </label>
-                <input
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="fecha-fin">Fecha fin</Label>
+                <Input
+                  id="fecha-fin"
                   type="date"
-                  className="input input-bordered"
                   value={fechaFin}
                   onChange={(e) => {
                     setFechaFin(e.target.value);
@@ -288,12 +413,14 @@ export default function SolicitudesClient() {
                 />
               </div>
 
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">&nbsp;</span>
-                </label>
-                <button
-                  className="btn btn-ghost"
+              <div className="flex flex-col gap-2">
+                <Label className="invisible hidden sm:block" aria-hidden>
+                  &nbsp;
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full sm:mt-0"
                   onClick={() => {
                     setBusqueda("");
                     setEstadoFiltro("todos");
@@ -304,262 +431,295 @@ export default function SolicitudesClient() {
                   }}
                 >
                   Limpiar filtros
-                </button>
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* Tabla de solicitudes */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
+        <Card className="gap-0 rounded-2xl py-0">
+          <CardContent className="p-5">
+            <CardTitle className="mb-4 text-[13px] font-semibold">
               Listado de solicitudes ({stats.total})
-            </h2>
+            </CardTitle>
 
             {loading ? (
-              <div className="text-center py-12">
-                <span className="loading loading-spinner loading-lg"></span>
+              <div className="flex justify-center py-12">
+                <div
+                  className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                  role="status"
+                  aria-label="Cargando"
+                />
               </div>
             ) : solicitudesFiltradas.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 mx-auto text-base-content/20 mb-4" />
-                <p className="text-base-content/60">No se encontraron solicitudes</p>
+              <div className="py-12 text-center">
+                <FileText className="mx-auto mb-4 h-16 w-16 text-muted-foreground/30" />
+                <p className="text-muted-foreground">
+                  No se encontraron solicitudes
+                </p>
               </div>
             ) : (
               <>
-                {/* Vista Mobile - Cards */}
-                <div className="block lg:hidden space-y-3">
+                <div className="space-y-3 lg:hidden">
                   {solicitudesFiltradas.map((sol) => (
-                    <div 
-                      key={sol.id} 
-                      className="card bg-base-100 shadow-md hover:shadow-lg transition-shadow"
+                    <Card
+                      key={sol.id}
+                      className="rounded-2xl transition-all duration-200 hover:shadow-md"
                     >
-                      <div className="card-body p-4">
-                        {/* Header de la card */}
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <User className="w-4 h-4 text-primary flex-shrink-0" />
-                            <span className="font-semibold text-sm truncate">{sol.usuario}</span>
+                      <CardContent className="p-4">
+                        <div className="mb-2 flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <User className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="truncate text-sm font-semibold text-foreground">
+                              {sol.usuario}
+                            </span>
                           </div>
                           {getEstadoBadge(sol.estado)}
                         </div>
 
-                        {/* Tipo y días */}
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <div className="badge badge-outline badge-sm">{sol.tipoAusencia}</div>
-                          <div className="badge badge-primary badge-sm">{sol.dias} días</div>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {sol.tipoAusencia}
+                          </Badge>
+                          <Badge className="text-xs">{sol.dias} días</Badge>
                         </div>
 
-                        {/* Período */}
-                        <div className="bg-base-200 rounded-lg p-2 mb-2">
-                          <div className="text-xs text-base-content/70 mb-1">Período:</div>
-                          <div className="flex items-center gap-1 text-sm">
-                            <Calendar className="w-3 h-3" />
+                        <div className="mb-2 rounded-xl bg-muted/50 p-2">
+                          <div className="mb-1 text-xs text-muted-foreground">
+                            Período:
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1 text-sm text-foreground">
+                            <Calendar className="h-3 w-3 shrink-0" />
                             <span>{formatearFecha(sol.fechaInicio)}</span>
-                            <span className="text-base-content/50">→</span>
+                            <span className="text-muted-foreground">→</span>
                             <span>{formatearFecha(sol.fechaFin)}</span>
                           </div>
                         </div>
 
-                        {/* Footer */}
-                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-base-300">
-                          <div className="text-xs text-base-content/60">
-                            <Clock className="w-3 h-3 inline mr-1" />
+                        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                          <div className="text-xs text-muted-foreground">
+                            <Clock className="mr-1 inline h-3 w-3" />
                             {calcularDiasDesde(sol.fechaCreacion)}
                           </div>
-                          <button
-                            className="btn btn-ghost btn-xs gap-1"
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="gap-1"
                             onClick={() => setSolicitudSeleccionada(sol)}
                           >
-                            <Eye className="w-3 h-3" />
+                            <Eye className="h-3 w-3" />
                             Ver
-                          </button>
+                          </Button>
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
 
-                {/* Vista Desktop - Tabla */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="table table-zebra">
-                    <thead>
-                      <tr>
-                        <th>Usuario</th>
-                        <th>Tipo</th>
-                        <th>Período</th>
-                        <th>Días</th>
-                        <th>Estado</th>
-                        <th>Solicitado</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <div className="hidden lg:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Días</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Solicitado</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {solicitudesFiltradas.map((sol) => (
-                        <tr key={sol.id} className="hover">
-                          <td>
+                        <TableRow key={sol.id}>
+                          <TableCell>
                             <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-base-content/50" />
-                              <span className="font-medium">{sol.usuario}</span>
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium text-foreground">
+                                {sol.usuario}
+                              </span>
                             </div>
-                          </td>
-                          <td>
-                            <div className="badge badge-outline">{sol.tipoAusencia}</div>
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{sol.tipoAusencia}</Badge>
+                          </TableCell>
+                          <TableCell>
                             <div className="text-sm">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
+                              <div className="flex items-center gap-1 text-foreground">
+                                <Calendar className="h-3 w-3" />
                                 {formatearFecha(sol.fechaInicio)}
                               </div>
-                              <div className="text-base-content/50 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
                                 {formatearFecha(sol.fechaFin)}
                               </div>
                             </div>
-                          </td>
-                          <td>
-                            <div className="badge badge-primary">{sol.dias} días</div>
-                          </td>
-                          <td>{getEstadoBadge(sol.estado)}</td>
-                          <td>
-                            <div className="text-xs text-base-content/60">
+                          </TableCell>
+                          <TableCell>
+                            <Badge>{sol.dias} días</Badge>
+                          </TableCell>
+                          <TableCell>{getEstadoBadge(sol.estado)}</TableCell>
+                          <TableCell>
+                            <div className="text-xs text-muted-foreground">
                               {calcularDiasDesde(sol.fechaCreacion)}
                             </div>
-                          </td>
-                          <td>
-                            <button
-                              className="btn btn-ghost btn-sm gap-1"
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1"
                               onClick={() => setSolicitudSeleccionada(sol)}
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="h-4 w-4" />
                               Ver
-                            </button>
-                          </td>
-                        </tr>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
 
-                {/* Paginación */}
-                <div className="flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-2 mt-4 sm:mt-6">
-                  <button
-                    className="btn btn-xs sm:btn-sm"
-                    onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                <div className="mt-4 flex flex-col items-center justify-center gap-2 sm:mt-6 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="sm:size-9"
+                    onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
                     disabled={paginaActual === 1}
+                    aria-label="Página anterior"
                   >
-                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
-                  </button>
-                  <span className="text-xs sm:text-sm">
+                    <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground sm:text-sm">
                     Página {paginaActual} de {totalPaginas}
                   </span>
-                  <button
-                    className="btn btn-xs sm:btn-sm"
-                    onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    className="sm:size-9"
+                    onClick={() =>
+                      setPaginaActual((p) => Math.min(totalPaginas, p + 1))
+                    }
                     disabled={paginaActual === totalPaginas}
+                    aria-label="Página siguiente"
                   >
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
-                  </button>
+                    <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                  </Button>
                 </div>
               </>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Modal de detalles */}
-      {solicitudSeleccionada && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-2xl">
-            <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-              <FileText className="w-6 h-6 text-primary" />
-              Detalles de la Solicitud
-            </h3>
+      <Dialog
+        open={solicitudSeleccionada !== null}
+        onOpenChange={(open) => {
+          if (!open) setSolicitudSeleccionada(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-2xl gap-0 p-0 sm:max-w-2xl"
+          showCloseButton
+        >
+          {solicitudSeleccionada && (
+            <>
+              <DialogHeader className="border-b border-border px-6 pb-4 pt-6 text-left">
+                <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  Detalles de la Solicitud
+                </DialogTitle>
+              </DialogHeader>
+              <div className="max-h-[min(70vh,560px)] space-y-4 overflow-y-auto px-6 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Usuario</Label>
+                    <p className="text-foreground">{solicitudSeleccionada.usuario}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">
+                      Tipo de ausencia
+                    </Label>
+                    <p className="text-foreground">
+                      {solicitudSeleccionada.tipoAusencia}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Fecha inicio</Label>
+                    <p className="text-foreground">
+                      {formatearFecha(solicitudSeleccionada.fechaInicio)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Fecha fin</Label>
+                    <p className="text-foreground">
+                      {formatearFecha(solicitudSeleccionada.fechaFin)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">
+                      Días solicitados
+                    </Label>
+                    <p className="text-foreground">
+                      {solicitudSeleccionada.dias} días
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Estado</Label>
+                    <div>{getEstadoBadge(solicitudSeleccionada.estado)}</div>
+                  </div>
+                </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label label-text font-semibold">Usuario</label>
-                  <p className="text-base-content">{solicitudSeleccionada.usuario}</p>
-                </div>
-                <div>
-                  <label className="label label-text font-semibold">Tipo de ausencia</label>
-                  <p className="text-base-content">{solicitudSeleccionada.tipoAusencia}</p>
-                </div>
-                <div>
-                  <label className="label label-text font-semibold">Fecha inicio</label>
-                  <p className="text-base-content">{formatearFecha(solicitudSeleccionada.fechaInicio)}</p>
-                </div>
-                <div>
-                  <label className="label label-text font-semibold">Fecha fin</label>
-                  <p className="text-base-content">{formatearFecha(solicitudSeleccionada.fechaFin)}</p>
-                </div>
-                <div>
-                  <label className="label label-text font-semibold">Días solicitados</label>
-                  <p className="text-base-content">{solicitudSeleccionada.dias} días</p>
-                </div>
-                <div>
-                  <label className="label label-text font-semibold">Estado</label>
-                  <div>{getEstadoBadge(solicitudSeleccionada.estado)}</div>
+                {solicitudSeleccionada.motivo && (
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Motivo</Label>
+                    <p className="rounded-xl bg-muted/50 p-3 text-foreground">
+                      {solicitudSeleccionada.motivo}
+                    </p>
+                  </div>
+                )}
+
+                {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
+                  <div className="space-y-2 mt-4">
+                    <Label className="text-muted-foreground">Historial de Comentarios</Label>
+                    <div className="space-y-3 rounded-xl bg-muted/50 p-3">
+                      {solicitudSeleccionada.metadata.comentarios.map((com: any, i: number) => (
+                        <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
+                            <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
+                          </div>
+                          <p className="text-sm text-foreground">{com.comentario}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">
+                    Fecha de solicitud
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {formatearFecha(solicitudSeleccionada.fechaCreacion)} (
+                    {calcularDiasDesde(solicitudSeleccionada.fechaCreacion)})
+                  </p>
                 </div>
               </div>
-
-              {solicitudSeleccionada.motivo && (
-                <div>
-                  <label className="label label-text font-semibold">Motivo</label>
-                  <p className="text-base-content bg-base-200 p-3 rounded">{solicitudSeleccionada.motivo}</p>
-                </div>
-              )}
-
-              {solicitudSeleccionada.aprobadorJefe && (
-                <div>
-                  <label className="label label-text font-semibold">Aprobado por Jefe</label>
-                  <p className="text-base-content">{solicitudSeleccionada.aprobadorJefe}</p>
-                  {solicitudSeleccionada.fechaAprobacionJefe && (
-                    <p className="text-sm text-base-content/60">
-                      {formatearFecha(solicitudSeleccionada.fechaAprobacionJefe)}
-                    </p>
-                  )}
-                  {solicitudSeleccionada.comentariosJefe && (
-                    <p className="text-sm bg-base-200 p-2 rounded mt-1">{solicitudSeleccionada.comentariosJefe}</p>
-                  )}
-                </div>
-              )}
-
-              {solicitudSeleccionada.aprobadorRrhh && (
-                <div>
-                  <label className="label label-text font-semibold">Aprobado por RRHH</label>
-                  <p className="text-base-content">{solicitudSeleccionada.aprobadorRrhh}</p>
-                  {solicitudSeleccionada.fechaAprobacionRrhh && (
-                    <p className="text-sm text-base-content/60">
-                      {formatearFecha(solicitudSeleccionada.fechaAprobacionRrhh)}
-                    </p>
-                  )}
-                  {solicitudSeleccionada.comentariosRrhh && (
-                    <p className="text-sm bg-base-200 p-2 rounded mt-1">{solicitudSeleccionada.comentariosRrhh}</p>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label className="label label-text font-semibold">Fecha de solicitud</label>
-                <p className="text-sm text-base-content/60">
-                  {formatearFecha(solicitudSeleccionada.fechaCreacion)} ({calcularDiasDesde(solicitudSeleccionada.fechaCreacion)})
-                </p>
-              </div>
-            </div>
-
-            <div className="modal-action">
-              <button className="btn" onClick={() => setSolicitudSeleccionada(null)}>
-                Cerrar
-              </button>
-            </div>
-          </div>
-          <div className="modal-backdrop" onClick={() => setSolicitudSeleccionada(null)}></div>
-        </div>
-      )}
+              <DialogFooter className="border-t border-border px-6 py-4 sm:justify-end">
+                <Button
+                  type="button"
+                  onClick={() => setSolicitudSeleccionada(null)}
+                >
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

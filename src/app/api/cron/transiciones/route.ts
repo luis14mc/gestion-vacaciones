@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     // Validar autorización
     const authHeader = req.headers.get('authorization');
     if (authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
     }
 
     const resultado = await procesarTransicionesAutomaticas();

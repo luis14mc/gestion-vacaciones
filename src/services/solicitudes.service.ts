@@ -26,6 +26,8 @@ export interface CrearSolicitudParams {
   horaRegreso?: string;
   motivo?: string;
   comentarioEmpleado?: string;
+  esDirector?: boolean;
+  documentosAdjuntos?: any[];
 }
 
 export interface AprobarSolicitudParams {
@@ -54,6 +56,8 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     horaRegreso,
     motivo,
     comentarioEmpleado,
+    esDirector = false,
+    documentosAdjuntos = [],
   } = params;
 
   return await db.transaction(async (tx) => {
@@ -65,6 +69,11 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     // 2. Validar fechas
     if (fechaInicio && fechaFin && fechaInicio >= fechaFin) {
       throw new Error('La fecha de inicio debe ser anterior a la fecha de fin');
+    }
+
+    // 3. Validar VoBo de Ministro para Directores
+    if (esDirector && (!documentosAdjuntos || documentosAdjuntos.length === 0)) {
+      throw new Error('Los Directores deben adjuntar obligatoriamente el correo con el VoBo del Ministro.');
     }
 
     // 3. Validar usuario activo
@@ -125,6 +134,11 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     const codigo = `SOL-${year}-${String(nextNumber).padStart(5, '0')}`;
 
     // 5. Crear solicitud
+    // Director crea + adjunta VoBo → va directo a RRHH (estado: aprobada_jefe)
+    // Jefe crea → pendiente_jefe (va a su Director para aprobación)
+    // Empleado crea → pendiente_jefe (va a su Jefe/Director para aprobación)
+    const estadoInicial = esDirector ? 'aprobada_jefe' : 'pendiente_jefe';
+
     const [nuevaSolicitud] = await tx
       .insert(solicitudes)
       .values({
@@ -140,8 +154,16 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         horaRegreso,
         motivo,
         comentarioEmpleado,
-        estado: 'pendiente_jefe',
+        documentosAdjuntos,
+        estado: estadoInicial,
+        // Si es Director, marcamos que ya pasó el filtro del jefe vía adjunto
+        aprobadaJefeFecha: esDirector ? new Date().toISOString() : null,
         metadata: { test: false },
+        ...(esDirector ? {
+          aprobadaJefePor: usuarioId,
+          aprobadaJefeFecha: new Date().toISOString(),
+          comentarioJefe: 'Auto-aprobado (solicitud creada por Director)',
+        } : {}),
       })
       .returning();
 
@@ -180,6 +202,10 @@ export async function aprobarSolicitudJefe(
 
     if (solicitud.estado !== 'pendiente_jefe') {
       throw new Error(`Estado inválido: ${solicitud.estado}`);
+    }
+
+    if (solicitud.usuarioId === jefeId) {
+      throw new Error('No puede aprobar su propia solicitud');
     }
 
     const [updated] = await tx
@@ -307,20 +333,25 @@ export async function rechazarSolicitud(
         version: sql`${solicitudes.version} + 1`,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(solicitudes.id, solicitudId))
+      .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
       .returning();
 
-    // Devolver días al balance si aplica
-    if (solicitud.tipo === 'vacaciones' && solicitud.diasSolicitados) {
+    if (!updated) {
+      throw new Error('Conflicto de versión: la solicitud fue modificada por otro usuario');
+    }
+
+    const TIPOS_CON_BALANCE = ['vacaciones', 'licencia_medica', 'permiso_personal', 'licencia_paternidad', 'compensacion'];
+    if (TIPOS_CON_BALANCE.includes(solicitud.tipo) && solicitud.diasSolicitados) {
       const dias = parseFloat(solicitud.diasSolicitados);
 
       await tx.execute(sql`
         UPDATE balances
-        SET cantidad_pendiente = cantidad_pendiente - ${dias},
+        SET cantidad_disponible = cantidad_disponible + ${dias},
+            cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
             updated_at = NOW()
         WHERE usuario_id = ${solicitud.usuarioId}
           AND ano_laboral_id = ${solicitud.anoLaboralId}
-          AND tipo_ausencia = 'vacaciones'
+          AND tipo_ausencia = ${solicitud.tipo}
       `);
     }
 
@@ -384,5 +415,83 @@ export async function listarSolicitudes(filtros: {
         },
       },
     },
+  });
+}
+
+/**
+ * Cancelar solicitud
+ * Permite al usuario o admin cancelar una solicitud
+ */
+export async function cancelarSolicitud(
+  solicitudId: number,
+  usuarioId: number,
+  motivo: string,
+  esAdmin: boolean = false
+) {
+  return await db.transaction(async (tx) => {
+    const solicitud = await tx.query.solicitudes.findFirst({
+      where: eq(solicitudes.id, solicitudId),
+    });
+
+    if (!solicitud) {
+      throw new Error('Solicitud no encontrada');
+    }
+
+    // Validar que el usuario es el creador O es admin
+    if (!esAdmin && solicitud.usuarioId !== usuarioId) {
+      throw new Error('No tienes permiso para cancelar esta solicitud');
+    }
+
+    // Validar que el estado permite cancelación
+    const estadosCancelables = ['pendiente_jefe', 'aprobada_jefe', 'aprobada_rrhh', 'aprobada_ejecutiva'];
+    if (!estadosCancelables.includes(solicitud.estado)) {
+      throw new Error(
+        `No se puede cancelar una solicitud en estado: ${solicitud.estado}`
+      );
+    }
+
+    // Devolver días al balance según el estado
+    if (solicitud.tipo === 'vacaciones' && solicitud.diasSolicitados) {
+      const dias = parseFloat(solicitud.diasSolicitados);
+
+      if (solicitud.estado === 'aprobada_rrhh' || solicitud.estado === 'aprobada_ejecutiva') {
+        // Si ya estaba aprobada por RRHH, devolver de cantidad_usada
+        await tx.execute(sql`
+          UPDATE balances
+          SET cantidad_usada = cantidad_usada - ${dias},
+              updated_at = NOW()
+          WHERE usuario_id = ${solicitud.usuarioId}
+            AND ano_laboral_id = ${solicitud.anoLaboralId}
+            AND tipo_ausencia = 'vacaciones'
+        `);
+      } else {
+        // Si aún estaba pendiente, devolver de cantidad_pendiente
+        await tx.execute(sql`
+          UPDATE balances
+          SET cantidad_pendiente = cantidad_pendiente - ${dias},
+              updated_at = NOW()
+          WHERE usuario_id = ${solicitud.usuarioId}
+            AND ano_laboral_id = ${solicitud.anoLaboralId}
+            AND tipo_ausencia = 'vacaciones'
+        `);
+      }
+    }
+
+    // Actualizar estado a cancelada
+    const [updated] = await tx
+      .update(solicitudes)
+      .set({
+        estado: 'cancelada',
+        estadoAnterior: solicitud.estado,
+        rechazadaPor: usuarioId,
+        rechazadaFecha: new Date().toISOString(),
+        motivoRechazo: motivo || 'Cancelada por el usuario',
+        version: sql`${solicitudes.version} + 1`,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(solicitudes.id, solicitudId))
+      .returning();
+
+    return updated;
   });
 }

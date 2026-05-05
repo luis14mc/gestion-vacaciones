@@ -317,5 +317,5 @@ export async function esRRHH(usuarioId: number): Promise<boolean> {
  * Verificar si usuario es jefe de departamento
  */
 export async function esJefeDepartamento(usuarioId: number): Promise<boolean> {
-  return await usuarioTieneRol(usuarioId, 'JEFE_DEPARTAMENTO');
+  return await usuarioTieneRol(usuarioId, 'JEFE');
 }

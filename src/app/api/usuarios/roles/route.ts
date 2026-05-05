@@ -23,7 +23,6 @@ export async function POST(request: NextRequest) {
 
     // 2. Verificar permiso
     if (!tienePermiso(session, 'usuarios.editar')) {
-      console.log(`❌ Usuario ${session.email} sin permiso usuarios.editar`);
       return NextResponse.json(
         { error: 'No tienes permiso para asignar roles' },
         { status: 403 }
@@ -54,7 +53,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. Asignar rol usando servicio
-    console.log(`✅ Usuario ${session.email} asignando rol ${rolCodigo} a usuario ${usuarioId}`);
     await asignarRol(Number(usuarioId), rol.id);
 
     // 7. Respuesta exitosa
@@ -92,7 +90,6 @@ export async function DELETE(request: NextRequest) {
 
     // 2. Verificar permiso
     if (!tienePermiso(session, 'usuarios.editar')) {
-      console.log(`❌ Usuario ${session.email} sin permiso usuarios.editar`);
       return NextResponse.json(
         { error: 'No tienes permiso para remover roles' },
         { status: 403 }
@@ -125,7 +122,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 6. Remover rol del usuario
-    console.log(`✅ Usuario ${session.email} removiendo rol ${rolCodigo} de usuario ${usuarioId}`);
     await db
       .delete(usuariosRoles)
       .where(

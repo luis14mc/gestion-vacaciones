@@ -20,7 +20,6 @@ export async function GET() {
     // No necesita permiso especial, todos pueden ver su propio balance
     const usuarioId = session.id;
     const anioActual = new Date().getFullYear();
-    console.log('🔍 Buscando balance para usuario ID:', usuarioId, 'Año:', anioActual);
 
     // Obtener año laboral activo
     const anoLaboral = await db.query.anosLaborales.findFirst({
@@ -36,10 +35,7 @@ export async function GET() {
       )
     }) : null;
 
-    console.log('💰 Balance encontrado:', balance);
-
     if (!balance) {
-      console.log('⚠️ No se encontró balance para el usuario');
       return NextResponse.json({
         success: true,
         data: {
@@ -58,8 +54,6 @@ export async function GET() {
     const diasAsignados = Number(balance.cantidadInicial || 0);
     const diasUsados = Number(balance.cantidadUsada || 0);
 
-    console.log('📊 Días asignados:', diasAsignados, 'Días usados:', diasUsados);
-
     // Obtener solicitudes pendientes
     const [pendientes] = await db
       .select({ count: sql<number>`count(*)` })
@@ -67,7 +61,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh')`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -79,7 +73,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh')`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -110,7 +104,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} = 'rechazada'`,
+          sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh', 'rechazada_ejecutiva')`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )

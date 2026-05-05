@@ -1,21 +1,28 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getSession();
 
-    if (!session?.user?.esJefe || session.user?.esAdmin || session.user?.esRrhh) {
+    if (!session) {
       return NextResponse.json(
-        { success: false, error: "No autorizado - Solo para jefes" },
+        { success: false, error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    if (!session.esDirector && !session.esJefe && !session.esAdmin && !session.esRrhh) {
+      return NextResponse.json(
+        { success: false, error: "No autorizado" },
         { status: 403 }
       );
     }
 
-    const departamentoId = session.user.departamentoId;
+    const departamentoId = session.departamentoId;
 
     if (!departamentoId) {
       return NextResponse.json(
@@ -24,8 +31,6 @@ export async function GET() {
       );
     }
 
-    console.log('👔 Jefe Dashboard - Departamento:', departamentoId);
-
     // Obtener usuarios del departamento
     const usuariosDept = await db
       .select({ id: usuarios.id })
@@ -33,7 +38,6 @@ export async function GET() {
       .where(and(eq(usuarios.departamentoId, departamentoId), isNull(usuarios.deletedAt)));
 
     const usuariosIds = usuariosDept.map(u => u.id);
-    console.log('👥 Usuarios del departamento:', usuariosIds.length);
 
     // Total de usuarios del departamento
     const totalUsuarios = usuariosIds.length;
@@ -58,7 +62,7 @@ export async function GET() {
         .from(solicitudes)
         .where(
           and(
-            sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
+            sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
             inArray(solicitudes.usuarioId, usuariosIds),
             isNull(solicitudes.deletedAt)
           )
@@ -107,7 +111,7 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.aprobadaJefePor, session.user.id),
+          eq(solicitudes.aprobadaJefePor, session.id),
           sql`${solicitudes.aprobadaJefeFecha} >= ${hoyInicio.toISOString()}`,
           sql`${solicitudes.aprobadaJefeFecha} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
@@ -121,7 +125,7 @@ export async function GET() {
       .where(
         and(
           sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh')`,
-          eq(solicitudes.rechazadaPor, session.user.id),
+          eq(solicitudes.rechazadaPor, session.id),
           sql`${solicitudes.updatedAt} >= ${hoyInicio.toISOString()}`,
           sql`${solicitudes.updatedAt} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
@@ -137,8 +141,6 @@ export async function GET() {
       aprobadas_hoy: Number(aprobadasHoy?.count || 0),
       rechazadas_hoy: Number(rechazadasHoy?.count || 0),
     };
-
-    console.log('✅ Jefe métricas:', metricas);
 
     return NextResponse.json({
       success: true,

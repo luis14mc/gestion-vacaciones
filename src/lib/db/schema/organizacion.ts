@@ -111,6 +111,32 @@ export const usuariosDepartamentos = pgTable(
 );
 
 // ============================================================
+// TABLA: configuracion (Key-Value config store)
+// ============================================================
+export const configuracion = pgTable(
+  'configuracion',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    clave: varchar('clave', { length: 255 }).notNull(),
+    valor: text('valor').notNull().default(''),
+    descripcion: text('descripcion'),
+    categoria: varchar('categoria', { length: 100 }).notNull().default('general'),
+    tipoDato: varchar('tipo_dato', { length: 50 }).notNull().default('string'),
+    esPublico: boolean('es_publico').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    uqClave: unique('uq_configuracion_clave').on(table.clave),
+    idxCategoria: index('idx_configuracion_categoria').on(table.categoria),
+  })
+);
+
+// ============================================================
 // RELACIONES
 // ============================================================
 export const departamentosRelations = relations(departamentos, ({ one, many }) => ({

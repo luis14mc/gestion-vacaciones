@@ -4,24 +4,18 @@
  * Query params: tipo=balances|solicitudes, departamentoId, estado, fechaDesde, fechaHasta
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { getSession } from '@/lib/auth';
 import { exportarReporteBalances, exportarReporteSolicitudes } from '@/services/excel.service';
-import { exportLimiter, checkRateLimit } from '@/lib/security/rate-limiter';
 
 export async function GET(req: NextRequest) {
   try {
-    // Rate limiting: 5 exportaciones por minuto
-    const limited = checkRateLimit(req, exportLimiter);
-    if (limited) return limited;
-
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
-    const user = session.user as any;
-    if (!user.esRrhh && !user.esAdmin) {
-      return NextResponse.json({ error: 'Sin permisos para exportar' }, { status: 403 });
+    if (!session.esRrhh && !session.esAdmin) {
+      return NextResponse.json({ success: false, error: 'Sin permisos para exportar' }, { status: 403 });
     }
 
     const { searchParams } = req.nextUrl;
@@ -60,7 +54,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error exportando Excel:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error generando reporte' },
+      { success: false, error: error instanceof Error ? error.message : 'Error generando reporte' },
       { status: 500 }
     );
   }

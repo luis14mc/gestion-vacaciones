@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Settings,
-  Save,
   Calendar,
   Mail,
   Building2,
@@ -12,10 +10,21 @@ import {
   Edit,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import type { Session } from "next-auth";
-import Swal from "sweetalert2";
+import { notify, confirmAction } from "@/lib/swal";
+import { ConfiguracionDialog } from "./ConfiguracionDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import type { ConfiguracionFormValues } from "@/lib/schemas/configuracion.schema";
 
 interface ConfigItem {
   id: number;
@@ -32,21 +41,11 @@ interface ConfiguracionClientProps {
 }
 
 export default function ConfiguracionClient({ session }: ConfiguracionClientProps) {
-  const router = useRouter();
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoriaActiva, setCategoriaActiva] = useState("general");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ConfigItem | null>(null);
-
-  const [formData, setFormData] = useState({
-    clave: "",
-    valor: "",
-    descripcion: "",
-    categoria: "general",
-    tipoDato: "string",
-    esPublico: false,
-  });
 
   const categorias = [
     { id: "general", nombre: "General", icon: Settings },
@@ -56,7 +55,6 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
     { id: "seguridad", nombre: "Seguridad", icon: Shield },
   ];
 
-  // Load configurations on mount
   useEffect(() => {
     cargarConfiguraciones();
   }, []);
@@ -70,53 +68,29 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       if (data.success) {
         setConfigs(data.data);
       } else {
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: data.error || "Error al cargar configuraciones",
-        });
+        notify.error("Error", data.error || "Error al cargar configuraciones");
       }
     } catch (error) {
-      console.error("Error cargando configuraciones:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al cargar configuraciones",
-      });
+      notify.error("Error", "Error al cargar configuraciones");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSaveConfig = async (values: ConfiguracionFormValues) => {
     try {
-      // Validar formato snake_case para la clave
-      if (!/^[a-z0-9_]+$/.test(formData.clave)) {
-        await Swal.fire({
-          icon: "warning",
-          title: "Formato inválido",
-          text: "La clave debe estar en formato snake_case (solo minúsculas, números y guiones bajos)",
-        });
-        return;
-      }
-
       const method = editingConfig ? "PATCH" : "POST";
-      
-      // Al editar, no enviar la clave (no se puede modificar)
-      const body = editingConfig
-        ? { 
-            id: editingConfig.id,
-            valor: formData.valor,
-            descripcion: formData.descripcion,
-            categoria: formData.categoria,
-            tipoDato: formData.tipoDato,
-            esPublico: formData.esPublico
-          }
-        : formData;
 
-      console.log('Enviando:', { method, body }); // Debug
+      const body = editingConfig
+        ? {
+            id: editingConfig.id,
+            valor: values.valor,
+            descripcion: values.descripcion,
+            categoria: values.categoria,
+            tipoDato: values.tipoDato,
+            esPublico: values.esPublico,
+          }
+        : values;
 
       const res = await fetch("/api/configuracion", {
         method,
@@ -125,48 +99,27 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       });
 
       const data = await res.json();
-      console.log('Respuesta:', data); // Debug
 
       if (data.success) {
         await cargarConfiguraciones();
-        await Swal.fire({
-          icon: "success",
-          title: editingConfig ? "Actualizado" : "Creado",
-          text: data.message,
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        notify.success(editingConfig ? "Actualizado" : "Creado", data.message);
         cerrarModal();
       } else {
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: data.error || "Error al guardar configuración",
-        });
+        notify.error("Error", data.error || "Error al guardar configuración");
       }
     } catch (error) {
-      console.error("Error guardando configuración:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al guardar configuración",
-      });
+      notify.error("Error", "Error al guardar configuración");
     }
   };
 
   const handleDelete = async (id: number) => {
-    const result = await Swal.fire({
-      icon: "warning",
-      title: "¿Estás seguro?",
-      text: "Esta configuración será eliminada permanentemente",
-      showCancelButton: true,
-      confirmButtonText: "Sí, eliminar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-    });
+    const result = await confirmAction(
+      "Confirmar eliminación",
+      "¿Está seguro de eliminar esta configuración? Esta acción es permanente.",
+      { confirmText: "Eliminar", icon: "warning" }
+    );
 
-    if (!result.isConfirmed) return;
+    if (!result.confirmed) return;
 
     try {
       const res = await fetch(`/api/configuracion?id=${id}`, { method: "DELETE" });
@@ -174,53 +127,22 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
 
       if (data.success) {
         await cargarConfiguraciones();
-        await Swal.fire({
-          icon: "success",
-          title: "Eliminado",
-          text: data.message,
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        notify.success("Eliminado", data.message);
       } else {
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: data.error || "Error al eliminar configuración",
-        });
+        notify.error("Error", data.error || "Error al eliminar configuración");
       }
     } catch (error) {
-      console.error("Error eliminando configuración:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "Error al eliminar configuración",
-      });
+      notify.error("Error", "Error al eliminar configuración");
     }
   };
 
   const abrirModalNueva = () => {
     setEditingConfig(null);
-    setFormData({
-      clave: "",
-      valor: "",
-      descripcion: "",
-      categoria: categoriaActiva,
-      tipoDato: "string",
-      esPublico: false,
-    });
     setModalOpen(true);
   };
 
   const abrirModalEditar = (config: ConfigItem) => {
     setEditingConfig(config);
-    setFormData({
-      clave: config.clave,
-      valor: config.valor,
-      descripcion: config.descripcion || "",
-      categoria: config.categoria,
-      tipoDato: config.tipoDato || "string",
-      esPublico: config.esPublico || false,
-    });
     setModalOpen(true);
   };
 
@@ -232,286 +154,167 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   const configsFiltradas = configs.filter((c) => c.categoria === categoriaActiva);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-4">
+    <div>
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">
-              <Settings className="w-8 h-8" />
+            <div className="bg-muted p-2.5 rounded-xl">
+              <Settings className="w-4 h-4 text-muted-foreground" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Configuración del Sistema</h1>
-              <p className="text-base-content/70">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                Configuración del Sistema
+              </h1>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
                 Administra la configuración general
               </p>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost"
-          >
-            ← Volver
-          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar - Categorías */}
           <div className="lg:col-span-1">
-            <div className="card bg-base-100 shadow-xl sticky top-4">
-              <div className="card-body p-4">
-                <h2 className="card-title text-lg mb-3">Categorías</h2>
+            <Card className="sticky top-4 bg-card text-card-foreground">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-[13px] font-semibold text-foreground">
+                  Categorías
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
                 <div className="flex flex-col gap-2">
                   {categorias.map((cat) => {
                     const Icon = cat.icon;
-                    const count = configs.filter(
-                      (c) => c.categoria === cat.id
-                    ).length;
+                    const count = configs.filter((c) => c.categoria === cat.id).length;
+                    const isActive = categoriaActiva === cat.id;
                     return (
-                      <button
+                      <Button
                         key={cat.id}
+                        type="button"
+                        variant={isActive ? "default" : "ghost"}
+                        size="sm"
+                        className="w-full justify-between"
                         onClick={() => setCategoriaActiva(cat.id)}
-                        className={`btn btn-sm justify-between ${
-                          categoriaActiva === cat.id
-                            ? "btn-primary"
-                            : "btn-ghost"
-                        }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-4 h-4" />
+                        <span className="flex items-center gap-2">
+                          <Icon className="w-4 h-4 shrink-0" />
                           <span>{cat.nombre}</span>
-                        </div>
-                        <span className="badge badge-sm">
-                          {count}
                         </span>
-                      </button>
+                        <Badge variant="secondary" className="shrink-0">
+                          {count}
+                        </Badge>
+                      </Button>
                     );
                   })}
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Main Content - Configuraciones */}
           <div className="lg:col-span-3">
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="card-title">
-                    {categorias.find((c) => c.id === categoriaActiva)?.nombre}
-                  </h2>
-                  <button
-                    onClick={abrirModalNueva}
-                    className="btn btn-primary btn-sm gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Nueva Configuración
-                  </button>
-                </div>
-
+            <Card className="bg-card text-card-foreground border shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardTitle className="text-[13px] font-semibold text-foreground">
+                  {categorias.find((c) => c.id === categoriaActiva)?.nombre}
+                </CardTitle>
+                <Button size="sm" onClick={abrirModalNueva}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nueva Configuración
+                </Button>
+              </CardHeader>
+              <CardContent>
                 {loading ? (
-                  <div className="flex justify-center py-12">
-                    <span className="loading loading-spinner loading-lg"></span>
+                  <div className="space-y-4 py-2">
+                    {[0, 1, 2].map((i) => (
+                      <Card key={i} className="bg-muted/30">
+                        <CardContent className="pt-6 space-y-3">
+                          <Skeleton className="h-5 w-40" />
+                          <Skeleton className="h-4 w-full max-w-md" />
+                          <Skeleton className="h-4 w-24" />
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 ) : configsFiltradas.length === 0 ? (
-                  <div className="text-center py-12 text-base-content/70">
+                  <div className="text-center py-12 text-muted-foreground">
                     <Settings className="w-16 h-16 mx-auto mb-4 opacity-30" />
                     <p>No hay configuraciones en esta categoría</p>
-                    <button
-                      onClick={abrirModalNueva}
-                      className="btn btn-sm btn-primary mt-4"
-                    >
+                    <Button size="sm" className="mt-4" onClick={abrirModalNueva}>
                       Crear primera configuración
-                    </button>
+                    </Button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4">
                     {configsFiltradas.map((config) => (
-                      <div
+                      <Card
                         key={config.id}
-                        className="card bg-base-200 hover:shadow-lg transition-shadow"
+                        className="bg-card text-card-foreground transition-shadow duration-200 hover:shadow-md"
                       >
-                        <div className="card-body p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <code className="text-sm font-semibold bg-base-300 px-2 py-1 rounded">
+                        <CardContent className="pt-6">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <code className="text-sm font-semibold bg-muted text-foreground px-2 py-1 rounded-lg">
                                 {config.clave}
                               </code>
                               {config.descripcion && (
-                                <p className="text-sm text-base-content/70 mt-2">
+                                <p className="text-sm text-muted-foreground mt-2">
                                   {config.descripcion}
                                 </p>
                               )}
                               <div className="mt-3">
-                                <span className="text-xs text-base-content/60">
+                                <span className="text-xs text-muted-foreground">
                                   Valor actual:
                                 </span>
-                                <div className="mt-1">
-                                  {config.valor === "true" ||
-                                  config.valor === "false" ? (
-                                    <span
-                                      className={`badge ${
-                                        config.valor === "true"
-                                          ? "badge-success"
-                                          : "badge-error"
-                                      }`}
-                                    >
-                                      {config.valor === "true"
-                                        ? "Activado"
-                                        : "Desactivado"}
-                                    </span>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  {config.valor === "true" || config.valor === "false" ? (
+                                    <Switch
+                                      checked={config.valor === "true"}
+                                      disabled
+                                    />
                                   ) : (
-                                    <span className="font-semibold">
+                                    <span className="font-semibold text-foreground">
                                       {config.valor}
                                     </span>
                                   )}
                                 </div>
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <button
+                            <div className="flex gap-2 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => abrirModalEditar(config)}
-                                className="btn btn-sm btn-ghost"
                               >
                                 <Edit className="w-4 h-4" />
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => handleDelete(config.id)}
-                                className="btn btn-sm btn-ghost text-error"
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </button>
+                              </Button>
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        </CardContent>
+                      </Card>
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
 
-      {/* Modal Crear/Editar Configuración */}
-      {modalOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box">
-            <h3 className="font-bold text-lg mb-4">
-              {editingConfig
-                ? "Editar Configuración"
-                : "Nueva Configuración"}
-            </h3>
-
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4">
-                {/* Categoría */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Categoría *</span>
-                  </label>
-                  <select
-                    className="select select-bordered"
-                    value={formData.categoria}
-                    onChange={(e) =>
-                      setFormData({ ...formData, categoria: e.target.value })
-                    }
-                    required
-                  >
-                    {categorias.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Clave */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Clave *</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={formData.clave}
-                    onChange={(e) =>
-                      setFormData({ ...formData, clave: e.target.value })
-                    }
-                    placeholder="nombre_configuracion"
-                    pattern="[a-z0-9_]+"
-                    title="Solo minúsculas, números y guiones bajos (snake_case)"
-                    required
-                    disabled={!!editingConfig}
-                  />
-                  <label className="label">
-                    <span className="label-text-alt">
-                      Formato: snake_case (ej: dias_vacaciones_default)
-                    </span>
-                  </label>
-                </div>
-
-                {/* Valor */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Valor *</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input input-bordered"
-                    value={formData.valor}
-                    onChange={(e) =>
-                      setFormData({ ...formData, valor: e.target.value })
-                    }
-                    placeholder="15"
-                    required
-                  />
-                  <label className="label">
-                    <span className="label-text-alt">
-                      Para booleanos usa: true o false
-                    </span>
-                  </label>
-                </div>
-
-                {/* Descripción */}
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">Descripción</span>
-                  </label>
-                  <textarea
-                    className="textarea textarea-bordered h-20"
-                    value={formData.descripcion}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        descripcion: e.target.value,
-                      })
-                    }
-                    placeholder="Descripción de la configuración..."
-                  />
-                </div>
-              </div>
-
-              {/* Botones */}
-              <div className="modal-action">
-                <button
-                  type="button"
-                  onClick={cerrarModal}
-                  className="btn btn-ghost gap-2"
-                >
-                  <X className="w-4 h-4" />
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary gap-2">
-                  <Save className="w-4 h-4" />
-                  Guardar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ConfiguracionDialog
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        configuracion={editingConfig}
+        categorias={categorias}
+        categoriaActiva={categoriaActiva}
+        onSubmit={handleSaveConfig}
+      />
     </div>
   );
 }

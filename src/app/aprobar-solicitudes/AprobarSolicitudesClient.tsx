@@ -1,25 +1,50 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { 
-  FileText, 
-  Calendar, 
-  User, 
+import {
+  FileText,
+  Calendar,
+  User,
   Clock,
   Check,
   X,
-  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Eye,
   CheckCircle,
   XCircle,
   MessageSquare,
-  Info
+  Info,
 } from "lucide-react";
-import Swal from "sweetalert2";
+import { notify, confirmAction } from "@/lib/swal";
 import type { Session } from "next-auth";
+
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Solicitud {
   id: number;
@@ -35,6 +60,7 @@ interface Solicitud {
   comentariosJefe: string | null;
   comentariosRrhh: string | null;
   createdAt: string;
+  metadata?: any;
   usuario: {
     id: number;
     nombre: string;
@@ -63,19 +89,24 @@ interface AprobarSolicitudesClientProps {
   session: Session;
 }
 
-export default function AprobarSolicitudesClient({ session }: AprobarSolicitudesClientProps) {
-  const router = useRouter();
+export default function AprobarSolicitudesClient({
+  session,
+}: AprobarSolicitudesClientProps) {
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, pendientes: 0, aprobadas_hoy: 0, rechazadas_hoy: 0 });
+  const [stats, setStats] = useState<Stats>({
+    total: 0,
+    pendientes: 0,
+    aprobadas_hoy: 0,
+    rechazadas_hoy: 0,
+  });
   const [loading, setLoading] = useState(true);
-  
-  // Paginación
+
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
   const itemsPorPagina = 10;
 
-  // Detalles y acciones
-  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<Solicitud | null>(null);
+  const [solicitudSeleccionada, setSolicitudSeleccionada] =
+    useState<Solicitud | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [accion, setAccion] = useState<"aprobar" | "rechazar" | null>(null);
   const [comentarios, setComentarios] = useState("");
@@ -90,22 +121,14 @@ export default function AprobarSolicitudesClient({ session }: AprobarSolicitudes
       const params = new URLSearchParams({
         page: paginaActual.toString(),
         pageSize: itemsPorPagina.toString(),
-        paraAprobar: "true", // Indica que es para aprobar
-        _t: Date.now().toString() // Evitar caché
+        paraAprobar: "true",
+        _t: Date.now().toString(),
       });
 
       const response = await fetch(`/api/solicitudes?${params}`, {
-        cache: 'no-store' // Forzar sin caché
+        cache: "no-store",
       });
       const data = await response.json();
-
-      console.log('📊 Respuesta de solicitudes:', data);
-      console.log('📋 Solicitudes recibidas:', data.data?.map((s: any) => ({ 
-        id: s.id, 
-        codigo: s.codigo, 
-        estado: s.estado,
-        usuario: s.usuario?.nombre 
-      })));
 
       if (data.success) {
         setSolicitudes(data.data || []);
@@ -117,111 +140,114 @@ export default function AprobarSolicitudesClient({ session }: AprobarSolicitudes
         });
         setTotalPaginas(data.totalPages || 1);
       } else {
-        console.error('Error en respuesta:', data.error);
+        console.error("Error en respuesta:", data.error);
       }
     } catch (error) {
       console.error("Error al cargar solicitudes:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error al Cargar",
-        text: "No se pudieron cargar las solicitudes. Intenta refrescar la página.",
-        confirmButtonText: "Cerrar",
-        confirmButtonColor: "#ef4444"
-      });
+      notify.error(
+        "No se pudieron cargar las solicitudes. Intenta refrescar la página."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const abrirModalAprobacion = (solicitud: Solicitud, accionSeleccionada: "aprobar" | "rechazar") => {
+  const abrirModalAprobacion = (
+    solicitud: Solicitud,
+    accionSeleccionada: "aprobar" | "rechazar"
+  ) => {
     setSolicitudSeleccionada(solicitud);
     setAccion(accionSeleccionada);
     setComentarios("");
     setMostrarModal(true);
   };
 
+  const cerrarModal = () => {
+    setMostrarModal(false);
+    setAccion(null);
+    setComentarios("");
+  };
+
+  const determinarAccionBackend = (
+    tipoAccion: "aprobar" | "rechazar",
+    estadoSolicitud: string
+  ): string => {
+    if (tipoAccion === "rechazar") {
+      if (estadoSolicitud === "pendiente_jefe") return "rechazar_jefe";
+      if (estadoSolicitud === "aprobada_jefe") return "rechazar_rrhh";
+      return "rechazar";
+    }
+    if (estadoSolicitud === "pendiente_jefe") return "aprobar_jefe";
+    if (estadoSolicitud === "aprobada_jefe") return "aprobar_rrhh";
+    return "aprobar_jefe";
+  };
+
+  const getEtiquetaBoton = (estado: string): string => {
+    if (estado === "aprobada_jefe") return "Aprobar RRHH";
+    return "Aprobar";
+  };
+
+  const getEtiquetaEstado = (estado: string): string => {
+    if (estado === "pendiente_jefe") return "Pend. Jefe";
+    if (estado === "aprobada_jefe") return "Pend. RRHH";
+    return estado;
+  };
+
   const procesarSolicitud = async () => {
     if (!solicitudSeleccionada || !accion) return;
 
     if (accion === "rechazar" && !comentarios.trim()) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Campo Requerido",
-        text: "Debes proporcionar un motivo para rechazar la solicitud",
-        confirmButtonText: "Entendido",
-        confirmButtonColor: "#f59e0b"
-      });
+      notify.warning(
+        "Debes proporcionar un motivo para rechazar la solicitud"
+      );
       return;
     }
 
     try {
-      // Determinar acción según el rol del usuario
-      let accionBackend: string;
-      
-      if (accion === "rechazar") {
-        accionBackend = "rechazar";
-      } else {
-        // accion === "aprobar"
-        if (session.user.esRrhh) {
-          accionBackend = "aprobar_rrhh";
-        } else {
-          accionBackend = "aprobar_jefe";
+      const accionBackend = determinarAccionBackend(
+        accion,
+        solicitudSeleccionada.estado
+      );
+
+      const response = await fetch(
+        `/api/solicitudes/${solicitudSeleccionada.id}/accion`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: accionBackend,
+            comentario: comentarios.trim() || null,
+            motivoRechazo:
+              accion === "rechazar" ? comentarios.trim() : undefined,
+          }),
         }
-      }
-      
-      const response = await fetch(`/api/solicitudes`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          solicitudId: solicitudSeleccionada.id,
-          accion: accionBackend,
-          motivo: comentarios.trim() || null,
-        }),
-      });
+      );
 
       const data = await response.json();
 
-      console.log('📊 Respuesta del servidor:', data);
-
       if (data.success) {
-        // Cerrar modal antes de mostrar alerta
         setMostrarModal(false);
         setSolicitudSeleccionada(null);
         setAccion(null);
         setComentarios("");
-        
-        // Mostrar alerta de éxito
-        await Swal.fire({
-          icon: "success",
-          title: accion === "aprobar" ? "¡Solicitud Aprobada!" : "Solicitud Rechazada",
-          text: data.message || `La solicitud ha sido ${accion === "aprobar" ? "aprobada" : "rechazada"} correctamente`,
-          confirmButtonText: "Aceptar",
-          confirmButtonColor: accion === "aprobar" ? "#10b981" : "#ef4444",
-          timer: 3000,
-          timerProgressBar: true
-        });
-        
-        // Recargar lista de solicitudes
-        console.log('🔄 Recargando solicitudes...');
+
+        notify.success(
+          `La solicitud ha sido ${
+            accion === "aprobar" ? "aprobada" : "rechazada"
+          } correctamente`
+        );
+
         await cargarSolicitudes();
       } else {
-        await Swal.fire({
-          icon: "error",
-          title: "Error al Procesar",
-          text: data.error || "No se pudo procesar la solicitud. Intenta de nuevo.",
-          confirmButtonText: "Cerrar",
-          confirmButtonColor: "#ef4444"
-        });
+        notify.error(
+          data.error || "No se pudo procesar la solicitud. Intenta de nuevo."
+        );
       }
     } catch (error) {
       console.error("Error al procesar solicitud:", error);
-      await Swal.fire({
-        icon: "error",
-        title: "Error de Conexión",
-        text: "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.",
-        confirmButtonText: "Cerrar",
-        confirmButtonColor: "#ef4444"
-      });
+      notify.error(
+        "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo."
+      );
     }
   };
 
@@ -242,141 +268,202 @@ export default function AprobarSolicitudesClient({ session }: AprobarSolicitudes
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-base-200 to-base-300 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+    <div>
+      <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-center gap-4">
-          <div className="bg-gradient-to-br from-warning to-warning/70 p-4 rounded-2xl shadow-lg">
-            <CheckCircle className="w-8 h-8 text-white" />
+          <div className="rounded-xl bg-muted p-2.5">
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-base-content">Aprobar Solicitudes</h1>
-            <p className="text-base-content/70">Revisa y gestiona las solicitudes pendientes de tu equipo</p>
-          </div>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="btn btn-ghost gap-2"
-          >
-            ← Volver
-          </button>
-        </div>
-
-        {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-warning">
-              <Clock className="w-8 h-8" />
-            </div>
-            <div className="stat-title">Pendientes</div>
-            <div className="stat-value text-warning">{stats.pendientes}</div>
-            <div className="stat-desc">Requieren tu aprobación</div>
-          </div>
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-success">
-              <Check className="w-8 h-8" />
-            </div>
-            <div className="stat-title">Aprobadas Hoy</div>
-            <div className="stat-value text-success">{stats.aprobadas_hoy}</div>
-            <div className="stat-desc">Procesadas con éxito</div>
-          </div>
-          <div className="stat bg-base-100 rounded-lg shadow">
-            <div className="stat-figure text-error">
-              <X className="w-8 h-8" />
-            </div>
-            <div className="stat-title">Rechazadas Hoy</div>
-            <div className="stat-value text-error">{stats.rechazadas_hoy}</div>
-            <div className="stat-desc">Denegadas</div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Aprobar Solicitudes
+            </h1>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              Revisa y gestiona las solicitudes pendientes de tu equipo
+            </p>
           </div>
         </div>
 
-        {/* Tabla de solicitudes */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title mb-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Card className="bg-card">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="rounded-lg bg-muted p-3">
+                  <Clock className="h-8 w-8 text-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm text-muted-foreground">Pendientes</p>
+                  <p className="text-3xl font-semibold tabular-nums text-foreground">
+                    {stats.pendientes}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Requieren tu aprobación
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="rounded-lg bg-muted p-3">
+                  <Check className="h-8 w-8 text-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm text-muted-foreground">Aprobadas Hoy</p>
+                  <p className="text-3xl font-semibold tabular-nums text-foreground">
+                    {stats.aprobadas_hoy}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Procesadas con éxito
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="rounded-lg bg-muted p-3">
+                  <X className="h-8 w-8 text-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm text-muted-foreground">Rechazadas Hoy</p>
+                  <p className="text-3xl font-semibold tabular-nums text-foreground">
+                    {stats.rechazadas_hoy}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Denegadas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[13px] font-semibold">
               Solicitudes Pendientes ({stats.total})
-            </h2>
-
+            </CardTitle>
+            <CardDescription className="sr-only">
+              Lista de solicitudes que requieren tu decisión
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             {loading ? (
-              <div className="text-center py-12">
-                <span className="loading loading-spinner loading-lg"></span>
+              <div className="flex justify-center py-12">
+                <div
+                  className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground"
+                  role="status"
+                  aria-label="Cargando"
+                />
               </div>
             ) : solicitudes.length === 0 ? (
-              <div className="text-center py-12">
-                <CheckCircle className="w-16 h-16 mx-auto text-success/20 mb-4" />
-                <p className="text-lg font-medium text-base-content/60">¡Todo al día!</p>
-                <p className="text-sm text-base-content/40">No hay solicitudes pendientes de aprobación</p>
+              <div className="py-12 text-center">
+                <CheckCircle className="mx-auto mb-4 h-16 w-16 text-muted-foreground/20" />
+                <p className="text-lg font-medium text-muted-foreground">
+                  ¡Todo al día!
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  No hay solicitudes pendientes de aprobación
+                </p>
               </div>
             ) : (
               <>
-                {/* Vista Desktop - Tabla */}
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="table table-zebra">
-                    <thead>
-                      <tr>
-                        <th>Colaborador</th>
-                        <th>Tipo</th>
-                        <th>Período</th>
-                        <th>Días</th>
-                        <th>Solicitado</th>
-                        <th className="text-center">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <div className="hidden overflow-x-auto lg:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Colaborador</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Días</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Solicitado</TableHead>
+                        <TableHead className="text-center">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {solicitudes.map((sol) => (
-                        <tr key={sol.id} className="hover">
-                          <td>
+                        <TableRow
+                          key={sol.id}
+                          className="odd:bg-muted/30"
+                        >
+                          <TableCell>
                             <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-base-content/50" />
-                              <span className="font-medium">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium text-foreground">
                                 {sol.usuario?.nombre} {sol.usuario?.apellido}
                               </span>
                             </div>
-                          </td>
-                          <td>
-                            <div className="badge badge-outline">
-                              {sol.tipoAusencia?.nombre || 'N/A'}
-                            </div>
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {sol.tipoAusencia?.nombre || "N/A"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
                             <div className="text-sm">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
+                              <div className="flex items-center gap-1 text-foreground">
+                                <Calendar className="h-3 w-3" />
                                 {formatearFecha(sol.fechaInicio)}
                               </div>
-                              <div className="text-base-content/50 flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
                                 {formatearFecha(sol.fechaFin)}
                               </div>
                             </div>
-                          </td>
-                          <td>
-                            <div className="badge badge-primary">{sol.cantidad} días</div>
-                          </td>
-                          <td>
-                            <div className="text-xs text-base-content/60">
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="default">
+                              {sol.cantidad} días
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                              <Badge
+                              variant="outline"
+                              className={
+                                sol.estado === "pendiente_jefe"
+                                  ? "border-yellow-300 bg-yellow-50 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                  : sol.estado === "aprobada_rrhh"
+                                  ? "border-purple-300 bg-purple-50 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400"
+                                  : "border-blue-300 bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+                              }
+                            >
+                              {getEtiquetaEstado(sol.estado)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-xs text-muted-foreground">
                               {calcularDiasDesde(sol.createdAt)}
                             </div>
-                          </td>
-                          <td>
-                            <div className="flex gap-2 justify-center">
-                              <button
-                                className="btn btn-sm btn-success gap-1"
-                                onClick={() => abrirModalAprobacion(sol, "aprobar")}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-center gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 text-white hover:bg-green-700"
+                                onClick={() =>
+                                  abrirModalAprobacion(sol, "aprobar")
+                                }
                                 title="Aprobar"
                               >
-                                <Check className="w-4 h-4" />
-                                Aprobar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-error gap-1"
-                                onClick={() => abrirModalAprobacion(sol, "rechazar")}
+                                <Check className="h-4 w-4" />
+                                {getEtiquetaBoton(sol.estado)}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() =>
+                                  abrirModalAprobacion(sol, "rechazar")
+                                }
                                 title="Rechazar"
                               >
-                                <X className="w-4 h-4" />
+                                <X className="h-4 w-4" />
                                 Rechazar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-ghost gap-1"
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
                                 onClick={() => {
                                   setSolicitudSeleccionada(sol);
                                   setMostrarModal(true);
@@ -384,257 +471,319 @@ export default function AprobarSolicitudesClient({ session }: AprobarSolicitudes
                                 }}
                                 title="Ver detalles"
                               >
-                                <Eye className="w-4 h-4" />
-                              </button>
+                                <Eye className="h-4 w-4" />
+                              </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
 
-                {/* Vista Mobile - Tarjetas */}
-                <div className="lg:hidden space-y-4">
+                <div className="space-y-4 lg:hidden">
                   {solicitudes.map((sol) => (
-                    <div key={sol.id} className="card bg-base-200 shadow-md">
-                      <div className="card-body p-4">
-                        {/* Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <User className="w-4 h-4 text-base-content/50" />
-                              <span className="font-bold text-base">
+                    <Card key={sol.id} className="bg-card">
+                      <CardContent className="pt-6">
+                        <div className="mb-3 flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="mb-1 flex items-center gap-2">
+                              <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className="font-bold text-base text-foreground">
                                 {sol.usuario?.nombre} {sol.usuario?.apellido}
                               </span>
                             </div>
-                            <div className="badge badge-outline badge-sm">
-                              {sol.tipoAusencia?.nombre || 'N/A'}
-                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {sol.tipoAusencia?.nombre || "N/A"}
+                            </Badge>
                           </div>
-                          <div className="badge badge-primary">{sol.cantidad} días</div>
+                          <Badge variant="default" className="shrink-0">
+                            {sol.cantidad} días
+                          </Badge>
                         </div>
 
-                        {/* Fechas */}
-                        <div className="space-y-1 mb-3">
+                        <div className="mb-3 space-y-1">
                           <div className="flex items-center gap-2 text-sm">
-                            <Calendar className="w-3 h-3 text-base-content/50" />
-                            <span className="text-base-content/70">Inicio:</span>
-                            <span className="font-medium">{formatearFecha(sol.fechaInicio)}</span>
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Inicio:</span>
+                            <span className="font-medium text-foreground">
+                              {formatearFecha(sol.fechaInicio)}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
-                            <Calendar className="w-3 h-3 text-base-content/50" />
-                            <span className="text-base-content/70">Fin:</span>
-                            <span className="font-medium">{formatearFecha(sol.fechaFin)}</span>
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Fin:</span>
+                            <span className="font-medium text-foreground">
+                              {formatearFecha(sol.fechaFin)}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-base-content/60">
-                            <Clock className="w-3 h-3" />
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
                             Solicitado {calcularDiasDesde(sol.createdAt)}
                           </div>
                         </div>
 
-                        {/* Acciones */}
                         <div className="flex gap-2">
-                          <button
-                            className="btn btn-success btn-sm flex-1 gap-1"
-                            onClick={() => abrirModalAprobacion(sol, "aprobar")}
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-green-600 text-white hover:bg-green-700"
+                            onClick={() =>
+                              abrirModalAprobacion(sol, "aprobar")
+                            }
                           >
-                            <Check className="w-4 h-4" />
-                            Aprobar
-                          </button>
-                          <button
-                            className="btn btn-error btn-sm flex-1 gap-1"
-                            onClick={() => abrirModalAprobacion(sol, "rechazar")}
+                            <Check className="h-4 w-4" />
+                            {getEtiquetaBoton(sol.estado)}
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() =>
+                              abrirModalAprobacion(sol, "rechazar")
+                            }
                           >
-                            <X className="w-4 h-4" />
+                            <X className="h-4 w-4" />
                             Rechazar
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => {
                               setSolicitudSeleccionada(sol);
                               setMostrarModal(true);
                               setAccion(null);
                             }}
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </div>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
 
-                {/* Paginación */}
                 {totalPaginas > 1 && (
-                  <div className="flex justify-center items-center gap-2 mt-6">
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                  <div className="mt-6 flex items-center justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPaginaActual((p) => Math.max(1, p - 1))
+                      }
                       disabled={paginaActual === 1}
                     >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <span className="text-sm">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
                       Página {paginaActual} de {totalPaginas}
                     </span>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPaginaActual((p) =>
+                          Math.min(totalPaginas, p + 1)
+                        )
+                      }
                       disabled={paginaActual === totalPaginas}
                     >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
                 )}
               </>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Modal de detalles/aprobación */}
-      {mostrarModal && solicitudSeleccionada && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-2xl">
-            <h3 className="font-bold text-xl mb-4 flex items-center gap-2">
-              {accion ? (
-                accion === "aprobar" ? (
-                  <>
-                    <CheckCircle className="w-6 h-6 text-success" />
-                    Aprobar Solicitud
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-6 h-6 text-error" />
-                    Rechazar Solicitud
-                  </>
-                )
-              ) : (
-                <>
-                  <FileText className="w-6 h-6 text-primary" />
-                  Detalles de la Solicitud
-                </>
-              )}
-            </h3>
+      <Dialog
+        open={mostrarModal && !!solicitudSeleccionada}
+        onOpenChange={(open) => {
+          if (!open) cerrarModal();
+        }}
+      >
+        <DialogContent
+          className="max-w-2xl sm:max-w-2xl"
+          showCloseButton
+        >
+          {solicitudSeleccionada && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-xl">
+                  {accion ? (
+                    accion === "aprobar" ? (
+                      <>
+                        <CheckCircle className="h-6 w-6 text-green-600" />
+                        Aprobar Solicitud
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-6 w-6 text-destructive" />
+                        Rechazar Solicitud
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <FileText className="h-6 w-6 text-foreground" />
+                      Detalles de la Solicitud
+                    </>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
 
-            <div className="space-y-4">
-              {/* Información de la solicitud */}
-              <div className="bg-base-200 p-4 rounded-lg">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label label-text font-semibold">Colaborador</label>
-                    <p className="text-base-content">
-                      {solicitudSeleccionada.usuario?.nombre} {solicitudSeleccionada.usuario?.apellido}
-                    </p>
+              <div className="space-y-4">
+                <div className="rounded-xl bg-muted/50 p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-foreground">Colaborador</Label>
+                      <p className="text-sm text-foreground">
+                        {solicitudSeleccionada.usuario?.nombre}{" "}
+                        {solicitudSeleccionada.usuario?.apellido}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-foreground">
+                        Tipo de ausencia
+                      </Label>
+                      <p className="text-sm text-foreground">
+                        {solicitudSeleccionada.tipoAusencia?.nombre}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-foreground">Fecha inicio</Label>
+                      <p className="text-sm text-foreground">
+                        {formatearFecha(solicitudSeleccionada.fechaInicio)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-foreground">Fecha fin</Label>
+                      <p className="text-sm text-foreground">
+                        {formatearFecha(solicitudSeleccionada.fechaFin)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-foreground">Días solicitados</Label>
+                      <p className="text-sm font-bold text-foreground">
+                        {solicitudSeleccionada.cantidad} días
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-foreground">Fecha de solicitud</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {formatearFecha(solicitudSeleccionada.createdAt)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="label label-text font-semibold">Tipo de ausencia</label>
-                    <p className="text-base-content">{solicitudSeleccionada.tipoAusencia?.nombre}</p>
-                  </div>
-                  <div>
-                    <label className="label label-text font-semibold">Fecha inicio</label>
-                    <p className="text-base-content">{formatearFecha(solicitudSeleccionada.fechaInicio)}</p>
-                  </div>
-                  <div>
-                    <label className="label label-text font-semibold">Fecha fin</label>
-                    <p className="text-base-content">{formatearFecha(solicitudSeleccionada.fechaFin)}</p>
-                  </div>
-                  <div>
-                    <label className="label label-text font-semibold">Días solicitados</label>
-                    <p className="text-base-content font-bold">{solicitudSeleccionada.cantidad} días</p>
-                  </div>
-                  <div>
-                    <label className="label label-text font-semibold">Fecha de solicitud</label>
-                    <p className="text-sm text-base-content/60">
-                      {formatearFecha(solicitudSeleccionada.createdAt)}
-                    </p>
-                  </div>
+
+                  {solicitudSeleccionada.motivo && (
+                    <div className="mt-4 space-y-1">
+                      <Label className="text-foreground">
+                        Motivo del colaborador
+                      </Label>
+                      <p className="rounded-md bg-muted p-3 text-sm text-foreground">
+                        {solicitudSeleccionada.motivo}
+                      </p>
+                    </div>
+                  )}
+
+                  {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <Label className="text-foreground">Historial de Comentarios</Label>
+                      <div className="space-y-3 rounded-md bg-muted p-3">
+                        {solicitudSeleccionada.metadata.comentarios.map((com: any, i: number) => (
+                          <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
+                              <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
+                            </div>
+                            <p className="text-sm text-foreground">{com.comentario}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {solicitudSeleccionada.motivo && (
-                  <div className="mt-4">
-                    <label className="label label-text font-semibold">Motivo del colaborador</label>
-                    <p className="text-base-content bg-base-100 p-3 rounded">{solicitudSeleccionada.motivo}</p>
+                {accion && (
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="comentarios-aprobacion"
+                      className="flex items-center gap-2 font-semibold text-foreground"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Comentarios{" "}
+                      {accion === "rechazar" && (
+                        <span className="text-destructive">*</span>
+                      )}
+                    </Label>
+                    <Textarea
+                      id="comentarios-aprobacion"
+                      className="min-h-24"
+                      placeholder={
+                        accion === "aprobar"
+                          ? "Comentarios opcionales..."
+                          : "Indica el motivo del rechazo..."
+                      }
+                      value={comentarios}
+                      onChange={(e) => setComentarios(e.target.value)}
+                    />
+                    {accion === "rechazar" && (
+                      <p className="text-xs text-destructive">
+                        El motivo es obligatorio para rechazar
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {!accion && (
+                  <div
+                    className="flex gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground"
+                    role="status"
+                  >
+                    <Info className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span>
+                      Revisa los detalles y usa los botones de aprobar/rechazar
+                      en la tabla
+                    </span>
                   </div>
                 )}
               </div>
 
-              {/* Formulario de aprobación/rechazo */}
-              {accion && (
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-semibold flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4" />
-                      Comentarios {accion === "rechazar" && <span className="text-error">*</span>}
-                    </span>
-                  </label>
-                  <textarea
-                    className="textarea textarea-bordered h-24"
-                    placeholder={accion === "aprobar" ? "Comentarios opcionales..." : "Indica el motivo del rechazo..."}
-                    value={comentarios}
-                    onChange={(e) => setComentarios(e.target.value)}
-                  ></textarea>
-                  {accion === "rechazar" && (
-                    <label className="label">
-                      <span className="label-text-alt text-error">El motivo es obligatorio para rechazar</span>
-                    </label>
-                  )}
-                </div>
-              )}
-
-              {!accion && (
-                <div className="alert alert-info">
-                  <Info className="w-5 h-5" />
-                  <span>Revisa los detalles y usa los botones de aprobar/rechazar en la tabla</span>
-                </div>
-              )}
-            </div>
-
-            <div className="modal-action">
-              {accion ? (
-                <>
-                  <button 
-                    className="btn btn-ghost" 
-                    onClick={() => {
-                      setMostrarModal(false);
-                      setAccion(null);
-                      setComentarios("");
-                    }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    className={`btn ${accion === "aprobar" ? "btn-success" : "btn-error"}`}
-                    onClick={procesarSolicitud}
-                  >
+              <DialogFooter>
+                {accion ? (
+                  <>
+                    <Button variant="ghost" onClick={cerrarModal}>
+                      Cancelar
+                    </Button>
                     {accion === "aprobar" ? (
-                      <>
-                        <Check className="w-4 h-4" />
+                      <Button
+                        className="bg-green-600 text-white hover:bg-green-700"
+                        onClick={procesarSolicitud}
+                      >
+                        <Check className="h-4 w-4" />
                         Confirmar Aprobación
-                      </>
+                      </Button>
                     ) : (
-                      <>
-                        <X className="w-4 h-4" />
+                      <Button
+                        variant="destructive"
+                        onClick={procesarSolicitud}
+                      >
+                        <X className="h-4 w-4" />
                         Confirmar Rechazo
-                      </>
+                      </Button>
                     )}
-                  </button>
-                </>
-              ) : (
-                <button className="btn" onClick={() => setMostrarModal(false)}>
-                  Cerrar
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="modal-backdrop" onClick={() => {
-            setMostrarModal(false);
-            setAccion(null);
-            setComentarios("");
-          }}></div>
-        </div>
-      )}
+                  </>
+                ) : (
+                  <Button variant="default" onClick={cerrarModal}>
+                    Cerrar
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

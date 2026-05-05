@@ -19,6 +19,7 @@ declare module "next-auth" {
       departamentoId: number;
       departamentoNombre?: string;
       cargo?: string | null;
+      esDirector: boolean;
       esJefe: boolean;
       esRrhh: boolean;
       esAdmin: boolean;
@@ -143,9 +144,7 @@ export interface SessionUser {
   roles: RolUsuario[];
   permisos: string[];
   
-  // ⚠️ DEPRECATED - Mantener por compatibilidad legacy
-  // Estos campos se calculan automáticamente desde roles[]
-  // Se eliminarán en versión futura
+  esDirector: boolean;
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
@@ -184,9 +183,11 @@ export interface FormularioUsuario {
   apellido: string;
   departamentoId: number;
   cargo?: string;
+  esDirector?: boolean;
   esJefe?: boolean;
   esRrhh?: boolean;
   esAdmin?: boolean;
+  jefeSuperiorId?: number;
   fechaIngreso?: string;
 }
 

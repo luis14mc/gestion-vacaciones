@@ -1,18 +1,22 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import AppShell from "@/components/layout/AppShell";
 import ReportesDepartamentoClient from "./ReportesDepartamentoClient";
 
 export default async function ReportesDepartamentoPage() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/auth/login");
+    redirect("/login");
   }
 
-  // Solo jefes, RRHH y admins pueden acceder
-  if (!session.user.esJefe && !session.user.esRrhh && !session.user.esAdmin) {
+  if (!session.user.esDirector && !session.user.esJefe && !session.user.esRrhh && !session.user.esAdmin) {
     redirect("/dashboard");
   }
 
-  return <ReportesDepartamentoClient />;
+  return (
+    <AppShell session={session}>
+      <ReportesDepartamentoClient session={session} />
+    </AppShell>
+  );
 }

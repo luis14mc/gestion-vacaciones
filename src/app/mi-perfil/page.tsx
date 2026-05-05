@@ -1,11 +1,18 @@
-import { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import AppShell from "@/components/layout/AppShell";
 import MiPerfilClient from "./MiPerfilClient";
 
-export const metadata: Metadata = {
-  title: "Mi Perfil - Sistema de Vacaciones",
-  description: "Información y configuración de mi perfil de usuario",
-};
+export default async function MiPerfilPage() {
+  const session = await auth();
 
-export default function MiPerfilPage() {
-  return <MiPerfilClient />;
+  if (!session?.user) {
+    redirect("/login");
+  }
+
+  return (
+    <AppShell session={session}>
+      <MiPerfilClient session={session} />
+    </AppShell>
+  );
 }

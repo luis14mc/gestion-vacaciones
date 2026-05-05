@@ -1,18 +1,22 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import AppShell from "@/components/layout/AppShell";
 import AprobarSolicitudesClient from "./AprobarSolicitudesClient";
 
 export default async function AprobarSolicitudesPage() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect("/auth/login");
+    redirect("/login");
   }
 
-  // Solo jefes, RRHH y admins pueden acceder
-  if (!session.user.esJefe && !session.user.esRrhh && !session.user.esAdmin) {
+  if (!session.user.esDirector && !session.user.esJefe && !session.user.esRrhh && !session.user.esAdmin) {
     redirect("/dashboard");
   }
 
-  return <AprobarSolicitudesClient session={session} />;
+  return (
+    <AppShell session={session}>
+      <AprobarSolicitudesClient session={session} />
+    </AppShell>
+  );
 }

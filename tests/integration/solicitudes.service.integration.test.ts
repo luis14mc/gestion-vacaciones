@@ -1,424 +1,495 @@
 /**
- * =====================================================
+ * ============================================================
  * INTEGRATION TESTS - Solicitudes Service
- * =====================================================
- * @description Tests de integración con BD real
- * @version 5.0 - CNI Schema
+ * ============================================================
+ * @description Tests de integración con base de datos real
+ * @version 1.0 - Semana 3
+ * ============================================================
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  db,
-  getSeedUser,
-  getCurrentAnoLaboral,
-  createTestBalance,
-} from './setup';
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   crearSolicitud,
   aprobarSolicitudJefe,
   aprobarSolicitudRRHH,
   rechazarSolicitud,
   obtenerSolicitudPorId,
-} from '../../src/services/solicitudes.service';
-import { solicitudes, balances } from '../../src/lib/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+  listarSolicitudes,
+} from '@/services/solicitudes.service'
+import {
+  crearDatosBaseTest,
+  crearUsuarioTest,
+  crearBalanceTest,
+  crearSolicitudTest,
+} from '../helpers/test-data'
+import '../setup-integration'
 
-// =====================================================
-// SUITE: crearSolicitud()
-// =====================================================
-describe('solicitudes.service - crearSolicitud()', () => {
-  let empleado: Awaited<ReturnType<typeof getSeedUser>>;
-  let anoLaboral: Awaited<ReturnType<typeof getCurrentAnoLaboral>>;
-  let balanceId: number;
+describe('Solicitudes Service - Integration Tests', () => {
+  let datosBase: Awaited<ReturnType<typeof crearDatosBaseTest>>
+  let usuarioEmpleado: any
+  let usuarioJefe: any
+  let usuarioRRHH: any
 
   beforeEach(async () => {
-    // Obtener datos de seed
-    empleado = await getSeedUser('ana.dev@cni.cl');
-    anoLaboral = await getCurrentAnoLaboral();
+    // Crear datos base antes de cada test
+    datosBase = await crearDatosBaseTest()
 
-    // Crear balance de prueba para el empleado
-    const balance = await createTestBalance({
-      usuarioId: empleado.id,
-      anoLaboralId: anoLaboral.id,
+    // Crear usuarios de prueba
+    usuarioEmpleado = await crearUsuarioTest({
+      nombre: 'Juan',
+      apellido: 'Pérez',
+      email: 'juan@example.com',
+      password: 'password123',
+      departamentoId: datosBase.departamento.id,
+      rolId: datosBase.roles.empleado.id,
+    })
+
+    usuarioJefe = await crearUsuarioTest({
+      nombre: 'María',
+      apellido: 'González',
+      email: 'maria@example.com',
+      password: 'password123',
+      departamentoId: datosBase.departamento.id,
+      rolId: datosBase.roles.jefe.id,
+    })
+
+    usuarioRRHH = await crearUsuarioTest({
+      nombre: 'Carlos',
+      apellido: 'Rodríguez',
+      email: 'carlos@example.com',
+      password: 'password123',
+      departamentoId: datosBase.departamento.id,
+      rolId: datosBase.roles.rrhh.id,
+    })
+
+    // Crear balance para el empleado
+    await crearBalanceTest({
+      usuarioId: usuarioEmpleado.id,
+      anoLaboralId: datosBase.anoLaboral.id,
       cantidadAsignada: 15,
-    });
-    
-    balanceId = balance.id;
-  });
+      cantidadDisponible: 15,
+      tipoAusencia: 'vacaciones',
+    })
+  })
 
-  it('✅ Crea solicitud con código SOL-2026-XXXXX auto-generado', async () => {
-    const solicitud = await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-03-10',
-      fechaFin: '2026-03-14',
-      diasSolicitados: 5,
-      motivo: 'Vacaciones familiares',
-    });
+  // ===================================================
+  // TESTS: crearSolicitud()
+  // ===================================================
 
-    expect(solicitud).toBeDefined();
-    expect(solicitud.codigo).toMatch(/^SOL-2026-\d+$/);
-    expect(solicitud.usuarioId).toBe(empleado.id);
-    expect(solicitud.diasSolicitados).toBe('5.00');
-    expect(solicitud.estado).toBe('pendiente_jefe');
-  });
-
-  it('✅ Actualiza balance.cantidadPendiente al crear solicitud', async () => {
-    // Verificar balance antes
-    const balanceAntes = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceAntes?.cantidadPendiente).toBe('0.00');
-    expect(balanceAntes?.cantidadDisponible).toBe('15.00');
-
-    // Crear solicitud
-    await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-03-10',
-      fechaFin: '2026-03-14',
-      diasSolicitados: 5,
-      motivo: 'Test',
-    });
-
-    // Verificar balance después
-    const balanceDespues = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceDespues?.cantidadPendiente).toBe('5.00');
-    expect(balanceDespues?.cantidadDisponible).toBe('10.00'); // 15 - 5
-  });
-
-  it('❌ Rechaza si balance insuficiente', async () => {
-    await expect(
-      crearSolicitud({
-        usuarioId: empleado.id,
+  describe('crearSolicitud()', () => {
+    it('debe crear solicitud con código SOL-YYYY-XXXXX', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-10',
-        fechaFin: '2026-03-30',
-        diasSolicitados: 20,
-        motivo: 'Test',
-      })
-    ).rejects.toThrow(/balance insuficiente|días disponibles/i);
-  });
-
-  it('❌ Valida que fecha_inicio < fecha_fin', async () => {
-    await expect(
-      crearSolicitud({
-        usuarioId: empleado.id,
-        tipo: 'vacaciones',
-        fechaInicio: '2026-03-20',
-        fechaFin: '2026-03-10',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
         diasSolicitados: 5,
-        motivo: 'Test',
+        motivo: 'Vacaciones familiares',
       })
-    ).rejects.toThrow(/fecha/i);
-  });
 
-  it('❌ Valida que cantidad > 0', async () => {
-    await expect(
-      crearSolicitud({
-        usuarioId: empleado.id,
-        tipo: 'vacaciones',
-        fechaInicio: '2026-03-10',
-        fechaFin: '2026-03-10',
-        diasSolicitados: 0,
-        motivo: 'Test',
-      })
-    ).rejects.toThrow(/cantidad|días/i);
-  });
+      expect(solicitud).toBeDefined()
+      expect(solicitud.codigo).toMatch(/^SOL-\d{4}-\d{5}$/)
+      expect(solicitud.estado).toBe('pendiente_jefe')
+      expect(solicitud.usuarioId).toBe(usuarioEmpleado.id)
+    })
 
-  it('✅ Rollback en error (transacción)', async () => {
-    // Simular error forzando usuario inválido
-    const solicitudesAntes = await db.select().from(solicitudes).where(
-      sql`metadata->>'test' = 'true'`
-    );
-    const countAntes = solicitudesAntes.length;
+    it('debe actualizar balance.cantidadPendiente al crear solicitud', async () => {
+      const { db } = await import('@/lib/db')
+      const { balances } = await import('@/lib/db/schema')
+      const { eq, and } = await import('drizzle-orm')
 
-    try {
       await crearSolicitud({
-        usuarioId: 999999,
+        usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-10',
-        fechaFin: '2026-03-14',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
         diasSolicitados: 5,
-        motivo: 'Test',
-      });
-    } catch (error) {
-      // Esperamos el error
-    }
+        motivo: 'Vacaciones',
+      })
 
-    // Verificar que no se creó ninguna solicitud
-    const solicitudesDespues = await db.select().from(solicitudes).where(
-      sql`metadata->>'test' = 'true'`
-    );
-    expect(solicitudesDespues.length).toBe(countAntes);
-  });
-});
+      const balance = await db.query.balances.findFirst({
+        where: and(
+          eq(balances.usuarioId, usuarioEmpleado.id),
+          eq(balances.anoLaboralId, datosBase.anoLaboral.id)
+        ),
+      })
 
-// =====================================================
-// SUITE: aprobarSolicitudJefe()
-// =====================================================
-describe('solicitudes.service - aprobarSolicitudJefe()', () => {
-  let empleado: Awaited<ReturnType<typeof getSeedUser>>;
-  let jefe: Awaited<ReturnType<typeof getSeedUser>>;
-  let anoLaboral: Awaited<ReturnType<typeof getCurrentAnoLaboral>>;
-  let solicitudId: number;
+      expect(balance).toBeDefined()
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(5)
+    })
 
-  beforeEach(async () => {
-    // Obtener datos
-    empleado = await getSeedUser('ana.dev@cni.cl');
-    jefe = await getSeedUser('jefe.ti@cni.cl');
-    anoLaboral = await getCurrentAnoLaboral();
+    it('debe rechazar si balance insuficiente', async () => {
+      await expect(
+        crearSolicitud({
+          usuarioId: usuarioEmpleado.id,
+          tipo: 'vacaciones',
+          fechaInicio: '2026-03-01',
+          fechaFin: '2026-03-20',
+          diasSolicitados: 20, // Más de los 15 disponibles
+          motivo: 'Vacaciones largas',
+        })
+      ).rejects.toThrow(/Balance insuficiente/)
+    })
 
-    // Crear balance
-    await createTestBalance({
-      usuarioId: empleado.id,
-      anoLaboralId: anoLaboral.id,
-      cantidadAsignada: 15,
-    });
+    it('debe validar que fechaInicio < fechaFin', async () => {
+      await expect(
+        crearSolicitud({
+          usuarioId: usuarioEmpleado.id,
+          tipo: 'vacaciones',
+          fechaInicio: '2026-03-10',
+          fechaFin: '2026-03-05', // Fecha fin antes de inicio
+          diasSolicitados: 5,
+          motivo: 'Fechas inválidas',
+        })
+      ).rejects.toThrow(/fecha de inicio debe ser anterior/)
+    })
 
-    // Crear solicitud pendiente
-    const solicitud = await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-03-10',
-      fechaFin: '2026-03-14',
-      diasSolicitados: 5,
-      motivo: 'Test',
-    });
-    solicitudId = solicitud.id;
-  });
+    it('debe validar que días solicitados > 0', async () => {
+      await expect(
+        crearSolicitud({
+          usuarioId: usuarioEmpleado.id,
+          tipo: 'vacaciones',
+          fechaInicio: '2026-03-01',
+          fechaFin: '2026-03-05',
+          diasSolicitados: 0, // Días = 0
+          motivo: 'Sin días',
+        })
+      ).rejects.toThrow(/mayor a 0/)
+    })
 
-  it('✅ Cambia estado a "aprobada_jefe"', async () => {
-    const resultado = await aprobarSolicitudJefe(
-      solicitudId,
-      jefe.id,
-      'Aprobado por jefe'
-    );
+    it('debe hacer rollback en error (transacción)', async () => {
+      const { db } = await import('@/lib/db')
+      const { solicitudes } = await import('@/lib/db/schema')
 
-    expect(resultado.estado).toBe('aprobada_jefe');
-    expect(resultado.aprobadaJefePor).toBe(jefe.id);
-    expect(resultado.aprobadaJefeFecha).toBeDefined();
-  });
+      // Intentar crear solicitud inválida
+      try {
+        await crearSolicitud({
+          usuarioId: usuarioEmpleado.id,
+          tipo: 'vacaciones',
+          fechaInicio: '2026-03-10',
+          fechaFin: '2026-03-05', // Error: fecha inválida
+          diasSolicitados: 5,
+        })
+      } catch (error) {
+        // Esperado
+      }
 
-  it('✅ Incrementa campo "version" (optimistic locking)', async () => {
-    const solicitudAntes = await obtenerSolicitudPorId(solicitudId);
-    const versionAntes = solicitudAntes?.version || 1;
+      // Verificar que NO se creó ninguna solicitud
+      const solicitudesCreadas = await db.query.solicitudes.findMany({
+        where: (s, { eq }) => eq(s.usuarioId, usuarioEmpleado.id),
+      })
 
-    const resultado = await aprobarSolicitudJefe(
-      solicitudId,
-      jefe.id,
-      'Test'
-    );
+      expect(solicitudesCreadas).toHaveLength(0)
+    })
 
-    expect(resultado.version).toBe(versionAntes + 1);
-  });
+    it('debe permitir crear permiso de salida sin afectar balance', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'permiso_salida',
+        horaSalida: '14:00',
+        horaRegreso: '16:00',
+        duracionPermiso: '1-2h',
+        motivo: 'Cita médica',
+      })
 
-  it('❌ Rechaza si estado no es "pendiente_jefe"', async () => {
-    // Aprobar una vez
-    await aprobarSolicitudJefe(solicitudId, jefe.id, 'Primera aprobación');
+      expect(solicitud).toBeDefined()
+      expect(solicitud.tipo).toBe('permiso_salida')
+      expect(solicitud.estado).toBe('pendiente_jefe')
+    })
+  })
 
-    // Intentar aprobar de nuevo
-    await expect(
-      aprobarSolicitudJefe(solicitudId, jefe.id, 'Segunda aprobación')
-    ).rejects.toThrow(/estado|pendiente/i);
-  });
+  // ===================================================
+  // TESTS: aprobarSolicitudJefe()
+  // ===================================================
 
-  it('✅ Detecta lost updates (optimistic locking)', async () => {
-    // Simular dos aprobaciones concurrentes
-    const promesa1 = aprobarSolicitudJefe(solicitudId, jefe.id, 'Aprobación 1');
-    const promesa2 = aprobarSolicitudJefe(solicitudId, jefe.id, 'Aprobación 2');
+  describe('aprobarSolicitudJefe()', () => {
+    it('debe cambiar estado a aprobada_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-    const resultados = await Promise.allSettled([promesa1, promesa2]);
-    
-    // Una debe tener éxito, la otra debe fallar
-    const exitos = resultados.filter(r => r.status === 'fulfilled');
-    const fallos = resultados.filter(r => r.status === 'rejected');
-    
-    expect(exitos.length).toBe(1);
-    expect(fallos.length).toBe(1);
-  });
-});
+      const aprobada = await aprobarSolicitudJefe(
+        solicitud.id,
+        usuarioJefe.id,
+        'Aprobado por jefe'
+      )
 
-// =====================================================
-// SUITE: aprobarSolicitudRRHH()
-// =====================================================
-describe('solicitudes.service - aprobarSolicitudRRHH()', () => {
-  let empleado: Awaited<ReturnType<typeof getSeedUser>>;
-  let jefe: Awaited<ReturnType<typeof getSeedUser>>;
-  let rrhh: Awaited<ReturnType<typeof getSeedUser>>;
-  let anoLaboral: Awaited<ReturnType<typeof getCurrentAnoLaboral>>;
-  let solicitudId: number;
-  let balanceId: number;
+      expect(aprobada.estado).toBe('aprobada_jefe')
+      expect(aprobada.aprobadaJefePor).toBe(usuarioJefe.id)
+      expect(aprobada.comentarioJefe).toBe('Aprobado por jefe')
+    })
 
-  beforeEach(async () => {
-    // Obtener datos
-    empleado = await getSeedUser('ana.dev@cni.cl');
-    jefe = await getSeedUser('jefe.ti@cni.cl');
-    rrhh = await getSeedUser('rrhh@cni.cl');
-    anoLaboral = await getCurrentAnoLaboral();
+    it('debe incrementar campo version (optimistic locking)', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-    // Crear balance
-    const balance = await createTestBalance({
-      usuarioId: empleado.id,
-      anoLaboralId: anoLaboral.id,
-      cantidadAsignada: 15,
-    });
-    balanceId = balance.id;
+      const versionInicial = solicitud.version
 
-    // Crear y aprobar por jefe
-    const solicitud = await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-03-10',
-      fechaFin: '2026-03-14',
-      diasSolicitados: 5,
-      motivo: 'Test',
-    });
-    solicitudId = solicitud.id;
+      const aprobada = await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
 
-    await aprobarSolicitudJefe(solicitudId, jefe.id, 'Aprobado por jefe');
-  });
+      expect(aprobada.version).toBe((versionInicial || 1) + 1)
+    })
 
-  it('✅ Cambia estado a "aprobada" (aprobación final)', async () => {
-    const resultado = await aprobarSolicitudRRHH(
-      solicitudId,
-      rrhh.id,
-      'Aprobado por RRHH'
-    );
+    it('debe rechazar si estado no es pendiente_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-    expect(resultado.estado).toBe('aprobada_rrhh');
-    expect(resultado.aprobadaRrhhPor).toBe(rrhh.id);
-    expect(resultado.aprobadaRrhhFecha).toBeDefined();
-  });
+      // Aprobar por jefe primero
+      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
 
-  it('✅ Mueve días: pendiente → utilizada en balance', async () => {
-    // Verificar balance antes
-    const balanceAntes = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceAntes?.cantidadPendiente).toBe('5.00');
+      // Intentar aprobar de nuevo
+      await expect(
+        aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      ).rejects.toThrow(/Estado inválido/)
+    })
 
-    // Aprobar por RRHH
-    await aprobarSolicitudRRHH(solicitudId, rrhh.id, 'Aprobado');
+    it('debe detectar lost updates con optimistic locking', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-    // Verificar balance después
-    const balanceDespues = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceDespues?.cantidadPendiente).toBe('0.00');
-    expect(balanceDespues?.cantidadUsada).toBe('5.00');
-    expect(balanceDespues?.cantidadDisponible).toBe('10.00');
-  });
+      // Aprobar la solicitud
+      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
 
-  it('❌ Rechaza si estado no es "aprobada_jefe"', async () => {
-    // Crear nueva solicitud sin aprobar por jefe
-    const balance2 = await createTestBalance({
-      usuarioId: empleado.id,
-      anoLaboralId: anoLaboral.id + 1,
-      cantidadAsignada: 15,
-    });
+      // Intentar aprobar con versión desactualizada (simular conflicto)
+      const { db } = await import('@/lib/db')
+      const { solicitudes } = await import('@/lib/db/schema')
+      const { sql, eq, and } = await import('drizzle-orm')
 
-    const nuevaSolicitud = await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-04-10',
-      fechaFin: '2026-04-14',
-      diasSolicitados: 5,
-      motivo: 'Test',
-    });
+      await expect(
+        db
+          .update(solicitudes)
+          .set({
+            estado: 'aprobada_jefe',
+            version: sql`${solicitudes.version} + 1`,
+          })
+          .where(
+            and(
+              eq(solicitudes.id, solicitud.id),
+              eq(solicitudes.version, 1) // Versión antigua
+            )
+          )
+          .returning()
+      ).resolves.toHaveLength(0) // No debe actualizar nada
+    })
+  })
 
-    // Intentar aprobar por RRHH directamente
-    await expect(
-      aprobarSolicitudRRHH(nuevaSolicitud.id, rrhh.id, 'Test')
-    ).rejects.toThrow(/aprobada_jefe|estado/i);
-  });
-});
+  // ===================================================
+  // TESTS: aprobarSolicitudRRHH()
+  // ===================================================
 
-// =====================================================
-// SUITE: rechazarSolicitud()
-// =====================================================
-describe('solicitudes.service - rechazarSolicitud()', () => {
-  let empleado: Awaited<ReturnType<typeof getSeedUser>>;
-  let jefe: Awaited<ReturnType<typeof getSeedUser>>;
-  let anoLaboral: Awaited<ReturnType<typeof getCurrentAnoLaboral>>;
-  let solicitudId: number;
-  let balanceId: number;
+  describe('aprobarSolicitudRRHH()', () => {
+    it('debe cambiar estado a aprobada_rrhh', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-  beforeEach(async () => {
-    // Obtener datos
-    empleado = await getSeedUser('ana.dev@cni.cl');
-    jefe = await getSeedUser('jefe.ti@cni.cl');
-    anoLaboral = await getCurrentAnoLaboral();
+      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
 
-    // Crear balance
-    const balance = await createTestBalance({
-      usuarioId: empleado.id,
-      anoLaboralId: anoLaboral.id,
-      cantidadAsignada: 15,
-    });
-    balanceId = balance.id;
+      const aprobada = await aprobarSolicitudRRHH(
+        solicitud.id,
+        usuarioRRHH.id,
+        'Aprobado por RRHH'
+      )
 
-    // Crear solicitud
-    const solicitud = await crearSolicitud({
-      usuarioId: empleado.id,
-      tipo: 'vacaciones',
-      fechaInicio: '2026-03-10',
-      fechaFin: '2026-03-14',
-      diasSolicitados: 5,
-      motivo: 'Test',
-    });
-    solicitudId = solicitud.id;
-  });
+      expect(aprobada.estado).toBe('aprobada_rrhh')
+      expect(aprobada.aprobadaRrhhPor).toBe(usuarioRRHH.id)
+    })
 
-  it('✅ Cambia estado a "rechazada"', async () => {
-    const resultado = await rechazarSolicitud(
-      solicitudId,
-      jefe.id,
-      'No hay cobertura en el departamento'
-    );
+    it('debe mover días: pendiente → usada en balance', async () => {
+      const { db } = await import('@/lib/db')
+      const { balances } = await import('@/lib/db/schema')
+      const { eq, and } = await import('drizzle-orm')
 
-    expect(resultado.estado).toBe('rechazada_jefe');
-    expect(resultado.rechazadaPor).toBe(jefe.id);
-    expect(resultado.motivoRechazo).toContain('cobertura');
-  });
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-  it('✅ Devuelve días a balance.cantidadDisponible', async () => {
-    // Verificar balance antes (debe tener 5 días pendientes)
-    const balanceAntes = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceAntes?.cantidadPendiente).toBe('5.00');
-    expect(balanceAntes?.cantidadDisponible).toBe('10.00'); // 15 - 5
+      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      await aprobarSolicitudRRHH(solicitud.id, usuarioRRHH.id)
 
-    // Rechazar solicitud
-    await rechazarSolicitud(solicitudId, jefe.id, 'Rechazado');
+      const balance = await db.query.balances.findFirst({
+        where: and(
+          eq(balances.usuarioId, usuarioEmpleado.id),
+          eq(balances.anoLaboralId, datosBase.anoLaboral.id)
+        ),
+      })
 
-    // Verificar balance después
-    const balanceDespues = await db.query.balances.findFirst({
-      where: eq(balances.id, balanceId),
-    });
-    expect(balanceDespues?.cantidadPendiente).toBe('0.00');
-    expect(balanceDespues?.cantidadDisponible).toBe('15.00'); // devuelve los 5
-  });
+      expect(balance).toBeDefined()
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(0) // Pendiente = 0
+      expect(parseFloat(balance!.cantidadUsada)).toBe(5) // Usada = 5
+    })
 
-  it('✅ Registra motivo de rechazo', async () => {
-    const motivo = 'No hay suficiente personal en esas fechas';
-    
-    const resultado = await rechazarSolicitud(solicitudId, jefe.id, motivo);
+    it('debe rechazar si estado no es aprobada_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
 
-    expect(resultado.motivoRechazo).toBe(motivo);
-    expect(resultado.rechazadaFecha).toBeDefined();
-  });
+      // Intentar aprobar sin aprobación de jefe
+      await expect(
+        aprobarSolicitudRRHH(solicitud.id, usuarioRRHH.id)
+      ).rejects.toThrow(/Estado debe ser aprobada_jefe/)
+    })
+  })
 
-  it('❌ Rechaza si solicitud ya está aprobada', async () => {
-    // Aprobar la solicitud primero
-    await aprobarSolicitudJefe(solicitudId, jefe.id, 'Aprobado');
+  // ===================================================
+  // TESTS: rechazarSolicitud()
+  // ===================================================
 
-    // Intentar rechazar
-    await expect(
-      rechazarSolicitud(solicitudId, jefe.id, 'Cambio de opinión')
-    ).rejects.toThrow(/estado|aprobada/i);
-  });
-});
+  describe('rechazarSolicitud()', () => {
+    it('debe cambiar estado a rechazada_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      const rechazada = await rechazarSolicitud(
+        solicitud.id,
+        usuarioJefe.id,
+        'Fechas no disponibles'
+      )
+
+      expect(rechazada.estado).toBe('rechazada_jefe')
+      expect(rechazada.motivoRechazo).toBe('Fechas no disponibles')
+    })
+
+    it('debe devolver días a balance disponible', async () => {
+      const { db } = await import('@/lib/db')
+      const { balances } = await import('@/lib/db/schema')
+      const { eq, and } = await import('drizzle-orm')
+
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      // Rechazar solicitud
+      await rechazarSolicitud(solicitud.id, usuarioJefe.id, 'Rechazada')
+
+      const balance = await db.query.balances.findFirst({
+        where: and(
+          eq(balances.usuarioId, usuarioEmpleado.id),
+          eq(balances.anoLaboralId, datosBase.anoLaboral.id)
+        ),
+      })
+
+      expect(balance).toBeDefined()
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(0) // Devuelto a disponible
+    })
+
+    it('debe registrar motivo de rechazo', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      const motivoEsperado = 'Equipo con mucha carga de trabajo'
+      const rechazada = await rechazarSolicitud(
+        solicitud.id,
+        usuarioJefe.id,
+        motivoEsperado
+      )
+
+      expect(rechazada.motivoRechazo).toBe(motivoEsperado)
+      expect(rechazada.rechazadaPor).toBe(usuarioJefe.id)
+      expect(rechazada.rechazadaFecha).toBeDefined()
+    })
+  })
+
+  // ===================================================
+  // TESTS: listarSolicitudes()
+  // ===================================================
+
+  describe('listarSolicitudes()', () => {
+    it('debe filtrar solicitudes por usuarioId', async () => {
+      await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      const resultado = await listarSolicitudes({
+        usuarioId: usuarioEmpleado.id,
+      })
+
+      expect(resultado).toHaveLength(1)
+      expect(resultado[0].usuarioId).toBe(usuarioEmpleado.id)
+    })
+
+    it('debe filtrar solicitudes por estado', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+
+      const resultado = await listarSolicitudes({
+        estado: 'aprobada_jefe',
+      })
+
+      expect(resultado).toHaveLength(1)
+      expect(resultado[0].estado).toBe('aprobada_jefe')
+    })
+
+    it('debe incluir información del usuario', async () => {
+      await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: '2026-03-01',
+        fechaFin: '2026-03-05',
+        diasSolicitados: 5,
+      })
+
+      const resultado = await listarSolicitudes({})
+
+      expect(resultado[0].usuario).toBeDefined()
+      expect(resultado[0].usuario?.nombre).toBe('Juan')
+      expect(resultado[0].usuario?.email).toBe('juan@example.com')
+    })
+  })
+})

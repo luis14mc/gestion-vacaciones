@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const usuarioId = searchParams.get('usuarioId');
-    const anio = searchParams.get('anio') || new Date().getFullYear().toString();
+    const anio = searchParams.get('anio');
 
     if (!usuarioId) {
       return NextResponse.json(
@@ -33,26 +33,14 @@ export async function GET(request: NextRequest) {
     const esPropio = usuarioIdNum === session.id;
 
     // 2. Verificar permisos según el caso
-    if (esPropio) {
-      // Viendo su propio balance
-      if (!tienePermiso(session, 'balances.ver_propios')) {
-        console.log(`❌ Usuario ${session.email} sin permiso balances.ver_propios`);
-        return NextResponse.json(
-          { error: 'No tienes permiso para ver balances' },
-          { status: 403 }
-        );
-      }
-      console.log(`✅ Usuario ${session.email} consultando su propio balance`);
-    } else {
+    if (!esPropio) {
       // Viendo balance de otro usuario
-      if (!tienePermiso(session, 'balances.ver_todos')) {
-        console.log(`❌ Usuario ${session.email} sin permiso balances.ver_todos para ver balance de usuario ${usuarioId}`);
+      if (!tienePermiso(session, 'balances.ver_todos') && !session.esRrhh && !session.esAdmin) {
         return NextResponse.json(
           { error: 'No tienes permiso para ver balances de otros usuarios' },
           { status: 403 }
         );
       }
-      console.log(`✅ Usuario ${session.email} consultando balance de usuario ${usuarioId}`);
     }
 
     // Consulta SQL usando schema CNI
@@ -74,7 +62,7 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(balances.usuarioId, Number.parseInt(usuarioId)),
-          eq(anosLaborales.ano, Number.parseInt(anio))
+          anio ? eq(anosLaborales.ano, Number.parseInt(anio)) : eq(anosLaborales.activo, true)
         )
       );
 
@@ -105,8 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Verificar permiso para editar balances
-    if (!tienePermiso(session, 'balances.editar')) {
-      console.log(`❌ Usuario ${session.email} sin permiso balances.editar`);
+    if (!tienePermiso(session, 'balances.ajustar') && !session.esRrhh) {
       return NextResponse.json(
         { error: 'No tienes permiso para editar balances' },
         { status: 403 }
@@ -114,18 +101,40 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { usuarioId, tipoAusencia, anoLaboralId, cantidadInicial } = body;
+    const { usuarioId, tipoAusencia, cantidadInicial } = body;
+    let { anoLaboralId } = body;
+    const anio = body.anio;
 
-    if (!usuarioId || !tipoAusencia || !anoLaboralId || cantidadInicial === undefined) {
+    if (!usuarioId || !tipoAusencia || cantidadInicial === undefined) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos requeridos' },
         { status: 400 }
       );
     }
 
-    console.log(`✅ Usuario ${session.email} editando balance de usuario ${usuarioId}`);
+    if (!anoLaboralId && anio) {
+      const anoResult = await db
+        .select({ id: anosLaborales.id })
+        .from(anosLaborales)
+        .where(eq(anosLaborales.ano, Number(anio)))
+        .limit(1);
 
-    // Verificar si ya existe el balance
+      if (anoResult.length === 0) {
+        return NextResponse.json(
+          { success: false, error: `No existe año laboral configurado para ${anio}` },
+          { status: 400 }
+        );
+      }
+      anoLaboralId = anoResult[0].id;
+    }
+
+    if (!anoLaboralId) {
+      return NextResponse.json(
+        { success: false, error: 'Se requiere anoLaboralId o anio' },
+        { status: 400 }
+      );
+    }
+
     const balanceExistente = await db.query.balances.findFirst({
       where: and(
         eq(balances.usuarioId, usuarioId),
@@ -135,11 +144,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (balanceExistente) {
-      // Actualizar
+      const cantidadInicialNum = Number.parseFloat(cantidadInicial.toString());
+      const disponibleAnterior = Number.parseFloat(balanceExistente.cantidadDisponible ?? '0');
+      const inicialAnterior = Number.parseFloat(balanceExistente.cantidadInicial ?? '0');
+      const nuevoDisponible = disponibleAnterior + (cantidadInicialNum - inicialAnterior);
+
       await db
         .update(balances)
         .set({
-          cantidadInicial: cantidadInicial.toString(),
+          cantidadInicial: cantidadInicialNum.toFixed(2),
+          cantidadDisponible: Math.max(0, nuevoDisponible).toFixed(2),
           version: balanceExistente.version + 1,
           updatedAt: new Date().toISOString()
         })
@@ -150,12 +164,13 @@ export async function POST(request: NextRequest) {
         message: 'Balance actualizado exitosamente'
       });
     } else {
-      // Crear nuevo
+      const cantidadInicialStr = Number.parseFloat(cantidadInicial.toString()).toFixed(2);
       await db.insert(balances).values({
         usuarioId,
         tipoAusencia,
         anoLaboralId,
-        cantidadInicial: cantidadInicial.toString()
+        cantidadInicial: cantidadInicialStr,
+        cantidadDisponible: cantidadInicialStr,
       });
 
       return NextResponse.json({

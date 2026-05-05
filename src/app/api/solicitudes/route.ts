@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { solicitudes, usuarios } from '@/lib/db/schema';
+import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { 
   crearSolicitud, 
@@ -25,16 +25,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 🔐 2. AUTORIZACIÓN - Verificar permisos
-    const puedeVerTodas = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_todas');
-    const puedeVerPropias = tienePermiso(sessionUser, 'vacaciones.solicitudes.ver_propias');
-
-    if (!puedeVerTodas && !puedeVerPropias) {
-      return NextResponse.json(
-        { success: false, error: 'No tienes permisos para ver solicitudes' },
-        { status: 403 }
-      );
-    }
+    const puedeVerTodas = tienePermiso(sessionUser, 'solicitudes.ver_todas') || sessionUser.esRrhh;
+    // Todos los usuarios autenticados pueden ver sus propias solicitudes
+    const puedeVerPropias = true;
 
     const { searchParams } = new URL(request.url);
     
@@ -46,61 +39,49 @@ export async function GET(request: NextRequest) {
     const page = Number.parseInt(searchParams.get('page') || searchParams.get('pagina') || '1');
     const pageSize = Number.parseInt(searchParams.get('pageSize') || searchParams.get('limite') || '20');
 
-    // Determinar roles usando RBAC
     const esAdmin = sessionUser.roles?.some(r => r.codigo === 'ADMIN') || false;
     const esRrhh = sessionUser.roles?.some(r => r.codigo === 'RRHH') || false;
-    const esJefe = sessionUser.roles?.some(r => r.codigo === 'JEFE') || false;
+    const esDirector = sessionUser.esDirector || false;
+    const esJefe = sessionUser.esJefe || false;
 
     const conditions = [isNull(solicitudes.deletedAt)];
     
-    // 🔐 3. FILTRADO SEGÚN PERMISOS
     if (puedeVerTodas) {
-      // ADMIN/RRHH → Ver todas las solicitudes
-      // Si se pasa usuarioId como filtro, respetarlo
       if (usuarioIdParam) {
         conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioIdParam)));
       }
       
-      // Si es RRHH y busca para aprobar, filtrar por estado aprobada_jefe
-      if (paraAprobar && esRrhh && !estado) {
-        conditions.push(eq(solicitudes.estado, 'aprobada_jefe'));
-        console.log('🔍 Filtrando solicitudes aprobada_jefe para RRHH');
+      if (paraAprobar && !estado) {
+        if (esAdmin) {
+          conditions.push(sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`);
+        } else if (esRrhh) {
+          conditions.push(eq(solicitudes.estado, 'aprobada_jefe'));
+        }
       }
     } else if (puedeVerPropias) {
-      // EMPLEADO/JEFE → Depende del contexto
-      
-      if (paraAprobar && esJefe && sessionUser.departamentoId) {
-        // JEFE viendo solicitudes para aprobar → Ver solicitudes pendientes de su departamento
-        console.log('✅ Permiso: Ver solicitudes de departamento para aprobar');
-        
-        // Buscar solicitudes pendientes de usuarios de su departamento (excepto las propias)
-        const usuariosDeptQuery = await db
+      if (paraAprobar && (esDirector || esJefe)) {
+        const subordinadosQuery = await db
           .select({ id: usuarios.id })
           .from(usuarios)
           .where(
             and(
-              eq(usuarios.departamentoId, sessionUser.departamentoId),
+              eq(usuarios.jefeSuperiorId, sessionUser.id),
               isNull(usuarios.deletedAt)
             )
           );
         
-        const usuariosDeptIds = usuariosDeptQuery.map(u => u.id);
+        const subordinadoIds = subordinadosQuery.map(u => u.id);
         
-        if (usuariosDeptIds.length > 0) {
-          conditions.push(inArray(solicitudes.usuarioId, usuariosDeptIds));
+        if (subordinadoIds.length > 0) {
+          conditions.push(inArray(solicitudes.usuarioId, subordinadoIds));
         } else {
-          // No hay usuarios en el departamento, retornar vacío
           conditions.push(sql`false`);
         }
         
-        // Si no se especifica estado, por defecto filtrar pendientes
         if (!estado) {
           conditions.push(eq(solicitudes.estado, 'pendiente_jefe'));
-          console.log('🔍 Filtrando solicitudes pendientes para JEFE');
         }
       } else {
-        // Solo sus propias solicitudes
-        console.log('✅ Permiso: Ver solo solicitudes propias');
         conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
       }
     }
@@ -135,16 +116,23 @@ export async function GET(request: NextRequest) {
     // Calcular estadísticas para el frontend
     const [stats] = await db
       .select({
-        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh'))::int`,
-        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'))::int`,
-        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh', 'rechazada_ejecutiva'))::int`,
+        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe'))::int`,
+        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada'))::int`,
+        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh'))::int`,
       })
       .from(solicitudes)
       .where(and(...conditions));
 
-    // Formatear resultados para el frontend
-    const solicitudesFormateadas = results.map((sol: any) => ({
+    const tiposMap: Record<string, string> = {
+      vacaciones: 'Vacaciones',
+      licencia_medica: 'Licencia Médica',
+      permiso_personal: 'Permiso Personal',
+      permiso_salida: 'Permiso de Salida',
+    };
+
+    const solicitudesListado = results.map((sol: any) => ({
       id: sol.id,
+      codigo: sol.codigo,
       usuarioId: sol.usuarioId,
       tipo: sol.tipo,
       fechaInicio: sol.fechaInicio,
@@ -160,22 +148,38 @@ export async function GET(request: NextRequest) {
       aprobadaRrhhFecha: sol.aprobadaRrhhFecha,
       fechaCreacion: sol.createdAt,
       usuario: sol.usuario ? `${sol.usuario.nombre} ${sol.usuario.apellido}` : 'Desconocido',
-      tipoAusencia: sol.tipo || 'vacaciones',
+      tipoAusencia: tiposMap[sol.tipo] || sol.tipo,
+      metadata: sol.metadata,
     }));
 
-    console.log(`✅ Retornando ${results.length} solicitudes (total: ${count})`);
+    const solicitudesDetalle = results.map((sol: any) => ({
+      id: sol.id,
+      codigo: sol.codigo,
+      usuarioId: sol.usuarioId,
+      tipo: sol.tipo,
+      fechaInicio: sol.fechaInicio,
+      fechaFin: sol.fechaFin,
+      cantidad: sol.diasSolicitados,
+      motivo: sol.motivo,
+      estado: sol.estado,
+      createdAt: sol.createdAt,
+      usuario: sol.usuario
+        ? { id: sol.usuario.id, nombre: sol.usuario.nombre, apellido: sol.usuario.apellido, email: sol.usuario.email }
+        : { id: 0, nombre: 'Desconocido', apellido: '', email: '' },
+      tipoAusencia: { id: sol.tipo, nombre: tiposMap[sol.tipo] || sol.tipo, tipo: sol.tipo },
+      metadata: sol.metadata,
+    }));
 
     return NextResponse.json({
       success: true,
-      solicitudes: solicitudesFormateadas,
+      solicitudes: solicitudesListado,
       total: count,
       stats: {
         pendientes: stats?.pendientes || 0,
         aprobadas: stats?.aprobadas || 0,
         rechazadas: stats?.rechazadas || 0,
       },
-      // Mantener compatibilidad con formato viejo
-      data: results,
+      data: solicitudesDetalle,
       page,
       pageSize,
       totalPages: Math.ceil(count / pageSize)
@@ -201,27 +205,11 @@ export async function POST(request: NextRequest) {
   const sessionUser = await getSession();
   
   if (!sessionUser) {
-    console.log('❌ POST /api/solicitudes - Sin sesión');
     return NextResponse.json(
       { success: false, error: 'No autenticado' },
       { status: 401 }
     );
   }
-
-  console.log(`📝 POST /api/solicitudes - Usuario: ${sessionUser.email}`);
-
-  // 🔐 2. AUTORIZACIÓN - Permiso para crear solicitudes
-  const puedeCrear = tienePermiso(sessionUser, 'vacaciones.solicitudes.crear');
-  
-  if (!puedeCrear) {
-    console.log('❌ Sin permiso para crear solicitudes');
-    return NextResponse.json(
-      { success: false, error: 'No tienes permiso para crear solicitudes' },
-      { status: 403 }
-    );
-  }
-
-  console.log('✅ Permiso: Crear solicitudes');
 
   try {
     const body = await request.json();
@@ -230,16 +218,17 @@ export async function POST(request: NextRequest) {
       usuarioId,
       tipo = 'vacaciones',
       fechaInicio,
-      fechaFin,
       diasSolicitados,
       motivo,
-      observaciones
+      observaciones,
+      documentosAdjuntos
     } = body;
 
-    // Validaciones básicas
-    if (!usuarioId || !tipo || !fechaInicio || !fechaFin) {
+    const fechaFin = body.fechaFin || fechaInicio;
+
+    if (!usuarioId || !tipo || !fechaInicio) {
       return NextResponse.json(
-        { success: false, error: 'Faltan campos requeridos' },
+        { success: false, error: 'Faltan campos requeridos (usuarioId, tipo, fechaInicio)' },
         { status: 400 }
       );
     }
@@ -249,7 +238,6 @@ export async function POST(request: NextRequest) {
     const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
     
     if (!esAdminORrhh && usuarioId !== sessionUser.id) {
-      console.log(`❌ Usuario ${sessionUser.id} intentó crear solicitud para usuario ${usuarioId}`);
       return NextResponse.json(
         { success: false, error: 'Solo puedes crear solicitudes para ti mismo' },
         { status: 403 }
@@ -264,7 +252,9 @@ export async function POST(request: NextRequest) {
       fechaFin,
       diasSolicitados: diasSolicitados || 0,
       motivo: motivo || '',
-      comentarioEmpleado: observaciones || undefined
+      comentarioEmpleado: observaciones || undefined,
+      esDirector: sessionUser.esDirector || false,
+      documentosAdjuntos
     });
 
     // 5. Obtener solicitud completa con relaciones para respuesta
@@ -295,180 +285,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH: Actualizar estado de solicitud (aprobar/rechazar)
-export async function PATCH(request: NextRequest) {
-  try {
-    // 🔐 1. AUTENTICACIÓN
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      console.log('❌ PATCH /api/solicitudes - Sin sesión');
-      return NextResponse.json(
-        { success: false, error: 'No autenticado' },
-        { status: 401 }
-      );
-    }
 
-    console.log(`🔄 PATCH /api/solicitudes - Usuario: ${sessionUser.email}`);
-
-    const body = await request.json();
-    const { solicitudId, accion, motivo } = body;
-
-    if (!solicitudId || !accion) {
-      return NextResponse.json(
-        { success: false, error: 'Faltan campos requeridos (solicitudId, accion)' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`🎯 Acción solicitada: ${accion} para solicitud ${solicitudId}`);
-
-    // 2. EJECUTAR ACCIÓN USANDO SERVICIOS
-    let mensaje = '';
-
-    switch (accion) {
-      case 'aprobar_jefe': {
-        // Verificar permiso
-        const puedeAprobarJefe = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_jefe');
-        if (!puedeAprobarJefe) {
-          console.log('❌ Sin permiso para aprobar como jefe');
-          return NextResponse.json(
-            { success: false, error: 'No tienes permiso para aprobar solicitudes como jefe' },
-            { status: 403 }
-          );
-        }
-
-        await aprobarSolicitudJefe(solicitudId, sessionUser.id);
-        mensaje = 'Solicitud aprobada por jefe';
-        console.log(`✅ ${mensaje}`);
-        break;
-      }
-
-      case 'aprobar_rrhh': {
-        // Verificar permiso
-        const puedeAprobarRrhh = tienePermiso(sessionUser, 'vacaciones.solicitudes.aprobar_rrhh');
-        if (!puedeAprobarRrhh) {
-          console.log('❌ Sin permiso para aprobar como RRHH');
-          return NextResponse.json(
-            { success: false, error: 'No tienes permiso para aprobar solicitudes como RRHH' },
-            { status: 403 }
-          );
-        }
-
-        await aprobarSolicitudRRHH(solicitudId, sessionUser.id);
-        mensaje = 'Solicitud aprobada por RRHH';
-        console.log(`✅ ${mensaje}`);
-        break;
-      }
-
-      case 'rechazar': {
-        // Verificar permiso
-        const puedeRechazar = tienePermiso(sessionUser, 'vacaciones.solicitudes.rechazar');
-        if (!puedeRechazar) {
-          console.log('❌ Sin permiso para rechazar solicitudes');
-          return NextResponse.json(
-            { success: false, error: 'No tienes permiso para rechazar solicitudes' },
-            { status: 403 }
-          );
-        }
-
-        if (!motivo) {
-          return NextResponse.json(
-            { success: false, error: 'El motivo de rechazo es obligatorio' },
-            { status: 400 }
-          );
-        }
-
-        await rechazarSolicitud(solicitudId, sessionUser.id, motivo);
-        mensaje = 'Solicitud rechazada';
-        console.log(`✅ ${mensaje}`);
-        break;
-      }
-
-      case 'cancelar': {
-        // Solo el usuario dueño o ADMIN/RRHH pueden cancelar
-        const solicitud = await db.query.solicitudes.findFirst({
-          where: eq(solicitudes.id, solicitudId)
-        });
-
-        if (!solicitud) {
-          return NextResponse.json(
-            { success: false, error: 'Solicitud no encontrada' },
-            { status: 404 }
-          );
-        }
-
-        const esPropietario = solicitud.usuarioId === sessionUser.id;
-        const esAdminORrhh = sessionUser.esAdmin || sessionUser.esRrhh;
-        
-        if (!esPropietario && !esAdminORrhh) {
-          console.log(`❌ Usuario ${sessionUser.id} intenta cancelar solicitud de otro usuario`);
-          return NextResponse.json(
-            { success: false, error: 'Solo puedes cancelar tus propias solicitudes' },
-            { status: 403 }
-          );
-        }
-
-        // Cancelar es como rechazar pero sin motivo obligatorio
-        await rechazarSolicitud(
-          solicitudId, 
-          sessionUser.id, 
-          motivo || 'Cancelada por el usuario'
-        );
-        
-        // Actualizar estado a cancelada
-        await db
-          .update(solicitudes)
-          .set({ estado: 'cancelada' })
-          .where(eq(solicitudes.id, solicitudId));
-
-        mensaje = 'Solicitud cancelada';
-        console.log(`✅ ${mensaje}`);
-        break;
-      }
-
-      default:
-        return NextResponse.json(
-          { success: false, error: 'Acción no válida' },
-          { status: 400 }
-        );
-    }
-
-    // 3. Obtener solicitud actualizada con relaciones para respuesta
-    const solicitudCompleta = await db.query.solicitudes.findFirst({
-      where: eq(solicitudes.id, solicitudId),
-      with: {
-        usuario: true
-      }
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: solicitudCompleta,
-      message: mensaje
-    });
-
-  } catch (error) {
-    console.error('Error actualizando solicitud:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Error al actualizar solicitud';
-    
-    // Manejar errores específicos (404, 403)
-    if (errorMessage.includes('404')) {
-      return NextResponse.json(
-        { success: false, error: errorMessage },
-        { status: 404 }
-      );
-    }
-    
-    if (errorMessage.includes('403') || errorMessage.includes('permiso')) {
-      return NextResponse.json(
-        { success: false, error: errorMessage },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 400 }
-    );
-  }
-}

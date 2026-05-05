@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes, balances, departamentos } from "@/lib/db/schema";
 import { eq, isNull, and, gte, lte } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getSession();
 
     if (!session) {
       return NextResponse.json(
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!session.user.esAdmin && !session.user.esRrhh) {
+    if (!session.esAdmin && !session.esRrhh) {
       return NextResponse.json(
         { success: false, error: "No autorizado" },
         { status: 403 }

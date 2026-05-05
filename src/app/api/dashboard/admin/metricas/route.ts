@@ -1,87 +1,99 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const session = await auth();
+    const session = await getSession();
 
-    if (!session?.user?.esAdmin) {
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    if (!session.esAdmin && !session.esRrhh) {
       return NextResponse.json(
         { success: false, error: "No autorizado" },
         { status: 403 }
       );
     }
 
-    console.log('📊 Admin Dashboard - Obteniendo métricas globales');
-
-    // Obtener total de usuarios (sin filtro de departamento)
-    const [totalUsuarios] = await db
-      .select({ count: sql<number>`count(*)` })
+    // Total usuarios
+    const totalResult = await db
+      .select({ value: sql`count(*)` })
       .from(usuarios)
       .where(isNull(usuarios.deletedAt));
 
-    // Obtener usuarios activos
-    const [usuariosActivos] = await db
-      .select({ count: sql<number>`count(*)` })
+    // Usuarios activos
+    const activosResult = await db
+      .select({ value: sql`count(*)` })
       .from(usuarios)
       .where(and(eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
 
-    // Obtener solicitudes pendientes (todas en el sistema)
-    const [solicitudesPendientes] = await db
-      .select({ count: sql<number>`count(*)` })
+    // Solicitudes pendientes
+    const pendientesResult = await db
+      .select({ value: sql`count(*)` })
       .from(solicitudes)
       .where(
         and(
-          sql`${solicitudes.estado} IN ('pendiente', 'aprobada_jefe')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
           isNull(solicitudes.deletedAt)
         )
       );
 
-    // Obtener usuarios en vacaciones (estado finalizada)
-    const [enVacaciones] = await db
-      .select({ count: sql<number>`count(DISTINCT ${solicitudes.usuarioId})` })
+    // En vacaciones hoy
+    const hoy = new Date().toISOString().split('T')[0];
+    const vacacionesResult = await db
+      .select({ value: sql`count(DISTINCT ${solicitudes.usuarioId})` })
       .from(solicitudes)
       .where(
         and(
-          eq(solicitudes.estado, "finalizada"),
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')`,
+          sql`${solicitudes.fechaInicio} <= ${hoy}`,
+          sql`${solicitudes.fechaFin} >= ${hoy}`,
           isNull(solicitudes.deletedAt)
         )
       );
 
-    // Obtener nuevos usuarios este mes
+    // Nuevos este mes
     const primerDiaMes = new Date();
     primerDiaMes.setDate(1);
     primerDiaMes.setHours(0, 0, 0, 0);
-
-    const [nuevosEsteMes] = await db
-      .select({ count: sql<number>`count(*)` })
+    const nuevosResult = await db
+      .select({ value: sql`count(*)` })
       .from(usuarios)
       .where(
         and(
-          sql`${usuarios.createdAt} >= ${primerDiaMes}`,
+          sql`${usuarios.createdAt} >= ${primerDiaMes.toISOString()}`,
           isNull(usuarios.deletedAt)
         )
       );
 
-    const metricas = {
-      usuarios_totales: Number(totalUsuarios?.count || 0),
-      usuarios_activos: Number(usuariosActivos?.count || 0),
-      solicitudes_pendientes: Number(solicitudesPendientes?.count || 0),
-      en_vacaciones: Number(enVacaciones?.count || 0),
-      nuevos_este_mes: Number(nuevosEsteMes?.count || 0),
+    const toNum = (rows: any[]): number => {
+      const raw = rows?.[0]?.value;
+      if (raw === null || raw === undefined) return 0;
+      const n = Number(raw);
+      return isNaN(n) ? 0 : n;
     };
 
-    console.log('✅ Admin métricas:', metricas);
+    const metricas = {
+      usuarios_totales: toNum(totalResult),
+      usuarios_activos: toNum(activosResult),
+      solicitudes_pendientes: toNum(pendientesResult),
+      en_vacaciones: toNum(vacacionesResult),
+      nuevos_este_mes: toNum(nuevosResult),
+    };
 
     return NextResponse.json({
       success: true,
       data: metricas
     });
-  } catch (error) {
-    console.error("Error obteniendo métricas admin:", error);
+  } catch (error: any) {
+    console.error("❌ Error obteniendo métricas admin:", error?.message || error);
     return NextResponse.json(
       { success: false, error: "Error al obtener métricas" },
       { status: 500 }

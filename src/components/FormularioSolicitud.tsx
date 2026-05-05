@@ -1,516 +1,345 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { sileo } from 'sileo';
 import Swal from 'sweetalert2';
-import type { TipoAusencia, BalanceCompleto, NuevaSolicitud } from '@/types';
+import { Loader2 } from 'lucide-react';
+
+import { solicitudSchema, type SolicitudFormData } from '@/lib/validations/solicitud.schema';
+import { useTiposAusencia } from '@/hooks/useTiposAusencia';
+import { useBalances } from '@/hooks/useBalances';
+import { useLaborDays } from '@/hooks/useLaborDays';
+
+import { VacacionesSection } from './solicitudes/VacacionesSection';
+import { PermisoHorasSection } from './solicitudes/PermisoHorasSection';
+import { BalanceViewer } from './solicitudes/BalanceViewer';
+
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 
 interface FormularioSolicitudProps {
   usuarioId: number;
+  esDirector?: boolean;
+  esJefe?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
 
-export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: FormularioSolicitudProps) {
-  const [tiposAusencia, setTiposAusencia] = useState<any[]>([]);
-  const [balances, setBalances] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onSuccess, onCancel }: FormularioSolicitudProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [archivoBase64, setArchivoBase64] = useState<string | null>(null);
 
-  // Estado del formulario
-  const [formData, setFormData] = useState({
-    tipoAusenciaId: '',
-    tipoPermiso: '', // 1-2hrs, 2-4hrs, dia_completo
-    fechaInicio: '',
-    fechaFin: '',
-    horaInicio: '',
-    horaFin: '',
-    horaSalida: '',
-    horaRegreso: '',
-    cantidad: '',
-    unidad: 'dias' as 'dias' | 'horas',
-    motivo: '',
-    observaciones: ''
+  // Initializing React Query Hooks
+  const { data: tiposAusencia = [], isLoading: loadingTipos } = useTiposAusencia();
+  const { data: balances = [], isLoading: loadingBalances } = useBalances(usuarioId);
+
+  // Initializing Form
+  const form = useForm<SolicitudFormData>({
+    resolver: zodResolver(solicitudSchema),
+    defaultValues: {
+      tipoAusenciaId: '',
+      unidad: 'dias',
+      tipoPermiso: '',
+      fechaInicio: '',
+      fechaFin: '',
+      horaSalida: '',
+      horaRegreso: '',
+      cantidad: '',
+      motivo: '',
+      observaciones: '',
+    },
   });
 
-  const [balanceSeleccionado, setBalanceSeleccionado] = useState<any>(null);
-  const [diasDisponibles, setDiasDisponibles] = useState(0);
-  const [diasSolicitados, setDiasSolicitados] = useState(0);
-  const [diasRestantes, setDiasRestantes] = useState(0);
+  const tipoAusenciaId = form.watch('tipoAusenciaId');
+  const fechaInicio = form.watch('fechaInicio');
+  const fechaFin = form.watch('fechaFin');
 
-  // Cargar tipos de ausencia y balances
+  // Logic Selectors
+  const tipoSeleccionado = tiposAusencia.find((t: any) => String(t.id) === tipoAusenciaId);
+  const esPermiso = tipoSeleccionado?.permiteHoras === true;
+  const esVacaciones = tipoSeleccionado?.tipo === 'vacaciones';
+  const esLicenciaMedica = tipoSeleccionado?.tipo === 'licencia_medica';
+  const necesitaFechas = !!tipoSeleccionado && !esPermiso;
+  const requiereAdjunto = esDirector || esLicenciaMedica;
+
+  const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica'];
+  const tiposFiltrados = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
+
+  // Balance & Days Calculators
+  const { diasLaborables } = useLaborDays(fechaInicio, fechaFin);
+
+  const balanceActual = balances.find(
+    (b: any) =>
+      b.tipoAusencia === (tipoSeleccionado?.tipo || tipoAusenciaId) ||
+      b.tipo_ausencia === (tipoSeleccionado?.tipo || tipoAusenciaId)
+  );
+
+  const diasDisponibles = balanceActual
+    ? Number.parseFloat(balanceActual.cantidadDisponible ?? balanceActual.cantidad_disponible ?? '0')
+    : 0;
+
+  const diasRestantes = diasDisponibles - diasLaborables;
+  
+  const mostrarBalances = esVacaciones || esLicenciaMedica;
+
+  // Set unit default depending on selection
   useEffect(() => {
-    const cargarDatos = async () => {
-      try {
-        setLoading(true);
-
-        const [tiposRes, balancesRes] = await Promise.all([
-          fetch('/api/tipos-ausencia'),
-          fetch(`/api/balances?usuarioId=${usuarioId}&anio=${new Date().getFullYear()}`)
-        ]);
-
-        const tiposData = await tiposRes.json();
-        const balancesData = await balancesRes.json();
-
-        if (tiposData.success) setTiposAusencia(tiposData.data);
-        if (balancesData.success) setBalances(balancesData.data);
-
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    cargarDatos();
-  }, [usuarioId]);
-
-  // Actualizar balance seleccionado cuando cambia el tipo
-  useEffect(() => {
-    if (formData.tipoAusenciaId) {
-      const balance = balances.find(
-        (b: any) => Number(b.tipo_ausencia_id) === Number.parseInt(formData.tipoAusenciaId)
-      );
-      
-      setBalanceSeleccionado(balance || null);
-      
-      if (balance) {
-        const disponible = Number.parseFloat(balance.cantidad_disponible);
-        setDiasDisponibles(disponible);
-      } else {
-        setDiasDisponibles(0);
-      }
+    if (tipoSeleccionado) {
+      form.setValue('unidad', tipoSeleccionado.permiteHoras ? 'horas' : 'dias');
     }
-  }, [formData.tipoAusenciaId, balances]);
+  }, [tipoSeleccionado, form]);
 
-  // Calcular días laborables solicitados (excluyendo sábados y domingos)
-  useEffect(() => {
-    if (formData.fechaInicio && formData.fechaFin) {
-      const inicio = new Date(formData.fechaInicio);
-      const fin = new Date(formData.fechaFin);
-      
-      // Normalizar horas para comparación correcta
-      inicio.setHours(0, 0, 0, 0);
-      fin.setHours(0, 0, 0, 0);
-      
-      // Contar solo días laborables (lunes a viernes)
-      let diasLaborables = 0;
-      const fechaActual = new Date(inicio);
-      
-      while (fechaActual <= fin) {
-        const diaSemana = fechaActual.getDay();
-        // 0 = Domingo, 6 = Sábado - solo contar 1-5 (Lunes-Viernes)
-        if (diaSemana !== 0 && diaSemana !== 6) {
-          diasLaborables++;
-        }
-        fechaActual.setDate(fechaActual.getDate() + 1);
-      }
-      
-      setDiasSolicitados(diasLaborables);
-      setDiasRestantes(diasDisponibles - diasLaborables);
-    } else {
-      setDiasSolicitados(0);
-      setDiasRestantes(diasDisponibles);
+  const onSubmit = async (data: SolicitudFormData) => {
+    if ((esVacaciones || esLicenciaMedica) && balanceActual && diasRestantes < 0) {
+      sileo.error({ title: 'Error', description: 'No tienes suficientes días disponibles.' });
+      return;
     }
-  }, [formData.fechaInicio, formData.fechaFin, diasDisponibles]);
 
-  const handleTipoAusenciaChange = (tipoId: string) => {
-    const tipo = tiposAusencia.find(t => t.id === Number.parseInt(tipoId));
-    
-    setFormData({
-      ...formData,
-      tipoAusenciaId: tipoId,
-      unidad: tipo?.permiteHoras ? 'horas' : 'dias',
-      tipoPermiso: tipo?.permiteHoras ? '1-2hrs' : '',
-      cantidad: '',
-      horaInicio: '',
-      horaFin: '',
-      horaSalida: '',
-      horaRegreso: ''
-    });
-  };
+    if (requiereAdjunto && !archivoBase64) {
+      const errorMsg = esLicenciaMedica 
+        ? 'Debe adjuntar el certificado médico.' 
+        : 'Debe adjuntar el correo con el VoBo del Ministro.';
+      sileo.error({ title: 'Adjunto requerido', description: errorMsg });
+      return;
+    }
 
-  const handleTipoPermisoChange = (tipo: string) => {
-    setFormData({
-      ...formData,
-      tipoPermiso: tipo,
-      cantidad: tipo === '1-2hrs' ? '2' : tipo === '2-4hrs' ? '4' : ''
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
     setSubmitting(true);
 
     try {
-      const solicitud: any = {
-        usuarioId,
-        tipoAusenciaId: Number.parseInt(formData.tipoAusenciaId),
-        fechaInicio: formData.fechaInicio,
-        fechaFin: formData.fechaFin,
-        cantidad: formData.unidad === 'horas' ? formData.cantidad : diasSolicitados.toString(),
-        unidad: formData.unidad,
-        motivo: formData.motivo || null,
-        observaciones: formData.observaciones || null
-      };
+      const fechaInicioVal = data.fechaInicio || undefined;
+      const fechaFinVal = esPermiso ? fechaInicioVal : (data.fechaFin || undefined);
 
-      if (formData.unidad === 'horas') {
-        solicitud.horaInicio = formData.horaSalida;
-        solicitud.horaFin = formData.horaRegreso;
-      }
+      const payload = {
+        usuarioId,
+        tipo: tipoSeleccionado?.tipo || data.tipoAusenciaId,
+        fechaInicio: fechaInicioVal,
+        fechaFin: fechaFinVal,
+        diasSolicitados: esPermiso ? 1 : diasLaborables,
+        horaSalida: data.horaSalida || undefined,
+        horaRegreso: data.horaRegreso || undefined,
+        motivo: data.motivo || null,
+        observaciones: data.observaciones || null,
+        duracionPermiso: (data.tipoPermiso as '1-2h' | '2-4h' | 'dia_completo') || undefined,
+        documentosAdjuntos: archivoBase64 ? [{ nombre: esLicenciaMedica ? 'constancia_medica' : 'vobo_ministro', data: archivoBase64 }] : [],
+      };
 
       const response = await fetch('/api/solicitudes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(solicitud)
+        body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
-      if (data.success) {
-        await Swal.fire({
-          icon: 'success',
+      if (result.success) {
+        Swal.fire({
           title: '¡Solicitud Enviada!',
-          text: 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación.',
-          confirmButtonText: 'Aceptar',
-          confirmButtonColor: '#10b981'
+          text: 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación por tu jefe inmediato.',
+          icon: 'success',
+          confirmButtonColor: '#3085d6',
         });
+        form.reset();
         onSuccess?.();
       } else {
-        await Swal.fire({
-          icon: 'error',
-          title: 'Error al Enviar',
-          text: data.error || 'No se pudo crear la solicitud. Intenta de nuevo.',
-          confirmButtonText: 'Cerrar',
-          confirmButtonColor: '#ef4444'
-        });
+        sileo.error({ title: 'Error', description: result.error || 'No se pudo crear la solicitud.' });
       }
-
     } catch (error) {
-      console.error('Error creando solicitud:', error);
-      await Swal.fire({
-        icon: 'error',
-        title: 'Error de Conexión',
-        text: 'No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.',
-        confirmButtonText: 'Cerrar',
-        confirmButtonColor: '#ef4444'
-      });
+      console.error('Error creating request:', error);
+      sileo.error({ title: 'Error', description: 'Error de Conexión, por favor intenta de nuevo.' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) {
+  if (loadingTipos || loadingBalances) {
     return (
-      <div className="flex justify-center items-center p-8">
-        <span className="loading loading-spinner loading-lg"></span>
+      <div className="flex justify-center items-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  const tipoSeleccionado = tiposAusencia.find(t => t.id === Number.parseInt(formData.tipoAusenciaId));
-  const esPermiso = tipoSeleccionado?.permiteHoras;
-  const esVacaciones = tipoSeleccionado?.tipo === 'vacaciones';
-
   return (
-    <form onSubmit={handleSubmit} className="bg-base-100 rounded-lg shadow-lg p-4 sm:p-6 max-w-4xl mx-auto">
-      {/* Encabezado */}
-      <div className="border-b-2 border-base-content pb-4 mb-4 sm:mb-6">
-        <h2 className="text-lg sm:text-2xl font-bold text-center text-base-content">
-          SOLICITUD DE PERMISO / VACACIONES
-        </h2>
-        <p className="text-center text-xs sm:text-sm text-base-content/60 mt-2">
+    <Card className="max-w-4xl mx-auto border-none shadow-none bg-transparent">
+      <CardHeader className="text-center px-0">
+        <CardTitle className="text-2xl tracking-tight">SOLICITUD DE PERMISO / VACACIONES</CardTitle>
+        <CardDescription>
           Fecha de solicitud: {new Date().toLocaleDateString('es-NI')}
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
 
-      {/* Tipo de Ausencia */}
-      <div className="mb-6">
-        <label className="label">
-          <span className="label-text font-semibold">Tipo de Solicitud *</span>
-        </label>
-        <select
-          className="select select-bordered w-full"
-          value={formData.tipoAusenciaId}
-          onChange={(e) => handleTipoAusenciaChange(e.target.value)}
-          required
-        >
-          <option value="">Seleccione un tipo</option>
-          {tiposAusencia.map((tipo) => (
-            <option key={tipo.id} value={tipo.id}>
-              {tipo.nombre}
-            </option>
-          ))}
-        </select>
-      </div>
+      <CardContent className="px-0">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
-      {/* SECCIÓN 1: PERMISOS CON HORAS */}
-      {esPermiso && (
-        <div className="border-2 border-info rounded-lg p-4 sm:p-6 mb-4 sm:mb-6 bg-info/10">
-          <h3 className="text-base sm:text-lg font-bold text-info mb-4 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-            </svg>
-            PERMISO DE SALIDA
-          </h3>
+            <FormField
+              control={form.control}
+              name="tipoAusenciaId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-base font-semibold">Tipo de Solicitud *</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="w-full bg-background">
+                        <SelectValue placeholder="Seleccione un tipo de solicitud" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {tiposFiltrados.map((tipo: any) => (
+                        <SelectItem key={tipo.id} value={String(tipo.id)}>
+                          {tipo.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          {/* Tipo de permiso */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-            <label className="cursor-pointer flex items-center">
-              <input
-                type="radio"
-                name="tipoPermiso"
-                value="1-2hrs"
-                checked={formData.tipoPermiso === '1-2hrs'}
-                onChange={(e) => handleTipoPermisoChange(e.target.value)}
-                className="radio radio-primary mr-2"
+            {esPermiso && <PermisoHorasSection form={form} />}
+            {necesitaFechas && (
+              <VacacionesSection
+                form={form}
+                titulo={esVacaciones ? 'VACACIONES' : tipoSeleccionado?.nombre?.toUpperCase()}
               />
-              <span className="font-semibold">1-2 Horas</span>
-            </label>
-            <label className="cursor-pointer flex items-center">
-              <input
-                type="radio"
-                name="tipoPermiso"
-                value="2-4hrs"
-                checked={formData.tipoPermiso === '2-4hrs'}
-                onChange={(e) => handleTipoPermisoChange(e.target.value)}
-                className="radio radio-primary mr-2"
-              />
-              <span className="font-semibold">2-4 Horas</span>
-            </label>
-            <label className="cursor-pointer flex items-center">
-              <input
-                type="radio"
-                name="tipoPermiso"
-                value="dia_completo"
-                checked={formData.tipoPermiso === 'dia_completo'}
-                onChange={(e) => handleTipoPermisoChange(e.target.value)}
-                className="radio radio-primary mr-2"
-              />
-              <span className="font-semibold">Día Completo</span>
-            </label>
-          </div>
+            )}
 
-          {formData.tipoPermiso && formData.tipoPermiso !== 'dia_completo' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="label">
-                  <span className="label-text font-semibold">Hora de Salida *</span>
-                </label>
-                <input
-                  type="time"
-                  className="input input-bordered w-full"
-                  value={formData.horaSalida}
-                  onChange={(e) => setFormData({ ...formData, horaSalida: e.target.value })}
-                  required
+            {mostrarBalances && (
+              <BalanceViewer
+                diasDisponibles={diasDisponibles}
+                diasSolicitados={diasLaborables}
+                diasRestantes={diasRestantes}
+              />
+            )}
+
+            {tipoAusenciaId && (
+              <FormField
+                control={form.control}
+                name="motivo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-semibold">
+                      Motivo / Justificación {esPermiso || !esVacaciones ? '*' : '(Opcional)'}
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Describa el motivo de su solicitud"
+                        className="resize-none min-h-[100px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {esVacaciones && (
+              <FormField
+                control={form.control}
+                name="observaciones"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-semibold">Observaciones (Opcional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Observaciones adicionales"
+                        className="resize-none min-h-[80px]"
+                        {...field}
+                        value={field.value || ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {requiereAdjunto && (
+              <div className="space-y-2 border border-dashed border-primary/30 rounded-lg p-6 bg-primary/5">
+                <FormLabel className="text-base font-semibold block">
+                  {esLicenciaMedica ? 'Constancia Médica (Obligatorio)' : 'VoBo del Ministro (Obligatorio)'}
+                </FormLabel>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {esLicenciaMedica 
+                    ? 'Por favor adjunte el certificado médico que valide esta solicitud.'
+                    : 'Por favor adjunte una captura o el archivo PDF del correo con el VoBo del Ministro para esta solicitud.'}
+                </p>
+                <Input 
+                  type="file" 
+                  accept=".pdf,image/*" 
+                  className="bg-background"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setArchivoBase64(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      setArchivoBase64(null);
+                    }
+                  }}
                 />
               </div>
-              <div>
-                <label className="label">
-                  <span className="label-text font-semibold">Hora de Regreso *</span>
-                </label>
-                <input
-                  type="time"
-                  className="input input-bordered w-full"
-                  value={formData.horaRegreso}
-                  onChange={(e) => setFormData({ ...formData, horaRegreso: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
-          )}
+            )}
 
-          <div className="mt-4">
-            <label className="label">
-              <span className="label-text font-semibold">Motivo *</span>
-            </label>
-            <textarea
-              className="textarea textarea-bordered w-full h-20"
-              value={formData.motivo}
-              onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
-              placeholder="Describa el motivo de su permiso"
-              required
-            />
-          </div>
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-border mt-8">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={submitting}
+                className="w-full sm:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={submitting || (esVacaciones && balanceActual && diasRestantes < 0)}
+                className="w-full sm:w-auto"
+              >
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Enviar Solicitud
+              </Button>
+            </div>
+
+          </form>
+        </Form>
+      </CardContent>
+
+      <CardFooter className="bg-muted/30 rounded-xl mt-6">
+        <div className="w-full text-xs text-muted-foreground p-2">
+          <p className="font-semibold mb-2">Proceso de aprobación:</p>
+          <ul className="list-disc list-inside space-y-1">
+            {esDirector ? (
+              <>
+                <li>1. VoBo Ministro (Mediante documento adjunto)</li>
+                <li>2. Revisión y validación de Recursos Humanos</li>
+              </>
+            ) : esJefe ? (
+              <>
+                <li>1. Aprobación de Director de Área</li>
+                <li>2. Revisión y aprobación de Recursos Humanos</li>
+              </>
+            ) : (
+              <>
+                <li>1. Aprobación de Jefe Inmediato</li>
+                <li>2. Revisión y aprobación de Recursos Humanos</li>
+              </>
+            )}
+            <li>Último paso: Notificación al solicitante</li>
+          </ul>
         </div>
-      )}
-
-      {/* SECCIÓN 2: VACACIONES */}
-      {esVacaciones && (
-        <div className="border-2 border-success rounded-lg p-4 sm:p-6 mb-4 sm:mb-6 bg-success/10">
-          <h3 className="text-base sm:text-lg font-bold text-success mb-4 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" />
-            </svg>
-            VACACIONES
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
-            <div>
-              <label className="label">
-                <span className="label-text font-semibold">Fecha de Inicio *</span>
-              </label>
-              <input
-                type="date"
-                className="input input-bordered w-full"
-                value={formData.fechaInicio}
-                onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="label">
-                <span className="label-text font-semibold">Fecha de Fin *</span>
-              </label>
-              <input
-                type="date"
-                className="input input-bordered w-full"
-                value={formData.fechaFin}
-                onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
-                min={formData.fechaInicio}
-                required
-              />
-            </div>
-          </div>
-
-          {/* Balance visual */}
-          {balanceSeleccionado && (
-            <div className="bg-base-100 rounded-lg p-4 sm:p-6 shadow-sm">
-              <div className="grid grid-cols-3 gap-4 sm:gap-6">
-                <div className="flex flex-col items-center justify-center py-2 border-r-2">
-                  <p className="text-xs sm:text-sm text-base-content/60 mb-2 font-medium">Días Disponibles</p>
-                  <p className="text-2xl sm:text-4xl font-bold text-accent">{diasDisponibles}</p>
-                </div>
-                <div className="flex flex-col items-center justify-center py-2 border-r-2">
-                  <p className="text-xs sm:text-sm text-base-content/60 mb-2 font-medium">Días Solicitados</p>
-                  <p className="text-2xl sm:text-4xl font-bold text-secondary">{diasSolicitados}</p>
-                </div>
-                <div className="flex flex-col items-center justify-center py-2">
-                  <p className="text-xs sm:text-sm text-base-content/60 mb-2 font-medium">Días Restantes</p>
-                  <p className={`text-2xl sm:text-4xl font-bold ${diasRestantes < 0 ? 'text-error' : 'text-base-content'}`}>
-                    {diasRestantes}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Mensaje informativo sobre días laborables */}
-              {diasSolicitados > 0 && (
-                <div className="alert alert-info mt-3 sm:mt-4 flex-col sm:flex-row items-start sm:items-center gap-2">
-                  <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-xs sm:text-sm">Solo se contabilizan días laborables (Lunes a Viernes). Sábados y domingos no se descuentan de tu balance.</span>
-                </div>
-              )}
-              
-              {diasRestantes < 0 && (
-                <div className="alert alert-error mt-3 sm:mt-4 flex-col sm:flex-row items-start sm:items-center gap-2">
-                  <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-sm">No tiene suficientes días disponibles</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4">
-            <label className="label">
-              <span className="label-text font-semibold">Observaciones</span>
-            </label>
-            <textarea
-              className="textarea textarea-bordered w-full h-20"
-              value={formData.observaciones}
-              onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-              placeholder="Observaciones adicionales (opcional)"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Otros tipos de ausencia (permisos sin horas) */}
-      {!esPermiso && !esVacaciones && formData.tipoAusenciaId && (
-        <div className="border-2 border-gray-300 rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
-            <div>
-              <label className="label">
-                <span className="label-text font-semibold">Fecha de Inicio *</span>
-              </label>
-              <input
-                type="date"
-                className="input input-bordered w-full"
-                value={formData.fechaInicio}
-                onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <label className="label">
-                <span className="label-text font-semibold">Fecha de Fin *</span>
-              </label>
-              <input
-                type="date"
-                className="input input-bordered w-full"
-                value={formData.fechaFin}
-                onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
-                min={formData.fechaInicio}
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label">
-              <span className="label-text font-semibold">Motivo / Justificación *</span>
-            </label>
-            <textarea
-              className="textarea textarea-bordered w-full h-24"
-              value={formData.motivo}
-              onChange={(e) => setFormData({ ...formData, motivo: e.target.value })}
-              placeholder="Describa el motivo de su solicitud"
-              required
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Botones de acción */}
-      <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 mt-6 pt-6 border-t-2">
-        <button
-          type="button"
-          className="btn btn-outline w-full sm:w-auto order-2 sm:order-1"
-          onClick={onCancel}
-          disabled={submitting}
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          className="btn btn-primary w-full sm:w-auto order-1 sm:order-2"
-          disabled={Boolean(
-            submitting || 
-            (esVacaciones && formData.fechaInicio && formData.fechaFin && diasRestantes < 0)
-          )}
-        >
-          {submitting ? (
-            <>
-              <span className="loading loading-spinner"></span>
-              Enviando...
-            </>
-          ) : (
-            'Enviar Solicitud'
-          )}
-        </button>
-      </div>
-
-      {/* Pie de página informativo */}
-      <div className="mt-6 p-4 bg-base-200 rounded-lg text-xs text-base-content/60">
-        <p className="font-semibold mb-2">Proceso de aprobación:</p>
-        <ul className="list-disc list-inside space-y-1">
-          <li>1. Aprobación de Jefe Inmediato</li>
-          <li>2. Revisión y aprobación de Recursos Humanos</li>
-          <li>3. Notificación al solicitante</li>
-        </ul>
-      </div>
-    </form>
+      </CardFooter>
+    </Card>
   );
 }

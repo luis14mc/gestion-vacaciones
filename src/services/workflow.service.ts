@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
-import { solicitudes, balances } from '@/lib/db/schema';
+import { solicitudes, balances, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
 import { eq, and, sql, isNull } from 'drizzle-orm';
+import { notificarAprobacionJefeARRHH, notificarResolucionAEmpleado } from './email.service';
 import {
   type AccionSolicitud,
   type EstadoSolicitud,
@@ -171,6 +172,32 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   }
 
   const [updated] = await db.select().from(solicitudes).where(eq(solicitudes.id, solicitudId)).limit(1);
+
+  // NOTIFICACIONES POR CORREO
+  try {
+    const [solicitante] = await db.select().from(usuarios).where(eq(usuarios.id, solicitud.usuarioId)).limit(1);
+    
+    if (solicitante && solicitante.email) {
+      if (accion === 'aprobar_jefe') {
+        // Buscar correos de RRHH
+        const rrhhUsers = await db.select({ email: usuarios.email })
+          .from(usuarios)
+          .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
+          .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
+          .where(and(eq(roles.codigo, 'RRHH'), eq(usuarios.activo, true)));
+          
+        for (const rrhh of rrhhUsers) {
+          if (rrhh.email) {
+            notificarAprobacionJefeARRHH(rrhh.email, `${solicitante.nombre} ${solicitante.apellido}`, solicitud.tipo, dias).catch(e => console.error('Error email RRHH', e));
+          }
+        }
+      } else if (accion === 'aprobar_rrhh' || accion.startsWith('rechazar')) {
+        notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
+      }
+    }
+  } catch (error) {
+    console.error('Error procesando notificaciones de correo:', error);
+  }
 
   return {
     exito: true,

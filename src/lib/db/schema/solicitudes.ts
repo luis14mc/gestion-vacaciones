@@ -17,8 +17,7 @@
  * FLUJO DE FIRMAS:
  * 1. Empleado crea solicitud
  * 2. Jefe de departamento aprueba/rechaza (aprobada_jefe_por)
- * 3. RRHH aprueba/rechaza (aprobada_rrhh_por)
- * 4. Ejecutivo firma autorización final (autorizada_ejecutiva_por)
+ * 3. RRHH aprueba/rechaza (aprobada_rrhh_por) [APROBADOR FINAL]
  * ============================================================
  */
 
@@ -68,11 +67,8 @@ export const estadoSolicitudEnum = pgEnum('estado_solicitud', [
   'aprobada_jefe',         // Jefe aprobó, pendiente RRHH
   'rechazada_jefe',        // Jefe rechazó
   'pendiente_rrhh',        // Esperando aprobación RRHH
-  'aprobada_rrhh',         // RRHH aprobó, puede requerir ejecutivo
+  'aprobada_rrhh',         // RRHH aprobó (final)
   'rechazada_rrhh',        // RRHH rechazó
-  'pendiente_ejecutiva',   // Esperando firma ejecutiva final
-  'aprobada_ejecutiva',    // Firma ejecutiva completada
-  'rechazada_ejecutiva',   // Ejecutivo rechazó
   'cancelada',             // Cancelada por el empleado
   'finalizada',            // Completada y archivada
 ]);
@@ -151,7 +147,7 @@ export const solicitudes = pgTable(
     documentosAdjuntos: jsonb('documentos_adjuntos').default([]).notNull(),
     
     // ========================================
-    // FLUJO DE APROBACIONES (3 FIRMAS)
+    // FLUJO DE APROBACIONES (2 FIRMAS)
     // ========================================
     
     // Estado actual
@@ -169,15 +165,6 @@ export const solicitudes = pgTable(
       .references(() => usuarios.id),
     aprobadaRrhhFecha: timestamp('aprobada_rrhh_fecha', { withTimezone: true, mode: 'string' }),
     comentarioRrhh: text('comentario_rrhh'),
-    
-    // FIRMA 3: Autorización Ejecutiva (Firma Final CNI)
-    autorizadaEjecutivaPor: bigint('autorizada_ejecutiva_por', { mode: 'number' })
-      .references(() => usuarios.id),
-    autorizadaEjecutivaFecha: timestamp('autorizada_ejecutiva_fecha', {
-      withTimezone: true,
-      mode: 'string',
-    }),
-    comentarioEjecutiva: text('comentario_ejecutiva'),
     
     // Rechazo (cualquier nivel)
     rechazadaPor: bigint('rechazada_por', { mode: 'number' })
@@ -255,11 +242,6 @@ export const solicitudesRelations = relations(solicitudes, ({ one }) => ({
     fields: [solicitudes.aprobadaRrhhPor],
     references: [usuarios.id],
     relationName: 'solicitudes_aprobador_rrhh',
-  }),
-  autorizadorEjecutiva: one(usuarios, {
-    fields: [solicitudes.autorizadaEjecutivaPor],
-    references: [usuarios.id],
-    relationName: 'solicitudes_autorizador_ejecutiva',
   }),
   rechazadoPor: one(usuarios, {
     fields: [solicitudes.rechazadaPor],

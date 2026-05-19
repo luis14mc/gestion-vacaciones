@@ -24,7 +24,6 @@ export interface TransicionContexto {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
-  esSecretarioGeneral?: boolean;
   tipo?: string;
 }
 
@@ -53,7 +52,7 @@ export const ESTADOS_CONFIG: Record<EstadoSolicitud, EstadoConfig> = {
   pendiente_jefe:        { label: 'Pendiente Jefe',        bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', esFinal: false },
   aprobada_jefe:         { label: 'Aprobada Jefe',         bgColor: 'bg-blue-100',   textColor: 'text-blue-800',   esFinal: false },
   rechazada_jefe:        { label: 'Rechazada Jefe',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
-  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: true },
+  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: true  },
   rechazada_rrhh:        { label: 'Rechazada RRHH',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
   cancelada:             { label: 'Cancelada',             bgColor: 'bg-gray-100',   textColor: 'text-gray-600',   esFinal: true  },
   finalizada:            { label: 'Finalizada',            bgColor: 'bg-emerald-100',textColor: 'text-emerald-800',esFinal: true  },
@@ -136,13 +135,6 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
       destino: 'cancelada',
       guard: guardCancelar,
       efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
-    },
-  },
-  aprobada_rrhh: {
-    finalizar: {
-      destino: 'finalizada',
-      guard: guardRrhh,
-      efectos: sinEfectos,
     },
   },
 };

@@ -103,7 +103,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
     try {
       const params = new URLSearchParams({
         ...filtros,
-        tipoReporte: reporteSeleccionado,
+        tipo: reporteSeleccionado,
       } as any);
 
       const res = await fetch(`/api/reportes?${params}`);
@@ -141,7 +141,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         // Obtener datos COMPLETOS de la API para PDF (sin limitaciones del frontend)
         const params = new URLSearchParams({
           ...filtros,
-          tipoReporte: reporteSeleccionado,
+          tipo: reporteSeleccionado,
         } as any);
 
         const res = await fetch(`/api/reportes?${params}`);
@@ -454,11 +454,13 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="pendiente">Pendiente</SelectItem>
-                      <SelectItem value="aprobado_jefe">Aprobado Jefe</SelectItem>
-                      <SelectItem value="aprobado">Aprobado</SelectItem>
-                      <SelectItem value="rechazado">Rechazado</SelectItem>
-                      <SelectItem value="cancelado">Cancelado</SelectItem>
+                      <SelectItem value="pendiente_jefe">Pendiente Jefe</SelectItem>
+                      <SelectItem value="aprobada_jefe">Aprobada Jefe</SelectItem>
+                      <SelectItem value="aprobada_rrhh">Aprobada RRHH</SelectItem>
+                      <SelectItem value="rechazada_jefe">Rechazada Jefe</SelectItem>
+                      <SelectItem value="rechazada_rrhh">Rechazada RRHH</SelectItem>
+                      <SelectItem value="cancelada">Cancelada</SelectItem>
+                      <SelectItem value="finalizada">Finalizada</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -599,11 +601,13 @@ function ReporteBalances({ datos }: { datos: any }) {
 function ReporteSolicitudes({ datos }: { datos: any }) {
   const getEstadoBadge = (estado: string) => {
     const badges: Record<string, string> = {
-      pendiente: "bg-amber-100 text-amber-800 hover:bg-amber-100",
-      aprobado_jefe: "bg-blue-100 text-blue-800 hover:bg-blue-100",
-      aprobado: "bg-green-100 text-green-800 hover:bg-green-100",
-      rechazado: "bg-red-100 text-red-800 hover:bg-red-100",
-      cancelado: "bg-gray-100 text-gray-800 hover:bg-gray-100",
+      pendiente_jefe: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+      aprobada_jefe: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+      aprobada_rrhh: "bg-green-100 text-green-800 hover:bg-green-100",
+      rechazada_jefe: "bg-red-100 text-red-800 hover:bg-red-100",
+      rechazada_rrhh: "bg-red-100 text-red-800 hover:bg-red-100",
+      cancelada: "bg-gray-100 text-gray-800 hover:bg-gray-100",
+      finalizada: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
     };
     return badges[estado] || "bg-gray-100 text-gray-800 hover:bg-gray-100";
   };

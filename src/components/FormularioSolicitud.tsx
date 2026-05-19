@@ -170,7 +170,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       <CardHeader className="text-center px-0">
         <CardTitle className="text-2xl tracking-tight">SOLICITUD DE PERMISO / VACACIONES</CardTitle>
         <CardDescription>
-          Fecha de solicitud: {new Date().toLocaleDateString('es-NI')}
+          Fecha de solicitud: {new Date().toLocaleDateString('es-HN')}
         </CardDescription>
       </CardHeader>
 

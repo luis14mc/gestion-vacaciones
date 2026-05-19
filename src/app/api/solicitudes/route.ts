@@ -9,6 +9,7 @@ import {
   aprobarSolicitudRRHH, 
   rechazarSolicitud 
 } from '@/services/solicitudes.service';
+import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
 
 export const runtime = 'nodejs';
 
@@ -244,6 +245,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validación: Directores deben adjuntar VoBo del Ministro (aprobación externa)
+    if (sessionUser.esDirector && usuarioId === sessionUser.id) {
+      const adjuntos = Array.isArray(documentosAdjuntos) ? documentosAdjuntos : [];
+      const tieneVoBo = adjuntos.some(
+        (a: any) => a?.nombre === 'vobo_ministro' && typeof a?.data === 'string' && a.data.length > 0
+      );
+      if (!tieneVoBo) {
+        return NextResponse.json(
+          { success: false, error: 'Para Directores es obligatorio adjuntar el VoBo del Ministro.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validación: licencia médica requiere constancia
+    if (tipo === 'licencia_medica') {
+      const adjuntos = Array.isArray(documentosAdjuntos) ? documentosAdjuntos : [];
+      const tieneConstancia = adjuntos.some(
+        (a: any) => a?.nombre === 'constancia_medica' && typeof a?.data === 'string' && a.data.length > 0
+      );
+      if (!tieneConstancia) {
+        return NextResponse.json(
+          { success: false, error: 'Para licencia médica es obligatorio adjuntar la constancia médica.' },
+          { status: 400 }
+        );
+      }
+    }
+
     // 4. USAR SERVICIO PARA CREAR SOLICITUD
     const solicitudCreada: any = await crearSolicitud({
       usuarioId,
@@ -268,6 +297,30 @@ export async function POST(request: NextRequest) {
         usuario: true
       }
     });
+
+    // Enviar notificación por correo al jefe
+    if (solicitudCompleta?.usuario?.jefeSuperiorId) {
+      try {
+        const [jefe] = await db
+          .select({ email: usuarios.email, nombre: usuarios.nombre, apellido: usuarios.apellido })
+          .from(usuarios)
+          .where(eq(usuarios.id, solicitudCompleta.usuario.jefeSuperiorId))
+          .limit(1);
+
+        if (jefe && jefe.email) {
+          const nombreCompleto = `${solicitudCompleta.usuario.nombre} ${solicitudCompleta.usuario.apellido}`;
+          notificarNuevaSolicitudAJefe(
+            jefe.email, 
+            `${jefe.nombre} ${jefe.apellido}`, 
+            nombreCompleto, 
+            solicitudCompleta.tipo, 
+            Number(solicitudCompleta.diasSolicitados) || 0
+          ).catch(e => console.error('Error enviando email al jefe:', e));
+        }
+      } catch (error) {
+        console.error('Error al notificar al jefe:', error);
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -61,7 +61,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -73,7 +73,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh')`,
+          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
           isNull(solicitudes.deletedAt)
         )
       );
@@ -91,7 +91,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')`,
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada')`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )
@@ -104,7 +104,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh', 'rechazada_ejecutiva')`,
+          sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh')`,
           sql`${solicitudes.createdAt} >= ${inicioAnio}`,
           isNull(solicitudes.deletedAt)
         )
@@ -118,7 +118,7 @@ export async function GET() {
       .where(
         and(
           eq(solicitudes.usuarioId, usuarioId),
-          eq(solicitudes.estado, 'finalizada'),
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada')`,
           sql`${solicitudes.fechaInicio} <= ${hoy}`,
           sql`${solicitudes.fechaFin} >= ${hoy}`,
           isNull(solicitudes.deletedAt)

@@ -52,7 +52,7 @@ export async function GET() {
       .from(solicitudes)
       .where(
         and(
-          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')`,
+          sql`${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada')`,
           sql`${solicitudes.fechaInicio} <= ${hoy}`,
           sql`${solicitudes.fechaFin} >= ${hoy}`,
           isNull(solicitudes.deletedAt)

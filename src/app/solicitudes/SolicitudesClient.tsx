@@ -118,12 +118,6 @@ const estadoBadgeMap: Record<
     className:
       "border-transparent bg-red-600/15 text-red-800 dark:text-red-200 hover:bg-red-600/20",
   },
-  pendiente_rrhh: {
-    label: "Pendiente RRHH",
-    icon: Hourglass,
-    className:
-      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
-  },
   aprobada_rrhh: {
     label: "Aprobada RRHH",
     icon: Check,
@@ -377,7 +371,6 @@ export default function SolicitudesClient({ session }: Props) {
                     <SelectItem value="borrador">Borrador</SelectItem>
                     <SelectItem value="pendiente_jefe">Pendiente Jefe</SelectItem>
                     <SelectItem value="aprobada_jefe">Aprobada por Jefe</SelectItem>
-                    <SelectItem value="pendiente_rrhh">Pendiente RRHH</SelectItem>
                     <SelectItem value="aprobada_rrhh">Aprobada RRHH</SelectItem>
                     <SelectItem value="rechazada_jefe">Rechazada por Jefe</SelectItem>
                     <SelectItem value="rechazada_rrhh">Rechazada por RRHH</SelectItem>

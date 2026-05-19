@@ -14,6 +14,9 @@ export const usuarioSchema = z.object({
     esJefe: z.boolean(),
     jefeSuperiorId: z.string().optional(),
     activo: z.boolean(),
+    numeroEmpleado: z.string().optional(),
+    telefono: z.string().optional(),
+    direccion: z.string().optional(),
 });
 
 export type UsuarioFormValues = z.infer<typeof usuarioSchema>;

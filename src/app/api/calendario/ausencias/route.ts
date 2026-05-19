@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       FROM solicitudes s
       INNER JOIN usuarios u ON u.id = s.usuario_id
       LEFT JOIN departamentos d ON d.id = u.departamento_id
-      WHERE s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
+      WHERE s.estado IN ('aprobada_rrhh', 'finalizada')
         AND s.fecha_inicio IS NOT NULL
         AND s.fecha_fin IS NOT NULL
         AND s.fecha_inicio <= ${ultimoDia}

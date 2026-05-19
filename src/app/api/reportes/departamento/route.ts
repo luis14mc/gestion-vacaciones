@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       ) : [];
 
     const solicitudesAprobadas = solicitudesDept.filter(
-      (s: any) => ['aprobada_jefe', 'aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(s.estado)
+      (s: any) => ['aprobada_rrhh', 'finalizada'].includes(s.estado)
     ).length;
     const solicitudesPendientes = solicitudesDept.filter(
       (s: any) => ['pendiente_jefe', 'aprobada_jefe'].includes(s.estado)

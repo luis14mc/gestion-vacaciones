@@ -73,6 +73,9 @@ export async function GET(request: NextRequest) {
         id: 0,
         nombre: usuario.cargo || "Sin cargo",
       },
+      numeroEmpleado: usuario.numeroEmpleado || "",
+      telefono: usuario.telefono || "",
+      direccion: usuario.direccion || "",
       roles: session.roles || [],
     };
 
@@ -112,6 +115,8 @@ export async function PATCH(request: NextRequest) {
     if (body.nombre !== undefined) camposPermitidos.nombre = body.nombre;
     if (body.apellido !== undefined) camposPermitidos.apellido = body.apellido;
     if (body.cargo !== undefined) camposPermitidos.cargo = body.cargo;
+    if (body.telefono !== undefined) camposPermitidos.telefono = body.telefono;
+    if (body.direccion !== undefined) camposPermitidos.direccion = body.direccion;
 
     if (Object.keys(camposPermitidos).length === 0) {
       return NextResponse.json(
@@ -158,6 +163,9 @@ export async function PATCH(request: NextRequest) {
         id: 0,
         nombre: updated.cargo || "Sin cargo",
       },
+      numeroEmpleado: updated.numeroEmpleado || "",
+      telefono: updated.telefono || "",
+      direccion: updated.direccion || "",
       roles: session.roles || [],
     };
 

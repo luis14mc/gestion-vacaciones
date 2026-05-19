@@ -89,8 +89,8 @@ export async function GET() {
 
       actividades.push({
         id: `solicitud-${solicitud.id}`,
-        tipo: ['aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(solicitud.estado) ? "aprobada" : "nueva_solicitud",
-        titulo: ['aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(solicitud.estado) ? "Solicitud Aprobada" : "Nueva Solicitud",
+        tipo: ['aprobada_rrhh', 'finalizada'].includes(solicitud.estado) ? "aprobada" : "nueva_solicitud",
+        titulo: ['aprobada_rrhh', 'finalizada'].includes(solicitud.estado) ? "Solicitud Aprobada" : "Nueva Solicitud",
         descripcion: `${solicitud.usuario.nombre} ${solicitud.usuario.apellido} - ${dias} días (${fechaRango})`,
         fecha: solicitud.createdAt,
       });

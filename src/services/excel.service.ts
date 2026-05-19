@@ -283,8 +283,6 @@ export async function exportarReporteSolicitudes(opts: ExcelOptions & {
     rechazada_jefe: 'Rechazada por Jefe',
     aprobada_rrhh: 'Aprobada por RRHH',
     rechazada_rrhh: 'Rechazada por RRHH',
-    aprobada_ejecutiva: 'Autorizada',
-    rechazada_ejecutiva: 'Rechazada Ejecutiva',
     cancelada: 'Cancelada',
     finalizada: 'Finalizada',
   };

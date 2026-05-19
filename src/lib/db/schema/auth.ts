@@ -36,9 +36,13 @@ export const usuarios = pgTable(
     apellido: varchar('apellido', { length: 100 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     
-    // Relación plana con departamento (evita circular)
     departamentoId: bigint('departamento_id', { mode: 'number' }),
     cargo: varchar('cargo', { length: 100 }),
+    
+    // Datos adicionales
+    numeroEmpleado: varchar('numero_empleado', { length: 50 }),
+    telefono: varchar('telefono', { length: 50 }),
+    direccion: text('direccion'),
     
     // Flags de rol (simplificación para queries rápidas)
     esDirector: boolean('es_director').notNull().default(false),

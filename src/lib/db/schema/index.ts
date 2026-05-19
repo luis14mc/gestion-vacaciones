@@ -23,3 +23,6 @@ export * from './solicitudes';
 
 // Balances
 export * from './balances';
+
+// Auditoria
+export * from './auditoria';

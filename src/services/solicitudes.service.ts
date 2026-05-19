@@ -34,7 +34,7 @@ export interface AprobarSolicitudParams {
   solicitudId: number;
   aprobadorId: number;
   comentario?: string;
-  tipo: 'jefe' | 'rrhh' | 'ejecutiva';
+  tipo: 'jefe' | 'rrhh';
 }
 
 // =====================================================
@@ -172,6 +172,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       await tx.execute(sql`
         UPDATE balances
         SET cantidad_pendiente = cantidad_pendiente + ${diasSolicitados},
+            cantidad_disponible = GREATEST(0, cantidad_disponible - ${diasSolicitados}),
             updated_at = NOW()
         WHERE usuario_id = ${usuarioId}
           AND ano_laboral_id = ${anoLaboral.id}
@@ -315,7 +316,7 @@ export async function rechazarSolicitud(
       throw new Error('Solicitud no encontrada');
     }
 
-    if (['aprobada_jefe', 'aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada'].includes(solicitud.estado)) {
+    if (['aprobada_rrhh', 'finalizada'].includes(solicitud.estado)) {
       throw new Error('No se puede rechazar una solicitud ya aprobada');
     }
 
@@ -443,7 +444,7 @@ export async function cancelarSolicitud(
     }
 
     // Validar que el estado permite cancelación
-    const estadosCancelables = ['pendiente_jefe', 'aprobada_jefe', 'aprobada_rrhh', 'aprobada_ejecutiva'];
+    const estadosCancelables = ['pendiente_jefe', 'aprobada_jefe', 'aprobada_rrhh'];
     if (!estadosCancelables.includes(solicitud.estado)) {
       throw new Error(
         `No se puede cancelar una solicitud en estado: ${solicitud.estado}`
@@ -454,21 +455,23 @@ export async function cancelarSolicitud(
     if (solicitud.tipo === 'vacaciones' && solicitud.diasSolicitados) {
       const dias = parseFloat(solicitud.diasSolicitados);
 
-      if (solicitud.estado === 'aprobada_rrhh' || solicitud.estado === 'aprobada_ejecutiva') {
-        // Si ya estaba aprobada por RRHH, devolver de cantidad_usada
+      if (solicitud.estado === 'aprobada_rrhh') {
+        // Si ya estaba aprobada por RRHH, devolver de cantidad_usada a disponible
         await tx.execute(sql`
           UPDATE balances
-          SET cantidad_usada = cantidad_usada - ${dias},
+          SET cantidad_usada = GREATEST(0, cantidad_usada - ${dias}),
+              cantidad_disponible = cantidad_disponible + ${dias},
               updated_at = NOW()
           WHERE usuario_id = ${solicitud.usuarioId}
             AND ano_laboral_id = ${solicitud.anoLaboralId}
             AND tipo_ausencia = 'vacaciones'
         `);
       } else {
-        // Si aún estaba pendiente, devolver de cantidad_pendiente
+        // Si aún estaba pendiente, devolver de cantidad_pendiente a disponible
         await tx.execute(sql`
           UPDATE balances
-          SET cantidad_pendiente = cantidad_pendiente - ${dias},
+          SET cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
+              cantidad_disponible = cantidad_disponible + ${dias},
               updated_at = NOW()
           WHERE usuario_id = ${solicitud.usuarioId}
             AND ano_laboral_id = ${solicitud.anoLaboralId}

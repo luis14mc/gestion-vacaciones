@@ -7,6 +7,7 @@ import { usuarioSchema, type UsuarioFormValues } from "@/lib/schemas/usuario.sch
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -44,6 +45,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
             esJefe: false,
             jefeSuperiorId: "",
             activo: true,
+            numeroEmpleado: "",
+            telefono: "",
+            direccion: "",
         },
     });
 
@@ -66,6 +70,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                     esJefe: usuario.esJefe,
                     jefeSuperiorId: usuario.jefeSuperiorId?.toString() || "",
                     activo: usuario.activo,
+                    numeroEmpleado: usuario.numeroEmpleado || "",
+                    telefono: usuario.telefono || "",
+                    direccion: usuario.direccion || "",
                 });
             } else {
                 form.reset({
@@ -82,6 +89,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                     esJefe: false,
                     jefeSuperiorId: "",
                     activo: true,
+                    numeroEmpleado: "",
+                    telefono: "",
+                    direccion: "",
                 });
             }
             setShowPassword(false);
@@ -139,6 +149,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                 esJefe: values.esJefe,
                 jefeSuperiorId: values.jefeSuperiorId ? Number(values.jefeSuperiorId) : null,
                 activo: values.activo,
+                numeroEmpleado: values.numeroEmpleado || null,
+                telefono: values.telefono || null,
+                direccion: values.direccion || null,
             };
 
             if (values.cargo) body.cargo = values.cargo;
@@ -238,6 +251,18 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
                             <FormField
                                 control={form.control}
+                                name="numeroEmpleado"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Número de Empleado (Opcional)</FormLabel>
+                                        <FormControl><Input placeholder="EMP-001" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
                                 name="departamentoId"
                                 render={({ field }) => (
                                     <FormItem>
@@ -272,7 +297,50 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                     </FormItem>
                                 )}
                             />
+
+                            <FormField
+                                control={form.control}
+                                name="numeroEmpleado"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Número de Empleado</FormLabel>
+                                        <FormControl><Input placeholder="Ej: 000123" {...field} value={field.value || ""} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="telefono"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Teléfono</FormLabel>
+                                        <FormControl><Input placeholder="Ej: +504 9999-9999" {...field} value={field.value || ""} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         </div>
+
+                        <FormField
+                            control={form.control}
+                            name="direccion"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Dirección</FormLabel>
+                                    <FormControl>
+                                        <Textarea
+                                            placeholder="Dirección completa"
+                                            className="min-h-20"
+                                            {...field}
+                                            value={field.value || ""}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField

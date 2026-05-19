@@ -29,6 +29,9 @@ export interface CrearUsuarioParams {
   esRrhh?: boolean;
   esDirector?: boolean;
   esJefe?: boolean;
+  numeroEmpleado?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 export interface ActualizarUsuarioParams {
@@ -38,6 +41,9 @@ export interface ActualizarUsuarioParams {
   cargo?: string;
   fechaIngreso?: string;
   activo?: boolean;
+  numeroEmpleado?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 // =====================================================
@@ -61,6 +67,9 @@ export async function crearUsuario(params: CrearUsuarioParams) {
     esRrhh = false,
     esDirector = false,
     esJefe = false,
+    numeroEmpleado,
+    telefono,
+    direccion,
   } = params;
 
   return await db.transaction(async (tx) => {
@@ -91,6 +100,9 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         esRrhh,
         esDirector,
         esJefe,
+        numeroEmpleado,
+        telefono,
+        direccion,
         metadata: {},
       })
       .returning();

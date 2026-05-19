@@ -85,12 +85,8 @@ export type EstadoSolicitud =
   | 'pendiente_jefe'
   | 'aprobada_jefe'
   | 'rechazada_jefe'
-  | 'pendiente_rrhh'
   | 'aprobada_rrhh'
   | 'rechazada_rrhh'
-  | 'pendiente_ejecutiva'
-  | 'aprobada_ejecutiva'
-  | 'rechazada_ejecutiva'
   | 'cancelada'
   | 'finalizada';
 
@@ -165,7 +161,7 @@ export interface LoginResponse {
 // TIPOS PARA FORMULARIOS
 // =====================================================
 export interface FormularioSolicitud {
-  tipoAusenciaId: number;
+  tipoAusenciaId: string;
   fechaInicio: string;
   fechaFin: string;
   horaInicio?: string;

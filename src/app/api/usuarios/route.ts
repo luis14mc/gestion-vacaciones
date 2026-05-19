@@ -76,6 +76,9 @@ export async function GET(request: NextRequest) {
         activo: usuarios.activo,
         departamentoId: usuarios.departamentoId,
         cargo: usuarios.cargo,
+        numeroEmpleado: usuarios.numeroEmpleado,
+        telefono: usuarios.telefono,
+        direccion: usuarios.direccion,
         fechaIngreso: usuarios.fechaIngreso,
         jefeSuperiorId: usuarios.jefeSuperiorId,
         createdAt: usuarios.createdAt,
@@ -214,6 +217,9 @@ export async function POST(request: NextRequest) {
       esDirector,
       esJefe,
       jefeSuperiorId,
+      numeroEmpleado,
+      telefono,
+      direccion,
     } = body;
 
     if (!nombre || !apellido || !email || !password || !departamentoId) {
@@ -234,7 +240,10 @@ export async function POST(request: NextRequest) {
       esAdmin,
       esRrhh,
       esDirector,
-      esJefe
+      esJefe,
+      numeroEmpleado,
+      telefono,
+      direccion
     });
 
     if (usuarioCreado?.id) {
@@ -309,6 +318,9 @@ export async function PATCH(request: NextRequest) {
     if (body.activo !== undefined) camposPermitidos.activo = body.activo;
     if (body.fechaIngreso !== undefined) camposPermitidos.fechaIngreso = body.fechaIngreso;
     if (body.jefeSuperiorId !== undefined) camposPermitidos.jefeSuperiorId = body.jefeSuperiorId;
+    if (body.numeroEmpleado !== undefined) camposPermitidos.numeroEmpleado = body.numeroEmpleado;
+    if (body.telefono !== undefined) camposPermitidos.telefono = body.telefono;
+    if (body.direccion !== undefined) camposPermitidos.direccion = body.direccion;
     if (body.password && body.password.trim().length > 0) {
       camposPermitidos.passwordHash = await bcrypt.hash(body.password, 10);
     }

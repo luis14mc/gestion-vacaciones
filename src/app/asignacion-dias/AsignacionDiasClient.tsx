@@ -235,15 +235,24 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
           b.tipoAusencia === formData.tipoAusenciaId
       );
 
+      let cantidadActual = 0;
+      if (balanceActual) {
+        cantidadActual = Number.parseFloat(balanceActual.cantidadInicial) || 0;
+      }
+
       let cantidadFinal = Number.parseFloat(formData.cantidadAsignada);
 
-      if (balanceActual && formData.operacion !== "reemplazar") {
-        const cantidadActual = Number.parseFloat(balanceActual.cantidadInicial);
-        if (formData.operacion === "sumar") {
-          cantidadFinal = cantidadActual + cantidadFinal;
-        } else if (formData.operacion === "restar") {
-          cantidadFinal = cantidadActual - cantidadFinal;
-          if (cantidadFinal < 0) cantidadFinal = 0;
+      if (formData.operacion === "sumar") {
+        cantidadFinal = cantidadActual + cantidadFinal;
+      } else if (formData.operacion === "restar") {
+        if (cantidadActual === 0) {
+          notify.warning("El empleado no tiene días asignados para restar.");
+          return;
+        }
+        cantidadFinal = cantidadActual - cantidadFinal;
+        if (cantidadFinal < 0) {
+          notify.warning("No se pueden restar más días de los que tiene asignados.");
+          return;
         }
       }
 
@@ -290,9 +299,17 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     const operacionTexto = formData.operacion === "sumar" ? "sumarán" :
       formData.operacion === "restar" ? "restarán" : "asignarán";
 
+    setModalAbierto(false);
+
+    // Pequeño delay para asegurar que el modal se cierre antes de lanzar la alerta
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     const result = await confirmAction('¿Confirmar asignación masiva?', `Se ${operacionTexto} ${formData.cantidadAsignada} días de ${tipo?.nombre} a todos los empleados del departamento ${departamento?.nombre} para el año ${anioSeleccionado}.`, { confirmText: 'Sí, continuar', icon: 'warning' });
 
-    if (!result.confirmed) return;
+    if (!result.confirmed) {
+      setModalAbierto(true);
+      return;
+    }
 
     try {
       const res = await fetch("/api/asignacion-masiva", {
@@ -310,7 +327,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
       const data = await res.json();
 
       if (data.success) {
-        setModalAbierto(false);
+        // Pequeño delay para asegurar que las columnas generadas se actualicen en BD
 
         // Pequeño delay para asegurar que las columnas generadas se actualicen en BD
         await new Promise(resolve => setTimeout(resolve, 200));

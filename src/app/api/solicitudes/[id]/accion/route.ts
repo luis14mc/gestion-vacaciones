@@ -3,11 +3,11 @@
  * Ejecuta una acción del workflow sobre una solicitud
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, isNull } from 'drizzle-orm';
-import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { ejecutarAccion, obtenerAccionesParaSolicitud } from '@/services/workflow.service';
-import type { AccionSolicitud } from '@/lib/domain/state-machine';export async function GET(
+import type { AccionSolicitud } from '@/lib/domain/state-machine';
+
+export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {

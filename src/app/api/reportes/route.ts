@@ -40,12 +40,15 @@ export async function GET(request: NextRequest) {
       case 'departamentos':
         data = await generarReporteDepartamentos(anio, departamentoId);
         break;
+      case 'proyecciones':
+        data = await generarReporteProyecciones(anio, departamentoId);
+        break;
       case 'ausentismo':
         data = await generarReporteAusentismo(fechaInicio, fechaFin, departamentoId);
         break;
       default:
         return NextResponse.json(
-          { success: false, error: 'Tipo de reporte no válido. Use: balances, solicitudes, departamentos, ausentismo' },
+          { success: false, error: 'Tipo de reporte no válido. Use: balances, solicitudes, departamentos, proyecciones, ausentismo' },
           { status: 400 }
         );
     }
@@ -69,10 +72,10 @@ async function generarReporteBalances(anio: number, departamentoId: number | nul
       u.email,
       d.nombre as departamento,
       b.tipo_ausencia,
-      b.cantidad_inicial as asignados,
-      b.cantidad_usada as utilizados,
-      b.cantidad_pendiente as pendientes,
-      b.cantidad_disponible as disponibles
+      COALESCE(b.cantidad_inicial, '0') as asignados,
+      COALESCE(b.cantidad_usada, '0') as utilizados,
+      COALESCE(b.cantidad_pendiente, '0') as pendientes,
+      COALESCE(b.cantidad_disponible, '0') as disponibles
     FROM usuarios u
     LEFT JOIN departamentos d ON d.id = u.departamento_id
     LEFT JOIN balances b ON b.usuario_id = u.id 
@@ -109,7 +112,7 @@ async function generarReporteSolicitudes(
     INNER JOIN usuarios u ON u.id = s.usuario_id
     LEFT JOIN departamentos d ON d.id = u.departamento_id
     WHERE s.fecha_inicio >= ${fechaInicio}
-      AND s.fecha_fin <= ${fechaFin}
+      AND s.fecha_fin <= ${fechaFin + ' 23:59:59'}
       AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
     ORDER BY s.fecha_inicio DESC
@@ -164,7 +167,7 @@ async function generarReporteAusentismo(
     INNER JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
+      AND s.estado IN ('aprobada_rrhh', 'finalizada')
       AND u.activo = true
       AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
@@ -181,7 +184,7 @@ async function generarReporteAusentismo(
     INNER JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
+      AND s.estado IN ('aprobada_rrhh', 'finalizada')
       AND u.activo = true
       AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
@@ -192,5 +195,47 @@ async function generarReporteAusentismo(
   return {
     resumen: [...resumen][0] || {},
     tendencia_mensual: [...tendencia]
+  };
+}
+
+// Reporte de Proyecciones
+async function generarReporteProyecciones(anio: number, departamentoId: number | null) {
+  // Próximos a vencer (disponibles > 0)
+  const proximos = await db.execute(sql`
+    SELECT 
+      CONCAT(u.nombre, ' ', u.apellido) as empleado,
+      b.tipo_ausencia,
+      b.cantidad_disponible as dias_disponibles,
+      al.fecha_fin as fecha_vencimiento,
+      EXTRACT(DAY FROM (al.fecha_fin::timestamp - CURRENT_DATE::timestamp)) as dias_restantes
+    FROM usuarios u
+    INNER JOIN balances b ON b.usuario_id = u.id
+    INNER JOIN anos_laborales al ON al.id = b.ano_laboral_id
+    WHERE u.activo = true AND u.deleted_at IS NULL
+      AND al.ano = ${anio}
+      AND b.cantidad_disponible::numeric > 0
+      ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
+    ORDER BY dias_restantes ASC
+  `);
+
+  // Acumulados (históricos)
+  const acumulados = await db.execute(sql`
+    SELECT 
+      CONCAT(u.nombre, ' ', u.apellido) as empleado,
+      b.tipo_ausencia,
+      b.cantidad_disponible as dias_acumulados
+    FROM usuarios u
+    INNER JOIN balances b ON b.usuario_id = u.id
+    INNER JOIN anos_laborales al ON al.id = b.ano_laboral_id
+    WHERE u.activo = true AND u.deleted_at IS NULL
+      AND al.ano < ${anio}
+      AND b.cantidad_disponible::numeric > 0
+      ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
+    ORDER BY b.cantidad_disponible::numeric DESC
+  `);
+
+  return {
+    proximos_vencer: [...proximos],
+    dias_acumulados: [...acumulados]
   };
 }

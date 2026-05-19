@@ -191,7 +191,7 @@ async function generarCSVAusentismo(fechaInicio: string, fechaFin: string, depar
     INNER JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.fecha_inicio >= ${fechaInicio}
       AND s.fecha_fin <= ${fechaFin}
-      AND s.estado IN ('aprobada_rrhh', 'aprobada_ejecutiva', 'finalizada')
+      AND s.estado IN ('aprobada_rrhh', 'finalizada')
       AND u.activo = true
       AND s.deleted_at IS NULL
       ${departamentoId ? sql`AND u.departamento_id = ${departamentoId}` : sql``}

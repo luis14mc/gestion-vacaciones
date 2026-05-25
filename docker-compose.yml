@@ -1,0 +1,134 @@
+# =============================================================
+# DOCKER COMPOSE - EC2 t3.medium (2 vCPU, 4 GB RAM)
+# =============================================================
+# Servicios:
+#   1. vacaciones-app   (Next.js standalone)  → :3000
+#   2. postgres          (PostgreSQL 16)       → :5432
+#   3. nginx             (Reverse Proxy)       → :80/:443
+# =============================================================
+# La "Web nueva" (Next.js + Django) se agrega en su propio
+# docker-compose.yml y se conecta a la red 'cni-network'.
+# =============================================================
+
+services:
+
+  # ─────────────────────────────────────────────────────────
+  # PostgreSQL 16 (Compartido por ambas apps)
+  # ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cni-postgres
+    restart: always
+    ports:
+      - "127.0.0.1:5432:5432"  # Solo accesible desde localhost
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cni_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-vacaciones}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d  # Scripts de inicialización
+    # ┌─────────────────────────────────────────────────┐
+    # │ TUNING PostgreSQL para 4GB RAM compartida       │
+    # │ shared_buffers = 256MB (recomendado: 25% de RAM │
+    # │ disponible para PG, ~1GB → 256MB)               │
+    # └─────────────────────────────────────────────────┘
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c effective_cache_size=512MB
+        -c work_mem=4MB
+        -c maintenance_work_mem=64MB
+        -c max_connections=50
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=8MB
+        -c random_page_cost=1.1
+        -c log_min_duration_statement=1000
+        -c idle_in_transaction_session_timeout=30000
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cni_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - cni-network
+
+  # ─────────────────────────────────────────────────────────
+  # App Vacaciones (Next.js Standalone)
+  # ─────────────────────────────────────────────────────────
+  vacaciones-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cni-vacaciones
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"  # Solo accesible vía Nginx
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 896M
+          cpus: '0.75'
+        reservations:
+          memory: 384M
+    networks:
+      - cni-network
+
+  # ─────────────────────────────────────────────────────────
+  # Nginx (Reverse Proxy compartido para TODAS las apps)
+  # ─────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: cni-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro           # Certificados SSL
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - vacaciones-app
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.1'
+    networks:
+      - cni-network
+
+# ─────────────────────────────────────────────────────────
+# Volúmenes persistentes
+# ─────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+# ─────────────────────────────────────────────────────────
+# Red compartida (la otra app se conecta a esta red)
+# ─────────────────────────────────────────────────────────
+networks:
+  cni-network:
+    name: cni-network
+    driver: bridge

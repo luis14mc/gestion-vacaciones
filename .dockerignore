@@ -1,0 +1,55 @@
+# Dependencias
+node_modules
+.pnpm-store
+
+# Build artifacts
+.next
+out
+build
+dist
+
+# Git
+.git
+.gitignore
+
+# Testing
+tests
+coverage
+vitest.config.ts
+vitest.config.integration.ts
+
+# Docs y herramientas
+docs
+postman
+thunder-tests
+MANUAL_TECNICO.md
+README.md
+
+# Entornos locales
+.env
+.env.local
+.env.test
+.env*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Cache y temporales
+tsconfig.tsbuildinfo
+.DS_Store
+*.log
+
+# Docker (no copiar dentro de sí mismo)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Vercel (ya no se usa)
+vercel.json
+.vercel
+
+# Drizzle migrations (se ejecutan aparte)
+drizzle

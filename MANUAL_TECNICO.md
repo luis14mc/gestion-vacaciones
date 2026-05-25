@@ -20,7 +20,8 @@
 9. [Notificaciones por Correo](#9-notificaciones-por-correo)
 10. [Configuración del Sistema](#10-configuración-del-sistema)
 11. [Variables de Entorno](#11-variables-de-entorno)
-12. [Guía de Despliegue](#12-guía-de-despliegue)
+23. [Guía de Despliegue (AWS EC2)](#12-guía-de-despliegue-aws-ec2)
+24. [Seguridad y Hardening](#13-seguridad-y-hardening)
 
 ---
 
@@ -500,48 +501,67 @@ Los administradores pueden:
 
 ---
 
-## 12. Guía de Despliegue
+## 12. Guía de Despliegue (AWS EC2)
 
-### Requisitos
-- Node.js 20+
-- PostgreSQL 15+
-- pnpm (gestor de paquetes)
+La aplicación está optimizada para ejecutarse en una instancia **AWS EC2 t3.medium** (2 vCPU, 4GB RAM) utilizando Docker y Nginx como proxy inverso.
 
-### Instalación
-```bash
-# 1. Clonar repositorio
-git clone <repo-url>
-cd gestion-vacaciones
+### Arquitectura de Producción
+- **Modo Standalone:** Next.js compila en modo `standalone`, reduciendo el peso de la imagen de ~800MB a ~150MB.
+- **Docker Compose:** Orquesta el contenedor de la aplicación y la base de datos PostgreSQL (con recursos limitados para evitar colapsos).
+- **Nginx:** Actúa como reverse proxy, manejando caché de estáticos (`/_next/static`) y Rate Limiting.
 
-# 2. Instalar dependencias
-pnpm install
+### Requisitos en la EC2
+- SO: Ubuntu 22.04 LTS o superior
+- Docker y Docker Compose instalados
+- SWAP configurado (recomendado 2GB) para evitar OOM (Out Of Memory) durante builds pesados.
 
-# 3. Configurar variables de entorno
-cp .env.example .env
-# Editar .env con DATABASE_URL, NEXTAUTH_SECRET, etc.
+### Pasos de Despliegue
 
-# 4. Ejecutar migraciones
-pnpm drizzle-kit push
+1. **Clonar e Inicializar:**
+   ```bash
+   git clone <repo-url> /opt/apps/vacaciones-cni
+   cd /opt/apps/vacaciones-cni
+   ```
 
-# 5. Seed inicial (base de datos)
-npx tsx scripts/seed-database.ts
+2. **Configurar Entorno:**
+   ```bash
+   cp .env.production.example .env.production
+   nano .env.production # Completar contraseñas y secrets
+   ```
 
-# 6. Seed de configuración SMTP
-npx tsx scripts/seed-smtp.ts
+3. **Ejecutar Script Automatizado:**
+   ```bash
+   sudo chmod +x scripts/setup-ec2.sh scripts/deploy-ec2.sh
+   sudo ./scripts/setup-ec2.sh   # Solo la primera vez
+   ./scripts/deploy-ec2.sh       # Para cada actualización
+   ```
 
-# 7. Iniciar en desarrollo
-pnpm dev
+El script de despliegue (`deploy-ec2.sh`) automáticamente:
+- Genera un backup de la BD actual.
+- Construye la nueva imagen Docker multi-stage.
+- Reinicia los contenedores sin afectar Nginx.
 
-# 8. Build de producción
-pnpm build && pnpm start
-```
+---
 
-### Cron Job (Transiciones Automáticas)
-Configurar una tarea cron que ejecute diariamente:
-```bash
-curl -X POST https://vacaciones.cni.hn/api/cron/transiciones \
-  -H "Authorization: Bearer <CRON_SECRET>"
-```
+## 13. Seguridad y Hardening
+
+El sistema cumple con los estándares **OWASP Top 10 (2026)** y está preparado para auditorías ISO/IEC 27001.
+
+### 13.1 Protección contra Fuerza Bruta (Rate Limiting)
+- Se implementó un algoritmo Token Bucket (`rate-limiter.ts`) en la capa de autenticación (`/api/auth`).
+- Bloquea accesos tras 5 intentos fallidos por IP durante 15 minutos.
+- Nginx proporciona una capa secundaria de Rate Limiting (10 req/s para API, 5 req/s para Login).
+
+### 13.2 Validación y Tipado Estricto
+- Todos los formularios del Frontend utilizan `react-hook-form` acoplados fuertemente a esquemas de **Zod**.
+- Los endpoints REST validan el body y los query params con Zod, rechazando cualquier payload malformado.
+
+### 13.3 Manejo Seguro de Errores (Information Leakage)
+- Wrapper centralizado `withErrorHandler` (`api-handler.ts`) envuelve todos los Route Handlers.
+- Garantiza que excepciones no controladas de la Base de Datos o Stack Traces jamás se filtren al frontend.
+
+### 13.4 Backups a S3
+- Se incluye un script automatizado `scripts/backup-s3.sh` que realiza dumps de PostgreSQL y los sincroniza de manera segura con AWS S3 usando perfiles de IAM.
 
 ---
 

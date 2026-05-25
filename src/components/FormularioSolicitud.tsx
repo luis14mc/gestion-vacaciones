@@ -41,7 +41,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
   // Initializing Form
   const form = useForm<SolicitudFormData>({
-    resolver: zodResolver(solicitudSchema),
+    resolver: zodResolver(solicitudSchema) as any,
     defaultValues: {
       tipoAusenciaId: '',
       unidad: 'dias',
@@ -53,6 +53,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       cantidad: '',
       motivo: '',
       observaciones: '',
+      requiereMotivo: false,
     },
   });
 
@@ -88,10 +89,14 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   
   const mostrarBalances = esVacaciones || esLicenciaMedica;
 
-  // Set unit default depending on selection
+  // Set unit and requiereMotivo default depending on selection
   useEffect(() => {
     if (tipoSeleccionado) {
       form.setValue('unidad', tipoSeleccionado.permiteHoras ? 'horas' : 'dias');
+      
+      const esVacacionesTemp = tipoSeleccionado.tipo === 'vacaciones';
+      const esPermisoTemp = tipoSeleccionado.permiteHoras;
+      form.setValue('requiereMotivo', esPermisoTemp || !esVacacionesTemp);
     }
   }, [tipoSeleccionado, form]);
 
@@ -176,10 +181,10 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
       <CardContent className="px-0">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6">
 
             <FormField
-              control={form.control}
+              control={form.control as any}
               name="tipoAusenciaId"
               render={({ field }) => (
                 <FormItem>
@@ -203,10 +208,10 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
               )}
             />
 
-            {esPermiso && <PermisoHorasSection form={form} />}
+            {esPermiso && <PermisoHorasSection form={form as any} />}
             {necesitaFechas && (
               <VacacionesSection
-                form={form}
+                form={form as any}
                 titulo={esVacaciones ? 'VACACIONES' : tipoSeleccionado?.nombre?.toUpperCase()}
               />
             )}
@@ -221,7 +226,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
             {tipoAusenciaId && (
               <FormField
-                control={form.control}
+                control={form.control as any}
                 name="motivo"
                 render={({ field }) => (
                   <FormItem>
@@ -243,7 +248,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
             {esVacaciones && (
               <FormField
-                control={form.control}
+                control={form.control as any}
                 name="observaciones"
                 render={({ field }) => (
                   <FormItem>

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { db } from '../src/lib/db';
 import { configuracion } from '../src/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 async function seedSmtp() {
   console.log('Seeding SMTP config...');
@@ -71,7 +72,7 @@ async function seedSmtp() {
     } catch (e: any) {
       if (e.code === '23505' || e.code === '23505') { // Unique violation
         console.log(`Config ${conf.clave} already exists, updating...`);
-        await db.update(configuracion).set(conf).where((table) => table.clave === conf.clave);
+        await db.update(configuracion).set(conf).where(eq(configuracion.clave, conf.clave));
       } else {
         console.error(`Error inserting ${conf.clave}:`, e.message);
       }

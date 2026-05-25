@@ -16,6 +16,7 @@ export const solicitudSchema = z.object({
 
     motivo: z.string().optional(),
     observaciones: z.string().optional(),
+    requiereMotivo: z.boolean().optional().default(false),
 }).superRefine((data, ctx) => {
     if (data.unidad === 'horas') {
         if (!data.fechaInicio) {
@@ -48,6 +49,17 @@ export const solicitudSchema = z.object({
                 });
             }
         }
+        if (!data.motivo || data.motivo.length < 5) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Debe proveer un motivo detallado (mínimo 5 caracteres).',
+                path: ['motivo'],
+            });
+        }
+    }
+
+    // Validación condicional del motivo (para licencias o permisos que no sean vacaciones)
+    if (data.requiereMotivo) {
         if (!data.motivo || data.motivo.length < 5) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,

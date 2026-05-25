@@ -14,6 +14,7 @@ import {
 import type { Session } from "next-auth";
 import { notify, confirmAction } from '@/lib/swal';
 import { UsuarioDialog } from "./UsuarioDialog";
+import { ImportarUsuariosDialog } from "./ImportarUsuariosDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [importarOpen, setImportarOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -333,15 +335,24 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                   </SelectContent>
                 </Select>
 
-                {/* Botón nuevo usuario */}
-                <Button
-                  onClick={abrirModalNuevo}
-                  className="w-full sm:w-auto h-10"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Nuevo Usuario</span>
-                  <span className="sm:hidden">Nuevo</span>
-                </Button>
+                {/* Botón nuevo usuario e importar */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setImportarOpen(true)}
+                    className="flex-1 sm:flex-none h-10"
+                  >
+                    Importar Excel
+                  </Button>
+                  <Button
+                    onClick={abrirModalNuevo}
+                    className="flex-1 sm:flex-none h-10"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Nuevo Usuario</span>
+                    <span className="sm:hidden">Nuevo</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -609,6 +620,12 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
         onSuccess={() => {
           cargarUsuarios();
         }}
+      />
+
+      <ImportarUsuariosDialog 
+        open={importarOpen} 
+        onOpenChange={setImportarOpen}
+        onSuccess={cargarUsuarios}
       />
     </div>
   );

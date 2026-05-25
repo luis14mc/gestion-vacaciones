@@ -16,7 +16,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Instalar pnpm globalmente
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Copiar solo archivos de dependencias (cache-friendly)
 COPY package.json pnpm-lock.yaml ./
@@ -30,7 +30,7 @@ RUN pnpm install --frozen-lockfile --prod
 FROM node:22-alpine AS builder
 
 RUN apk add --no-cache libc6-compat
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /app
 
@@ -48,7 +48,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Limitar memoria del build para no reventar la EC2
-ENV NODE_OPTIONS="--max-old-space-size=1536"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 
 # Compilar
 RUN pnpm build
@@ -95,7 +95,7 @@ EXPOSE 3000
 
 # Health check para Docker / balanceador
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/login || exit 1
 
 # Iniciar servidor standalone
 CMD ["node", "server.js"]

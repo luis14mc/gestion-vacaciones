@@ -35,15 +35,27 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────
-# 3. INSTALAR GIT
+# 3. INSTALAR HERRAMIENTAS CLAVE (Git, AWS CLI, CloudWatch)
 # ─────────────────────────────────────────────────────────
-echo "[3/7] Verificando Git..."
-apt install -y git
+echo "[3/8] Instalando Git y utilidades AWS..."
+apt install -y git awscli unzip
+
+# Instalar CloudWatch Agent
+if [ ! -f /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent ]; then
+    echo "Instalando Amazon CloudWatch Agent..."
+    wget -q https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+    dpkg -i -E ./amazon-cloudwatch-agent.deb
+    rm ./amazon-cloudwatch-agent.deb
+    echo "✓ CloudWatch Agent instalado (requiere IAM Role para activarse)"
+else
+    echo "✓ CloudWatch Agent ya instalado"
+fi
+
 
 # ─────────────────────────────────────────────────────────
 # 4. CONFIGURAR SWAP (2 GB extra para builds pesados)
 # ─────────────────────────────────────────────────────────
-echo "[4/7] Configurando SWAP de 2GB..."
+echo "[4/8] Configurando SWAP de 2GB..."
 if [ ! -f /swapfile ]; then
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
@@ -62,7 +74,7 @@ fi
 # ─────────────────────────────────────────────────────────
 # 5. OPTIMIZAR KERNEL PARA SERVIDOR WEB
 # ─────────────────────────────────────────────────────────
-echo "[5/7] Optimizando parámetros del kernel..."
+echo "[5/8] Optimizando parámetros del kernel..."
 cat >> /etc/sysctl.conf <<EOF
 
 # === CNI Server Tuning ===
@@ -84,7 +96,7 @@ sysctl -p
 # ─────────────────────────────────────────────────────────
 # 6. CREAR ESTRUCTURA DE DIRECTORIOS
 # ─────────────────────────────────────────────────────────
-echo "[6/7] Creando estructura de directorios..."
+echo "[6/8] Creando estructura de directorios..."
 mkdir -p /opt/apps/vacaciones-cni
 mkdir -p /opt/apps/web-nueva
 mkdir -p /opt/backups
@@ -92,22 +104,27 @@ mkdir -p /opt/apps/vacaciones-cni/nginx/ssl
 chown -R ubuntu:ubuntu /opt/apps /opt/backups
 
 # ─────────────────────────────────────────────────────────
-# 7. CONFIGURAR CRON PARA BACKUPS Y TRANSICIONES
+# 7. CONFIGURAR CRON PARA BACKUPS A S3 Y TRANSICIONES
 # ─────────────────────────────────────────────────────────
-echo "[7/7] Configurando cron jobs..."
+echo "[7/8] Configurando cron jobs..."
 (crontab -l 2>/dev/null; echo "
-# Backup diario de PostgreSQL a las 2:00 AM
-0 2 * * * docker exec cni-postgres pg_dumpall -U cni_admin | gzip > /opt/backups/vacaciones_\$(date +\\%Y\\%m\\%d).sql.gz 2>/dev/null
+# Backup diario de PostgreSQL a S3 a las 2:00 AM
+0 2 * * * /opt/apps/vacaciones-cni/scripts/backup-s3.sh >> /var/log/backup-s3.log 2>&1
 
 # Transiciones automáticas de solicitudes a medianoche
 0 0 * * * curl -s -X POST http://localhost:3000/api/cron/transiciones -H 'Authorization: Bearer \$(grep CRON_SECRET /opt/apps/vacaciones-cni/.env.production | cut -d= -f2)' > /dev/null 2>&1
 
-# Limpiar backups mayores a 30 días
-0 3 * * 0 find /opt/backups -name '*.sql.gz' -mtime +30 -delete
-
 # Limpiar logs de Docker semanalmente
 0 4 * * 0 docker system prune -f > /dev/null 2>&1
 ") | crontab -
+
+# ─────────────────────────────────────────────────────────
+# 8. CONFIGURAR CLOUDWATCH BÁSICO (Opcional)
+# ─────────────────────────────────────────────────────────
+echo "[8/8] Preparando CloudWatch..."
+# Si tienes un archivo config.json en el repo, descomenta esto para aplicarlo:
+# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/apps/vacaciones-cni/scripts/cloudwatch-config.json
+
 
 echo ""
 echo "═══════════════════════════════════════════════════════"

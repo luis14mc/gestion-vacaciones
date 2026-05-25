@@ -5,6 +5,7 @@ import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/services/rbac.service";
+import { checkRateLimit, resetRateLimit } from "@/lib/rate-limiter";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -21,6 +22,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const email = credentials.email as string;
         const password = credentials.password as string;
 
+        // 🛡️ Rate Limiting (Protección contra fuerza bruta)
+        const rateLimitResult = checkRateLimit(email.toLowerCase());
+        if (!rateLimitResult.allowed) {
+          const waitMinutes = Math.ceil(rateLimitResult.remainingMs / 60000);
+          throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${waitMinutes} minutos.`);
+        }
+
         // Buscar usuario
         const usuario = await db.query.usuarios.findFirst({
           where: eq(usuarios.email, email.toLowerCase()),
@@ -36,6 +44,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!passwordValida) {
           return null;
         }
+
+        // ✅ Login exitoso: Resetear contador de intentos fallidos
+        resetRateLimit(email.toLowerCase());
 
         // Actualizar último acceso
         await db

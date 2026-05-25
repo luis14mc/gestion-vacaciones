@@ -5,40 +5,36 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { procesarTransicionesAutomaticas } from '@/services/workflow.service';
+import { withErrorHandler } from '@/lib/api-handler';
 
-const CRON_SECRET = process.env.CRON_SECRET || 'cni-cron-secret-2026';
-
-export async function POST(req: NextRequest) {
-  try {
-    // Validar autorización
-    const authHeader = req.headers.get('authorization');
-    if (authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
-    }
-
-    const resultado = await procesarTransicionesAutomaticas();
-
-    return NextResponse.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      ...resultado,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Error interno',
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
+export const POST = withErrorHandler(async (req: NextRequest) => {
+  const CRON_SECRET = process.env.CRON_SECRET;
+  
+  if (!CRON_SECRET) {
+    console.error('[CRON Error] CRON_SECRET no está configurado en las variables de entorno.');
+    return NextResponse.json({ success: false, error: 'Configuración del servidor incompleta' }, { status: 500 });
   }
-}
+
+  // Validar autorización
+  const authHeader = req.headers.get('authorization');
+  if (authHeader !== `Bearer ${CRON_SECRET}`) {
+    return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
+  }
+
+  const resultado = await procesarTransicionesAutomaticas();
+
+  return NextResponse.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    ...resultado,
+  });
+});
 
 // GET para verificar estado (health check)
-export async function GET() {
+export const GET = withErrorHandler(async () => {
   return NextResponse.json({
     service: 'cron-transiciones',
     status: 'ok',
     timestamp: new Date().toISOString(),
   });
-}
+});

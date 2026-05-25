@@ -3,8 +3,26 @@ import { db } from '@/lib/db';
 import { departamentos, usuarios } from '@/lib/db/schema';
 import { isNull, asc, eq, inArray, and, sql } from 'drizzle-orm';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { withErrorHandler } from '@/lib/api-handler';
+import { z } from 'zod';
 
 export const runtime = 'nodejs';
+
+// Esquemas Zod para la API
+const crearDepartamentoSchema = z.object({
+  codigo: z.string().min(1, 'El código es requerido').max(20),
+  nombre: z.string().min(1, 'El nombre es requerido').max(100),
+  descripcion: z.string().optional().nullable(),
+  jefeId: z.number().int().positive().optional().nullable(),
+});
+
+const actualizarDepartamentoSchema = z.object({
+  id: z.number().int().positive('ID requerido'),
+  nombre: z.string().min(1).max(100).optional(),
+  descripcion: z.string().optional().nullable(),
+  jefeId: z.number().int().positive().optional().nullable(),
+  activo: z.boolean().optional(),
+});
 
 async function enriquecerConJefes(deps: any[]) {
   const jefeIds = deps
@@ -29,70 +47,57 @@ async function enriquecerConJefes(deps: any[]) {
 }
 
 // GET: Listar departamentos
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'No autenticado' },
-        { status: 401 }
-      );
-    }
-
-    const deps = await db.query.departamentos.findMany({
-      where: isNull(departamentos.deletedAt),
-      orderBy: [asc(departamentos.nombre)]
-    });
-
-    // Contar empleados por departamento
-    const counts = await db
-      .select({
-        departamentoId: usuarios.departamentoId,
-        total: sql<number>`count(*)::int`,
-      })
-      .from(usuarios)
-      .where(and(isNull(usuarios.deletedAt), eq(usuarios.activo, true)))
-      .groupBy(usuarios.departamentoId);
-
-    const countMap = new Map(counts.map(c => [c.departamentoId, c.total]));
-
-    const depsConJefe = await enriquecerConJefes(deps);
-    const depsCompletos = depsConJefe.map(d => ({
-      ...d,
-      totalEmpleados: countMap.get(d.id) || 0,
-    }));
-
-    return NextResponse.json({ success: true, data: depsCompletos });
-  } catch (error) {
-    console.error('Error obteniendo departamentos:', error);
+export const GET = withErrorHandler(async (request: NextRequest) => {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json(
-      { success: false, error: 'Error al obtener departamentos' },
-      { status: 500 }
+      { success: false, error: 'No autenticado' },
+      { status: 401 }
     );
   }
-}
+
+  const deps = await db.query.departamentos.findMany({
+    where: isNull(departamentos.deletedAt),
+    orderBy: [asc(departamentos.nombre)]
+  });
+
+  // Contar empleados por departamento
+  const counts = await db
+    .select({
+      departamentoId: usuarios.departamentoId,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(usuarios)
+    .where(and(isNull(usuarios.deletedAt), eq(usuarios.activo, true)))
+    .groupBy(usuarios.departamentoId);
+
+  const countMap = new Map(counts.map(c => [c.departamentoId, c.total]));
+
+  const depsConJefe = await enriquecerConJefes(deps);
+  const depsCompletos = depsConJefe.map(d => ({
+    ...d,
+    totalEmpleados: countMap.get(d.id) || 0,
+  }));
+
+  return NextResponse.json({ success: true, data: depsCompletos });
+});
 
 // POST: Crear departamento
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+  }
+  if (!session.esAdmin && !session.esRrhh) {
+    return NextResponse.json({ success: false, error: 'Sin permisos' }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const validatedData = crearDepartamentoSchema.parse(body);
+
+  const { codigo, nombre, descripcion, jefeId } = validatedData;
+
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
-    }
-    if (!session.esAdmin && !session.esRrhh) {
-      return NextResponse.json({ success: false, error: 'Sin permisos' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const { codigo, nombre, descripcion, jefeId } = body;
-
-    if (!codigo || !nombre) {
-      return NextResponse.json(
-        { success: false, error: 'Código y nombre son requeridos' },
-        { status: 400 }
-      );
-    }
-
     const [nuevo] = await db
       .insert(departamentos)
       .values({
@@ -118,158 +123,136 @@ export async function POST(request: NextRequest) {
       message: 'Departamento creado exitosamente',
     });
   } catch (error: any) {
-    console.error('Error creando departamento:', error);
     if (error?.code === '23505') {
       return NextResponse.json(
         { success: false, error: 'Ya existe un departamento con ese código' },
         { status: 409 }
       );
     }
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al crear departamento' },
-      { status: 400 }
-    );
+    throw error; // Let the withErrorHandler catch it
   }
-}
+});
 
 // PATCH: Actualizar departamento
-export async function PATCH(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
-    }
-    if (!session.esAdmin && !session.esRrhh) {
-      return NextResponse.json({ success: false, error: 'Sin permisos' }, { status: 403 });
-    }
+export const PATCH = withErrorHandler(async (request: NextRequest) => {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+  }
+  if (!session.esAdmin && !session.esRrhh) {
+    return NextResponse.json({ success: false, error: 'Sin permisos' }, { status: 403 });
+  }
 
-    const body = await request.json();
-    const { id, nombre, descripcion, jefeId, activo } = body;
+  const body = await request.json();
+  const validatedData = actualizarDepartamentoSchema.parse(body);
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'ID requerido' }, { status: 400 });
-    }
+  const { id, nombre, descripcion, jefeId, activo } = validatedData;
 
-    const deptActual = await db.query.departamentos.findFirst({
-      where: eq(departamentos.id, id),
-    });
+  const deptActual = await db.query.departamentos.findFirst({
+    where: eq(departamentos.id, id),
+  });
 
-    if (!deptActual) {
-      return NextResponse.json({ success: false, error: 'Departamento no encontrado' }, { status: 404 });
-    }
+  if (!deptActual) {
+    return NextResponse.json({ success: false, error: 'Departamento no encontrado' }, { status: 404 });
+  }
 
-    const campos: Record<string, any> = { updatedAt: new Date().toISOString() };
-    if (nombre !== undefined) campos.nombre = nombre;
-    if (descripcion !== undefined) campos.descripcion = descripcion;
-    if (activo !== undefined) campos.activo = activo;
+  const campos: Record<string, any> = { updatedAt: new Date().toISOString() };
+  if (nombre !== undefined) campos.nombre = nombre;
+  if (descripcion !== undefined) campos.descripcion = descripcion;
+  if (activo !== undefined) campos.activo = activo;
 
-    // Gestión del cambio de jefe
-    if (jefeId !== undefined) {
-      const nuevoJefeId = jefeId === null || jefeId === '' ? null : Number(jefeId);
-      campos.jefeId = nuevoJefeId;
+  // Gestión del cambio de jefe
+  if (jefeId !== undefined) {
+    const nuevoJefeId = jefeId === null ? null : jefeId;
+    campos.jefeId = nuevoJefeId;
 
-      if (deptActual.jefeId && deptActual.jefeId !== nuevoJefeId) {
-        const otrosDepts = await db.query.departamentos.findFirst({
-          where: and(
-            eq(departamentos.jefeId, deptActual.jefeId),
-            isNull(departamentos.deletedAt),
-            sql`${departamentos.id} != ${id}`
-          ),
-        });
-        if (!otrosDepts) {
-          await db
-            .update(usuarios)
-            .set({ esDirector: false, updatedAt: new Date().toISOString() })
-            .where(eq(usuarios.id, deptActual.jefeId));
-        }
-      }
-
-      if (nuevoJefeId) {
+    if (deptActual.jefeId && deptActual.jefeId !== nuevoJefeId) {
+      const otrosDepts = await db.query.departamentos.findFirst({
+        where: and(
+          eq(departamentos.jefeId, deptActual.jefeId),
+          isNull(departamentos.deletedAt),
+          sql`${departamentos.id} != ${id}`
+        ),
+      });
+      if (!otrosDepts) {
         await db
           .update(usuarios)
-          .set({
-            esDirector: true,
-            departamentoId: id,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(usuarios.id, nuevoJefeId));
+          .set({ esDirector: false, updatedAt: new Date().toISOString() })
+          .where(eq(usuarios.id, deptActual.jefeId));
       }
     }
 
-    const [actualizado] = await db
-      .update(departamentos)
-      .set(campos)
-      .where(eq(departamentos.id, id))
-      .returning();
-
-    return NextResponse.json({
-      success: true,
-      data: actualizado,
-      message: 'Departamento actualizado exitosamente',
-    });
-  } catch (error) {
-    console.error('Error actualizando departamento:', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al actualizar' },
-      { status: 400 }
-    );
+    if (nuevoJefeId) {
+      await db
+        .update(usuarios)
+        .set({
+          esDirector: true,
+          departamentoId: id,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(usuarios.id, nuevoJefeId));
+    }
   }
-}
+
+  const [actualizado] = await db
+    .update(departamentos)
+    .set(campos)
+    .where(eq(departamentos.id, id))
+    .returning();
+
+  return NextResponse.json({
+    success: true,
+    data: actualizado,
+    message: 'Departamento actualizado exitosamente',
+  });
+});
 
 // DELETE: Soft delete departamento
-export async function DELETE(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
-    }
-    if (!session.esAdmin) {
-      return NextResponse.json({ success: false, error: 'Solo administradores' }, { status: 403 });
-    }
+export const DELETE = withErrorHandler(async (request: NextRequest) => {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+  }
+  if (!session.esAdmin) {
+    return NextResponse.json({ success: false, error: 'Solo administradores' }, { status: 403 });
+  }
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'ID requerido' }, { status: 400 });
-    }
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) {
+    return NextResponse.json({ success: false, error: 'ID requerido' }, { status: 400 });
+  }
 
-    const deptId = Number.parseInt(id);
+  const deptId = Number.parseInt(id);
 
-    // Verificar que no tenga empleados activos
-    const [empleadosCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(usuarios)
-      .where(and(
-        eq(usuarios.departamentoId, deptId),
-        eq(usuarios.activo, true),
-        isNull(usuarios.deletedAt)
-      ));
+  // Verificar que no tenga empleados activos
+  const [empleadosCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(usuarios)
+    .where(and(
+      eq(usuarios.departamentoId, deptId),
+      eq(usuarios.activo, true),
+      isNull(usuarios.deletedAt)
+    ));
 
-    if (empleadosCount.count > 0) {
-      return NextResponse.json(
-        { success: false, error: `No se puede eliminar: tiene ${empleadosCount.count} empleado(s) activo(s)` },
-        { status: 409 }
-      );
-    }
-
-    await db
-      .update(departamentos)
-      .set({
-        activo: false,
-        deletedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(departamentos.id, deptId));
-
-    return NextResponse.json({
-      success: true,
-      message: 'Departamento eliminado exitosamente',
-    });
-  } catch (error) {
-    console.error('Error eliminando departamento:', error);
+  if (empleadosCount.count > 0) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error al eliminar' },
-      { status: 400 }
+      { success: false, error: `No se puede eliminar: tiene ${empleadosCount.count} empleado(s) activo(s)` },
+      { status: 409 }
     );
   }
-}
+
+  await db
+    .update(departamentos)
+    .set({
+      activo: false,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(departamentos.id, deptId));
+
+  return NextResponse.json({
+    success: true,
+    message: 'Departamento eliminado exitosamente',
+  });
+});

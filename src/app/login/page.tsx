@@ -13,10 +13,6 @@ import {
   CheckCircle,
   CalendarDays,
   ShieldCheck,
-  Shield,
-  Users,
-  Briefcase,
-  User,
   AlertCircle,
   Loader2,
 } from 'lucide-react';
@@ -32,16 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 
-// ─── Demo users (match seed data) ────────────────────
-const DEMO_USERS = [
-  { label: 'Admin', email: 'admin@cni.cl', password: 'Test123!', icon: Shield },
-  { label: 'RRHH', email: 'rrhh@cni.cl', password: 'Test123!', icon: Users },
-  { label: 'Jefe', email: 'jefe.ti@cni.cl', password: 'Test123!', icon: Briefcase },
-  { label: 'Empleado', email: 'ana.dev@cni.cl', password: 'Test123!', icon: User },
-] as const;
 
 export default function LoginPage() {
   return (
@@ -97,11 +84,6 @@ function LoginForm() {
     }
   };
 
-  const handleDemoLogin = (demoEmail: string, demoPassword: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setError('');
-  };
 
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-muted/15 to-background flex items-center justify-center p-4">
@@ -272,36 +254,7 @@ function LoginForm() {
                 </form>
               </CardContent>
 
-              <CardFooter className="flex-col gap-4 border-t border-border pt-6">
-                <div className="flex w-full items-center gap-3">
-                  <Separator className="flex-1 shrink" />
-                  <Badge
-                    variant="secondary"
-                    className="shrink-0 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground"
-                  >
-                    Demo
-                  </Badge>
-                  <Separator className="flex-1 shrink" />
-                </div>
-                <div className="grid w-full grid-cols-4 gap-2">
-                  {DEMO_USERS.map((demo) => {
-                    const Icon = demo.icon;
-                    return (
-                      <Button
-                        key={demo.email}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDemoLogin(demo.email, demo.password)}
-                        className="h-auto flex-col gap-1.5 rounded-lg border-border/80 bg-muted/30 py-2.5 text-[11px] font-medium hover:bg-muted/60"
-                      >
-                        <Icon className="size-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">{demo.label}</span>
-                      </Button>
-                    );
-                  })}
-                </div>
-              </CardFooter>
+
             </Card>
 
             <div className="text-center mt-6">

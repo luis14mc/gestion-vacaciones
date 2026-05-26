@@ -79,7 +79,29 @@ success "Imagen construida"
 log "Deteniendo servicios anteriores..."
 docker compose down --remove-orphans 2>/dev/null || true
 
-log "Iniciando servicios..."
+log "Iniciando PostgreSQL..."
+docker compose up -d postgres
+success "PostgreSQL iniciado"
+
+log "Esperando que PostgreSQL esté listo..."
+sleep 10
+if docker exec cni-postgres pg_isready -U cni_admin >/dev/null 2>&1; then
+    success "PostgreSQL está listo"
+else
+    warn "PostgreSQL podría no estar listo aún, intentando inicialización..."
+fi
+
+log "Inicializando esquema de base de datos..."
+docker run --rm \
+    --network cni-network \
+    -v $(pwd):/app \
+    -w /app \
+    --env-file .env.production \
+    node:22-alpine \
+    sh -c "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile --prod=false && node scripts/init-prod.mjs"
+success "Base de datos inicializada"
+
+log "Iniciando resto de servicios..."
 docker compose up -d
 success "Servicios iniciados"
 

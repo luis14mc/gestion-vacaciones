@@ -104,6 +104,32 @@ services:
     networks:
       - cni-network
 
+  # ─────────────────────────────────────────────────────────
+  # Inicialización de Base de Datos (Setup)
+  # ─────────────────────────────────────────────────────────
+  db-setup:
+    image: node:22-alpine
+    container_name: cni-db-setup
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: development
+    command: >
+      sh -c "corepack enable &&
+             corepack prepare pnpm@9.15.9 --activate &&
+             pnpm install --frozen-lockfile &&
+             pnpm run db:setup"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cni-network
+    profiles:
+      - setup
+
 # ─────────────────────────────────────────────────────────
 # Volúmenes persistentes
 # ─────────────────────────────────────────────────────────

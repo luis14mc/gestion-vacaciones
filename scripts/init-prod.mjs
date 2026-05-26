@@ -21,9 +21,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const sql = postgres(DATABASE_URL + '?sslmode=require', {
+const useSsl = process.env.DATABASE_SSL === 'true';
+
+const sql = postgres(DATABASE_URL, {
   max: 1,
-  ssl: { rejectUnauthorized: false }
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
 });
 
 const db = drizzle(sql);

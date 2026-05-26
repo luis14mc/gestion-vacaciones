@@ -13,9 +13,11 @@ if (!DATABASE_URL) {
 }
 
 // Conexión para migraciones (requiere max: 1)
-const migrationClient = postgres(DATABASE_URL + '?sslmode=require', {
+const useSsl = process.env.DATABASE_SSL === 'true';
+
+const migrationClient = postgres(DATABASE_URL, {
   max: 1,
-  ssl: { rejectUnauthorized: false },
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
 });
 
 const db = drizzle(migrationClient);

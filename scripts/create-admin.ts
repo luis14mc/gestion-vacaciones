@@ -24,9 +24,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const client = postgres(DATABASE_URL + '?sslmode=require', { 
+const useSsl = process.env.DATABASE_SSL === 'true';
+
+const client = postgres(DATABASE_URL, { 
   max: 1,
-  ssl: { rejectUnauthorized: false }
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
 });
 const db = drizzle(client);
 
@@ -43,16 +45,42 @@ async function createAdmin() {
     const adminRole = rolesAdmin[0];
 
     // 2. Verificar si el usuario ya existe
-    const email = 'soporteit@cni.hn';
+    const email = process.env.ADMIN_EMAIL || 'soporteit@cni.hn';
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+      console.error('❌ Error: ADMIN_PASSWORD no está definida en el entorno.');
+      process.exit(1);
+    }
+
     const usuariosExistentes = await db.select().from(usuarios).where(eq(usuarios.email, email));
     
     if (usuariosExistentes.length > 0) {
-      console.log(`⚠️ El usuario ${email} ya existe en la base de datos.`);
+      console.log(`⚠️ El usuario ${email} ya existe en la base de datos, actualizando password y asegurando rol...`);
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
+      
+      const adminExistente = usuariosExistentes[0];
+      await db.update(usuarios)
+        .set({ passwordHash, esAdmin: true, activo: true })
+        .where(eq(usuarios.id, adminExistente.id));
+        
+      const rolesExistentes = await db.select().from(usuariosRoles).where(eq(usuariosRoles.usuarioId, adminExistente.id));
+      const tieneRolAdmin = rolesExistentes.some(r => r.rolId === adminRole.id);
+      
+      if (!tieneRolAdmin) {
+        await db.insert(usuariosRoles).values({
+          usuarioId: adminExistente.id,
+          rolId: adminRole.id,
+          activo: true,
+        });
+      }
+      
+      console.log('✅ Usuario actualizado exitosamente.');
       process.exit(0);
     }
 
     // 3. Crear el usuario
-    const passwordHash = await bcrypt.hash('Cnihonduras2026$', 10);
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
     
     const [nuevoAdmin] = await db.insert(usuarios).values({
       email,
@@ -75,7 +103,7 @@ async function createAdmin() {
 
     console.log('✅ Usuario creado exitosamente:');
     console.log(`   Email: ${email}`);
-    console.log(`   Password: Cnihonduras2026$`);
+    console.log(`   Password: [OCULTA, leída desde variable de entorno]`);
 
   } catch (error) {
     console.error('❌ ERROR:', error);

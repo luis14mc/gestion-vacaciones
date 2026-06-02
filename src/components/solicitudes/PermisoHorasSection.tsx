@@ -47,15 +47,15 @@ export function PermisoHorasSection({ form }: Props) {
                             >
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                        <RadioGroupItem value="1-2hrs" />
+                                        <RadioGroupItem value="1-2h" />
                                     </FormControl>
                                     <FormLabel className="font-normal cursor-pointer">1-2 Horas</FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                        <RadioGroupItem value="2-4hrs" />
+                                        <RadioGroupItem value="2-4h" />
                                     </FormControl>
-                                    <FormLabel className="font-normal cursor-pointer">2-4 Horas</FormLabel>
+                                    <FormLabel className="font-normal cursor-pointer">Medio Día</FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
@@ -70,7 +70,7 @@ export function PermisoHorasSection({ form }: Props) {
                 )}
             />
 
-            {tipoPermiso && tipoPermiso !== 'dia_completo' && (
+            {tipoPermiso === '1-2h' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                         control={form.control}

@@ -369,12 +369,12 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-muted p-2.5 rounded-xl">
               <Calendar className="w-4 h-4 text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">Gestión de Días Disponibles</h1>
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 Asigna y actualiza los días de vacaciones de los empleados
@@ -385,9 +385,9 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
         {/* Toolbar */}
         <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
-          <div className="p-5">
-            <div className="flex flex-wrap gap-4 items-center justify-between">
-              <div className="flex gap-2">
+          <div className="p-4 sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
                 <Button
                   onClick={() => abrirModalIndividual()}
                 >
@@ -404,19 +404,20 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                 <Button
                   variant="ghost"
                   onClick={cargarDatos}
+                  className="sm:col-span-2 lg:col-span-1"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Actualizar
                 </Button>
               </div>
 
-              <div className="flex gap-2 items-center">
+              <div className="flex w-full items-center gap-2 lg:w-auto">
                 <Label className="text-sm font-medium">Año:</Label>
                 <Select
                   value={anioSeleccionado.toString()}
                   onValueChange={(val) => setAnioSeleccionado(Number(val))}
                 >
-                  <SelectTrigger className="w-32 h-9">
+                  <SelectTrigger className="h-9 w-full lg:w-32">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -429,8 +430,8 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
             </div>
 
             {/* Filtros */}
-            <div className="flex gap-3 mt-4">
-              <div className="flex-1 relative">
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]">
+              <div className="relative min-w-0">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="text"
@@ -444,7 +445,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                 value={filtroDepartamento}
                 onValueChange={(val) => setFiltroDepartamento(val === "all" ? "" : val)}
               >
-                <SelectTrigger className="min-w-[250px] h-10">
+                <SelectTrigger className="h-10">
                   <SelectValue placeholder="Todos los departamentos" />
                 </SelectTrigger>
                 <SelectContent>
@@ -460,7 +461,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
         {/* Tabla de Balances */}
         <div className="bg-card text-card-foreground border shadow-sm rounded-xl">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <h2 className="text-[13px] font-semibold mb-4">
               Balances de Días - Año {anioSeleccionado}
             </h2>
@@ -591,7 +592,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                   {/* Operación - Solo sumar o restar */}
                   <div className="space-y-2">
                     <Label>Operación *</Label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                       <Label className="flex-1 cursor-pointer">
                         <input
                           type="radio"
@@ -601,7 +602,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                           onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
                           className="hidden peer"
                         />
-                        <div className="h-10 flex items-center justify-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-500 gap-2">
+                        <div className="flex min-h-10 items-center justify-center gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-center text-sm leading-tight shadow-sm transition-colors peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-500">
                           <Plus className="w-4 h-4" /> Sumar días
                         </div>
                       </Label>
@@ -614,7 +615,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                           onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
                           className="hidden peer"
                         />
-                        <div className="h-10 flex items-center justify-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-500 gap-2">
+                        <div className="flex min-h-10 items-center justify-center gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-center text-sm leading-tight shadow-sm transition-colors peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-500">
                           <Minus className="w-4 h-4" /> Restar días
                         </div>
                       </Label>
@@ -646,7 +647,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                   {/* Operación por Departamento */}
                   <div className="space-y-2">
                     <Label>Operación *</Label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
                       <Label className="flex-1 cursor-pointer">
                         <input
                           type="radio"
@@ -656,7 +657,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                           onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
                           className="hidden peer"
                         />
-                        <div className="h-10 flex items-center justify-center rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm transition-colors peer-checked:bg-primary peer-checked:text-primary-foreground peer-checked:border-primary gap-1">
+                        <div className="flex min-h-10 items-center justify-center gap-1 rounded-md border border-input bg-transparent px-2 py-2 text-center text-xs leading-tight shadow-sm transition-colors peer-checked:bg-primary peer-checked:text-primary-foreground peer-checked:border-primary">
                           <RefreshCw className="w-3 h-3" /> Reemplazar
                         </div>
                       </Label>
@@ -669,7 +670,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                           onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
                           className="hidden peer"
                         />
-                        <div className="h-10 flex items-center justify-center rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm transition-colors peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-500 gap-1">
+                        <div className="flex min-h-10 items-center justify-center gap-1 rounded-md border border-input bg-transparent px-2 py-2 text-center text-xs leading-tight shadow-sm transition-colors peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-500">
                           <Plus className="w-3 h-3" /> Sumar
                         </div>
                       </Label>
@@ -682,7 +683,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                           onChange={(e) => setFormData({ ...formData, operacion: e.target.value })}
                           className="hidden peer"
                         />
-                        <div className="h-10 flex items-center justify-center rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm transition-colors peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-500 gap-1">
+                        <div className="flex min-h-10 items-center justify-center gap-1 rounded-md border border-input bg-transparent px-2 py-2 text-center text-xs leading-tight shadow-sm transition-colors peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-500">
                           <Minus className="w-3 h-3" /> Restar
                         </div>
                       </Label>

@@ -32,6 +32,7 @@ export interface CrearUsuarioParams {
   numeroEmpleado?: string;
   telefono?: string;
   direccion?: string;
+  jefeSuperiorId?: number;
 }
 
 export interface ActualizarUsuarioParams {
@@ -70,6 +71,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
     numeroEmpleado,
     telefono,
     direccion,
+    jefeSuperiorId,
   } = params;
 
   return await db.transaction(async (tx) => {
@@ -103,6 +105,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         numeroEmpleado,
         telefono,
         direccion,
+        jefeSuperiorId,
         metadata: {},
       })
       .returning();

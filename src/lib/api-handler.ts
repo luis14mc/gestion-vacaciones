@@ -21,11 +21,12 @@ export function withErrorHandler(
     } catch (error) {
       // 1. Manejo de Errores de Validación (Zod)
       if (error instanceof z.ZodError) {
+        const issues = error.issues ?? [];
         return NextResponse.json(
           {
             success: false,
             error: "Error de validación de datos",
-            detalles: (error as any).errors.map((e: any) => ({
+            detalles: issues.map((e: any) => ({
               campo: e.path.join("."),
               mensaje: e.message,
             })),

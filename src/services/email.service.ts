@@ -16,6 +16,8 @@ interface ConfiguracionEmail {
   user: string;
   password: string;
   secure: boolean;
+  requireTLS: boolean;
+  rejectUnauthorized: boolean;
   from: string;
 }
 
@@ -24,13 +26,24 @@ export async function getConfiguracionEmail(): Promise<ConfiguracionEmail> {
     .select()
     .from(configuracion)
     .where(inArray(configuracion.clave, [
+      'notificaciones.email_habilitado',
+      'notificaciones.email_remitente',
+      'notificaciones.smtp_host',
+      'notificaciones.smtp_port',
+      'notificaciones.smtp_user',
+      'notificaciones.smtp_password',
+      'notificaciones.smtp_secure',
+      'notificaciones.smtp_require_tls',
+      'notificaciones.smtp_reject_unauthorized',
       'SMTP_HOST',
       'SMTP_PORT',
       'SMTP_USER',
       'SMTP_PASSWORD',
       'SMTP_SECURE',
+      'SMTP_REQUIRE_TLS',
+      'SMTP_REJECT_UNAUTHORIZED',
       'NOTIFICACIONES_EMAIL_HABILITADAS',
-      'EMAIL_FROM'
+      'EMAIL_FROM',
     ]));
 
   const configMap = configs.reduce((acc, curr) => {
@@ -38,14 +51,26 @@ export async function getConfiguracionEmail(): Promise<ConfiguracionEmail> {
     return acc;
   }, {} as Record<string, string>);
 
+  const getConfig = (primary: string, legacy: string, fallback = '') => {
+    const primaryValue = configMap[primary];
+    if (primaryValue !== undefined && primaryValue !== '') return primaryValue;
+    const legacyValue = configMap[legacy];
+    if (legacyValue !== undefined && legacyValue !== '') return legacyValue;
+    return fallback;
+  };
+
+  const port = Number.parseInt(getConfig('notificaciones.smtp_port', 'SMTP_PORT', '587'), 10);
+
   return {
-    habilitado: configMap['NOTIFICACIONES_EMAIL_HABILITADAS'] === 'true',
-    host: configMap['SMTP_HOST'] || 'smtp.office365.com',
-    port: parseInt(configMap['SMTP_PORT'] || '587'),
-    user: configMap['SMTP_USER'] || '',
-    password: configMap['SMTP_PASSWORD'] || '',
-    secure: configMap['SMTP_SECURE'] === 'true', // false for TLS (587)
-    from: configMap['EMAIL_FROM'] || '"Servicios Online" <notificaciones@cni.hn>',
+    habilitado: getConfig('notificaciones.email_habilitado', 'NOTIFICACIONES_EMAIL_HABILITADAS') === 'true',
+    host: getConfig('notificaciones.smtp_host', 'SMTP_HOST', 'smtp.office365.com'),
+    port: Number.isNaN(port) ? 587 : port,
+    user: getConfig('notificaciones.smtp_user', 'SMTP_USER'),
+    password: getConfig('notificaciones.smtp_password', 'SMTP_PASSWORD'),
+    secure: getConfig('notificaciones.smtp_secure', 'SMTP_SECURE') === 'true',
+    requireTLS: getConfig('notificaciones.smtp_require_tls', 'SMTP_REQUIRE_TLS', 'true') === 'true',
+    rejectUnauthorized: getConfig('notificaciones.smtp_reject_unauthorized', 'SMTP_REJECT_UNAUTHORIZED', 'true') === 'true',
+    from: getConfig('notificaciones.email_remitente', 'EMAIL_FROM', '"Servicios Online" <notificaciones@cni.hn>'),
   };
 }
 
@@ -58,10 +83,10 @@ function crearTransporteConConfig(config: ConfiguracionEmail) {
       user: config.user,
       pass: config.password,
     },
+    requireTLS: config.requireTLS,
     tls: {
-      ciphers: 'SSLv3',
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: config.rejectUnauthorized,
+    },
   });
 }
 
@@ -69,7 +94,12 @@ export async function enviarEmail(options: EmailOptions) {
   try {
     const config = await getConfiguracionEmail();
     if (!config.habilitado) {
-      console.log('Notificaciones por email están deshabilitadas en la configuración.');
+      console.log('Notificaciones por email estan deshabilitadas en la configuracion.');
+      return false;
+    }
+
+    if (!config.host || !config.user || !config.password || !config.from) {
+      console.error('Configuracion SMTP incompleta. Revise host, usuario, contrasena y remitente.');
       return false;
     }
 
@@ -90,60 +120,113 @@ export async function enviarEmail(options: EmailOptions) {
   }
 }
 
-// ============================================================
-// PLANTILLAS DE CORREO
-// ============================================================
+function nombreTipoSolicitud(tipo: string) {
+  const nombres: Record<string, string> = {
+    vacaciones: 'vacaciones',
+    permiso_salida: 'permiso de salida',
+    licencia_medica: 'licencia medica',
+    permiso_personal: 'permiso personal',
+    licencia_paternidad: 'licencia de paternidad',
+    licencia_maternidad: 'licencia de maternidad',
+    compensacion: 'compensacion',
+  };
 
-export async function notificarNuevaSolicitudAJefe(jefeEmail: string, jefeNombre: string, solicitanteNombre: string, tipo: string, dias: number) {
+  return nombres[tipo] || tipo.replace(/_/g, ' ');
+}
+
+function detalleSolicitud(tipo: string, dias: number) {
+  if (tipo === 'permiso_salida') {
+    return dias > 0 ? 'por dia completo' : 'por horas';
+  }
+
+  return dias > 0 ? `por ${dias} ${dias === 1 ? 'dia' : 'dias'}` : '';
+}
+
+function descripcionSolicitud(tipo: string, dias: number) {
+  const detalle = detalleSolicitud(tipo, dias);
+  return `<strong>${nombreTipoSolicitud(tipo)}</strong>${detalle ? ` ${detalle}` : ''}`;
+}
+
+function consumeBalance(tipo: string, dias: number) {
+  return tipo === 'vacaciones' || (tipo === 'permiso_salida' && dias > 0);
+}
+
+export async function notificarNuevaSolicitudAJefe(
+  jefeEmail: string,
+  jefeNombre: string,
+  solicitanteNombre: string,
+  tipo: string,
+  dias: number
+) {
+  const solicitud = descripcionSolicitud(tipo, dias);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
-      <h2 style="color: #182243;">Nueva Solicitud Pendiente de Aprobación</h2>
+      <h2 style="color: #182243;">Nueva Solicitud Pendiente de Aprobacion</h2>
       <p>Hola <strong>${jefeNombre}</strong>,</p>
-      <p>El colaborador <strong>${solicitanteNombre}</strong> ha enviado una nueva solicitud de <strong>${tipo}</strong> por <strong>${dias} días</strong>.</p>
-      <p>Por favor, ingresa al Sistema de Gestión de Vacaciones CNI para revisar y aprobar/rechazar esta solicitud.</p>
+      <p>El colaborador <strong>${solicitanteNombre}</strong> ha enviado una nueva solicitud de ${solicitud}.</p>
+      <p>Por favor, ingresa al Sistema de Gestion de Vacaciones CNI para revisar y aprobar o rechazar esta solicitud.</p>
       <br>
       <a href="https://vacaciones.cni.hn/aprobar-solicitudes" style="background-color: #00B5E2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ver Solicitudes Pendientes</a>
       <hr style="margin-top: 30px; border: none; border-top: 1px solid #eaeaeb;">
-      <p style="font-size: 12px; color: #666;">Este es un mensaje automático. Por favor, no respondas a este correo.</p>
+      <p style="font-size: 12px; color: #666;">Este es un mensaje automatico. Por favor, no respondas a este correo.</p>
     </div>
   `;
-  
+
   return enviarEmail({
     to: jefeEmail,
     subject: `[CNI Vacaciones] Nueva solicitud de ${solicitanteNombre}`,
-    html
+    html,
   });
 }
 
-export async function notificarAprobacionJefeARRHH(rrhhEmail: string, solicitanteNombre: string, tipo: string, dias: number) {
+export async function notificarAprobacionJefeARRHH(
+  rrhhEmail: string,
+  solicitanteNombre: string,
+  tipo: string,
+  dias: number
+) {
+  const solicitud = descripcionSolicitud(tipo, dias);
+  const requiereSaldo = consumeBalance(tipo, dias);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
-      <h2 style="color: #182243;">Aprobación Pendiente de RRHH</h2>
-      <p>El jefe inmediato ha aprobado la solicitud de <strong>${tipo}</strong> de <strong>${solicitanteNombre}</strong> por <strong>${dias} días</strong>.</p>
-      <p>La solicitud se encuentra ahora en la bandeja de Recursos Humanos para su validación final y descuento de saldo.</p>
+      <h2 style="color: #182243;">Aprobacion Pendiente de RRHH</h2>
+      <p>El jefe inmediato ha aprobado la solicitud de ${solicitud} de <strong>${solicitanteNombre}</strong>.</p>
+      <p>La solicitud se encuentra ahora en la bandeja de Recursos Humanos para su validacion final${requiereSaldo ? ' y actualizacion de saldo' : ''}.</p>
       <br>
       <a href="https://vacaciones.cni.hn/aprobar-solicitudes" style="background-color: #00B5E2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ir a la Bandeja de RRHH</a>
       <hr style="margin-top: 30px; border: none; border-top: 1px solid #eaeaeb;">
-      <p style="font-size: 12px; color: #666;">Este es un mensaje automático. Por favor, no respondas a este correo.</p>
+      <p style="font-size: 12px; color: #666;">Este es un mensaje automatico. Por favor, no respondas a este correo.</p>
     </div>
   `;
-  
+
   return enviarEmail({
     to: rrhhEmail,
     subject: `[CNI Vacaciones] Solicitud de ${solicitanteNombre} lista para RRHH`,
-    html
+    html,
   });
 }
 
-export async function notificarResolucionAEmpleado(empleadoEmail: string, empleadoNombre: string, estado: string, tipo: string, dias: number, motivoRechazo?: string) {
+export async function notificarResolucionAEmpleado(
+  empleadoEmail: string,
+  empleadoNombre: string,
+  estado: string,
+  tipo: string,
+  dias: number,
+  motivoRechazo?: string
+) {
   const esAprobada = estado === 'aprobada_rrhh';
   const color = esAprobada ? '#16a34a' : '#dc2626';
   const titulo = esAprobada ? 'Solicitud Aprobada Exitosamente' : 'Solicitud Rechazada';
-  const mensaje = esAprobada 
-    ? `Nos complace informarte que tu solicitud de <strong>${tipo}</strong> por <strong>${dias} días</strong> ha sido validada y <strong>aprobada por Recursos Humanos</strong>. ¡Disfruta tu tiempo!`
-    : `Tu solicitud de <strong>${tipo}</strong> por <strong>${dias} días</strong> ha sido <strong>rechazada</strong>.`;
-
-  const motivoHtml = motivoRechazo ? `<p style="background-color: #fef2f2; padding: 10px; border-left: 4px solid #dc2626;"><strong>Motivo del rechazo:</strong> ${motivoRechazo}</p>` : '';
+  const solicitud = descripcionSolicitud(tipo, dias);
+  const requiereBalance = consumeBalance(tipo, dias);
+  const mensaje = esAprobada
+    ? `Nos complace informarte que tu solicitud de ${solicitud} ha sido validada y <strong>aprobada por Recursos Humanos</strong>.`
+    : `Tu solicitud de ${solicitud} ha sido <strong>rechazada</strong>.`;
+  const motivoHtml = !esAprobada && motivoRechazo
+    ? `<p style="background-color: #fef2f2; padding: 10px; border-left: 4px solid #dc2626;"><strong>Motivo del rechazo:</strong> ${motivoRechazo}</p>`
+    : '';
+  const ctaHref = requiereBalance ? 'https://vacaciones.cni.hn/mi-perfil' : 'https://vacaciones.cni.hn/solicitudes';
+  const ctaTexto = requiereBalance ? 'Ver mi balance actual' : 'Ver mis solicitudes';
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
@@ -152,15 +235,15 @@ export async function notificarResolucionAEmpleado(empleadoEmail: string, emplea
       <p>${mensaje}</p>
       ${motivoHtml}
       <br>
-      <a href="https://vacaciones.cni.hn/mi-perfil" style="background-color: #182243; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ver mi balance actual</a>
+      <a href="${ctaHref}" style="background-color: #182243; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">${ctaTexto}</a>
       <hr style="margin-top: 30px; border: none; border-top: 1px solid #eaeaeb;">
-      <p style="font-size: 12px; color: #666;">Este es un mensaje automático. Por favor, no respondas a este correo.</p>
+      <p style="font-size: 12px; color: #666;">Este es un mensaje automatico. Por favor, no respondas a este correo.</p>
     </div>
   `;
-  
+
   return enviarEmail({
     to: empleadoEmail,
-    subject: `[CNI Vacaciones] Actualización de tu solicitud: ${esAprobada ? 'Aprobada' : 'Rechazada'}`,
-    html
+    subject: `[CNI Vacaciones] Actualizacion de tu solicitud: ${esAprobada ? 'Aprobada' : 'Rechazada'}`,
+    html,
   });
 }

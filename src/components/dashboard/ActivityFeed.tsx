@@ -53,15 +53,15 @@ export function ActivityFeed({ actividades }: ActivityFeedProps) {
               const config = TIPO_CONFIG[act.tipo] || { icon: Bell, bg: 'bg-muted', text: 'text-foreground' };
               const Icon = config.icon;
               return (
-                <div key={act.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-muted/50 transition-colors">
+                <div key={act.id} className="flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50 sm:px-5">
                   <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${config.bg}`}>
                     <Icon className={`w-3.5 h-3.5 ${config.text}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-foreground truncate">{act.titulo}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{act.descripcion}</p>
+                    <p className="truncate text-[13px] font-medium text-foreground">{act.titulo}</p>
+                    <p className="line-clamp-2 text-[11px] text-muted-foreground sm:truncate">{act.descripcion}</p>
                   </div>
-                  <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{timeAgo(act.fecha)}</span>
+                  <span className="mt-0.5 hidden shrink-0 text-[10px] text-muted-foreground min-[420px]:inline">{timeAgo(act.fecha)}</span>
                 </div>
               );
             })}

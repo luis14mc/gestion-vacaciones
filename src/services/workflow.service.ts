@@ -9,10 +9,8 @@ import {
   transicionar,
 } from '@/lib/domain/state-machine';
 
-const TIPOS_CON_BALANCE = ['vacaciones', 'licencia_medica', 'permiso_personal', 'licencia_paternidad', 'compensacion'] as const;
-
-function tipoConsumeBalance(tipo: string): boolean {
-  return TIPOS_CON_BALANCE.includes(tipo as any);
+function solicitudConsumeBalance(solicitud: { tipo: string; duracionPermiso?: string | null }): boolean {
+  return solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo');
 }
 
 interface UsuarioAccion {
@@ -167,7 +165,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     return { exito: false, error: 'Conflicto de versión: la solicitud fue modificada por otro usuario' };
   }
 
-  if (['rechazada_jefe', 'rechazada_rrhh', 'cancelada'].includes(nuevoEstado) && tipoConsumeBalance(solicitud.tipo)) {
+  if (['rechazada_jefe', 'rechazada_rrhh', 'cancelada'].includes(nuevoEstado) && solicitudConsumeBalance(solicitud)) {
     await devolverDiasBalance({ ...solicitud, estadoAnterior: estadoActual });
   }
 
@@ -208,12 +206,10 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
 
 async function devolverDiasBalance(solicitud: any) {
   if (!solicitud.diasSolicitados || Number(solicitud.diasSolicitados) <= 0) return;
-  if (!tipoConsumeBalance(solicitud.tipo)) return;
+  if (!solicitudConsumeBalance(solicitud)) return;
 
   const dias = Number(solicitud.diasSolicitados);
   const estadoOrigen = solicitud.estadoAnterior || solicitud.estado;
-
-  const tipoParaBalance = solicitud.tipo as typeof TIPOS_CON_BALANCE[number];
 
   const [balance] = await db
     .select()
@@ -222,7 +218,7 @@ async function devolverDiasBalance(solicitud: any) {
       and(
         eq(balances.usuarioId, solicitud.usuarioId),
         eq(balances.anoLaboralId, solicitud.anoLaboralId),
-        eq(balances.tipoAusencia, tipoParaBalance)
+        eq(balances.tipoAusencia, 'vacaciones')
       )
     )
     .limit(1);

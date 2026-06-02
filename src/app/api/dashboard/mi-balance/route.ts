@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
-import { getSession, tienePermiso } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balances, solicitudes, anosLaborales } from "@/lib/db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { desc, eq, and, isNull, sql } from "drizzle-orm";
+
+const balanceSelect = {
+  id: balances.id,
+  usuarioId: balances.usuarioId,
+  anoLaboralId: balances.anoLaboralId,
+  tipoAusencia: balances.tipoAusencia,
+  cantidadInicial: balances.cantidadInicial,
+  cantidadUsada: balances.cantidadUsada,
+  cantidadPendiente: balances.cantidadPendiente,
+  cantidadDisponible: balances.cantidadDisponible,
+  updatedAt: balances.updatedAt,
+};
 
 export async function GET() {
   try {
@@ -22,18 +34,54 @@ export async function GET() {
     const anioActual = new Date().getFullYear();
 
     // Obtener año laboral activo
-    const anoLaboral = await db.query.anosLaborales.findFirst({
-      where: eq(anosLaborales.activo, true)
-    });
+    const [anoLaboralActivo] = await db
+      .select({ id: anosLaborales.id })
+      .from(anosLaborales)
+      .where(eq(anosLaborales.activo, true))
+      .limit(1);
+
+    const [anoLaboralActual] = await db
+      .select({ id: anosLaborales.id })
+      .from(anosLaborales)
+      .where(eq(anosLaborales.ano, anioActual))
+      .limit(1);
 
     // Obtener balance activo del usuario para el año actual
-    const balance = anoLaboral ? await db.query.balances.findFirst({
-      where: and(
-        eq(balances.usuarioId, usuarioId),
-        eq(balances.anoLaboralId, anoLaboral.id),
-        eq(balances.tipoAusencia, 'vacaciones')
-      )
-    }) : null;
+    const anosCandidatos = [
+      anoLaboralActivo?.id,
+      anoLaboralActual?.id,
+    ].filter((id, index, ids): id is number => Boolean(id) && ids.indexOf(id) === index);
+
+    let balance: any = null;
+    for (const anoLaboralId of anosCandidatos) {
+      const [balanceDelAno] = await db
+        .select(balanceSelect)
+        .from(balances)
+        .where(and(
+          eq(balances.usuarioId, usuarioId),
+          eq(balances.anoLaboralId, anoLaboralId),
+          eq(balances.tipoAusencia, 'vacaciones')
+        ))
+        .limit(1);
+
+      balance = balanceDelAno ?? null;
+
+      if (balance) break;
+    }
+
+    if (!balance) {
+      const [balanceReciente] = await db
+        .select(balanceSelect)
+        .from(balances)
+        .where(and(
+          eq(balances.usuarioId, usuarioId),
+          eq(balances.tipoAusencia, 'vacaciones')
+        ))
+        .orderBy(desc(balances.updatedAt))
+        .limit(1);
+
+      balance = balanceReciente ?? null;
+    }
 
     if (!balance) {
       return NextResponse.json({
@@ -53,6 +101,8 @@ export async function GET() {
 
     const diasAsignados = Number(balance.cantidadInicial || 0);
     const diasUsados = Number(balance.cantidadUsada || 0);
+    const diasPendientesBalance = Number(balance.cantidadPendiente || 0);
+    const diasDisponibles = Number(balance.cantidadDisponible || 0);
 
     // Obtener solicitudes pendientes
     const [pendientes] = await db
@@ -78,13 +128,14 @@ export async function GET() {
         )
       );
 
-    const diasPendientes = solicitudesPendientesData.reduce(
+    const diasPendientesSolicitudes = solicitudesPendientesData.reduce(
       (sum, sol) => sum + Number(sol.dias),
       0
     );
+    const diasPendientes = diasPendientesBalance || diasPendientesSolicitudes;
 
     // Obtener solicitudes aprobadas (este año)
-    const inicioAnio = new Date(new Date().getFullYear(), 0, 1);
+    const inicioAnio = `${anioActual}-01-01`;
     const [aprobadas] = await db
       .select({ count: sql<number>`count(*)` })
       .from(solicitudes)
@@ -111,7 +162,7 @@ export async function GET() {
       );
 
     // Verificar si está en vacaciones actualmente
-    const hoy = new Date();
+    const hoy = new Date().toISOString().split('T')[0];
     const enVacacionesData = await db
       .select({ id: solicitudes.id })
       .from(solicitudes)
@@ -125,8 +176,6 @@ export async function GET() {
         )
       )
       .limit(1);
-
-    const diasDisponibles = diasAsignados - diasUsados - diasPendientes;
 
     return NextResponse.json({
       success: true,

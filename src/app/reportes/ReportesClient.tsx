@@ -289,12 +289,12 @@ export default function ReportesClient({ session }: ReportesClientProps) {
     <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-muted p-2.5 rounded-xl">
               <BarChart3 className="w-4 h-4 text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">Reportes Avanzados</h1>
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 Genera reportes detallados y exporta información del sistema
@@ -304,7 +304,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         </div>
 
         {/* Selección de Tipo de Reporte */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 lg:gap-4">
           {tiposReporte.map((tipo) => {
             const Icono = tipo.icono;
             return (
@@ -320,13 +320,13 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                     : "border-border bg-card hover:border-primary/30"
                   }`}
               >
-                <div className="p-5">
-                  <div className="flex items-start gap-3">
+                <div className="p-4 sm:p-5">
+                  <div className="flex min-w-0 items-start gap-3">
                     <Icono
                       className={`w-5 h-5 ${reporteSeleccionado === tipo.id ? "text-primary-foreground" : tipo.color
                         }`}
                     />
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-sm">{tipo.nombre}</h3>
                       <p
                         className={`text-[13px] mt-0.5 ${reporteSeleccionado === tipo.id
@@ -346,7 +346,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 
         {/* Panel de Filtros */}
         <Card className="mb-6 shadow-sm border">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <h2 className="flex items-center gap-2 font-semibold text-sm mb-4">
               <Filter className="w-4 h-4 text-muted-foreground" />
               Filtros
@@ -659,9 +659,9 @@ function ReporteDepartamentos({ datos }: { datos: any }) {
     <div className="space-y-6">
       {datos.departamentos?.map((dept: any, index: number) => (
         <Card key={index} className="shadow-sm border">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <h3 className="font-semibold text-sm mb-3">{dept.nombre}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-4 md:gap-4">
               <div className="bg-background rounded-xl p-3 border shadow-sm">
                 <div className="text-xs text-muted-foreground">Empleados</div>
                 <div className="text-lg font-bold text-primary mt-1">{dept.total_empleados}</div>
@@ -734,9 +734,9 @@ function ReporteProyecciones({ datos }: { datos: any }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {datos.dias_acumulados.map((item: any, index: number) => (
               <Card key={index} className="shadow-sm border">
-                <CardContent className="p-5">
+                <CardContent className="p-4 sm:p-5">
                   <h4 className="font-semibold text-sm">{item.empleado}</h4>
-                  <div className="flex justify-between items-center mt-2">
+                  <div className="mt-2 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
                     <span className="text-[13px] text-muted-foreground">{item.tipo_ausencia}</span>
                     <Badge variant="default" className="bg-primary hover:bg-primary">{item.dias_acumulados} días</Badge>
                   </div>
@@ -754,7 +754,7 @@ function ReporteAusentismo({ datos }: { datos: any }) {
   return (
     <div className="space-y-6">
       {/* Resumen general */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-4">
         <Card className="shadow-sm border">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">Total Ausencias</div>

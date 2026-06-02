@@ -161,61 +161,61 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
     <div>
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <div className="bg-muted p-2.5 rounded-xl">
             <Users className="w-4 h-4 text-muted-foreground" />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold tracking-tight text-foreground">Mi Equipo</h1>
             <p className="text-[13px] text-muted-foreground mt-0.5">Gestiona y supervisa a los colaboradores de tu departamento</p>
           </div>
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
                 <p className="text-sm font-medium">Total del Equipo</p>
                 <Users className="w-4 h-4 text-muted-foreground" />
               </div>
-              <div className="flex items-center justify-between mt-2">
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <div className="text-2xl font-bold">{stats.total}</div>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Colaboradores</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
                 <p className="text-sm font-medium">Activos</p>
                 <CheckCircle className="w-4 h-4 text-green-500" />
               </div>
-              <div className="flex items-center justify-between mt-2">
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <div className="text-2xl font-bold">{stats.activos}</div>
               </div>
               <p className="text-xs text-muted-foreground mt-1">{stats.total > 0 ? Math.round((stats.activos / stats.total) * 100) : 0}% del total</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
                 <p className="text-sm font-medium">De Vacaciones</p>
                 <Palmtree className="w-4 h-4 text-orange-500" />
               </div>
-              <div className="flex items-center justify-between mt-2">
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <div className="text-2xl font-bold text-orange-500">{stats.enVacaciones}</div>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Actualmente ausentes</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
                 <p className="text-sm font-medium">Días Promedio</p>
                 <TrendingUp className="w-4 h-4 text-primary" />
               </div>
-              <div className="flex items-center justify-between mt-2">
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <div className="text-2xl font-bold text-primary">{stats.diasPromedio}</div>
               </div>
               <p className="text-xs text-muted-foreground mt-1">Disponibles por persona</p>
@@ -225,7 +225,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
 
         {/* Filtros */}
         <Card className="border shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <h2 className="text-[13px] font-semibold tracking-tight mb-4 flex items-center gap-2">
               <Filter className="w-4 h-4" />
               Filtros
@@ -267,7 +267,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
 
         {/* Lista de colaboradores */}
         <Card className="border shadow-sm">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <h2 className="text-[13px] font-semibold tracking-tight mb-4">
               Colaboradores ({usuariosFiltrados.length})
             </h2>
@@ -285,9 +285,9 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {usuariosFiltrados.map((usuario) => (
                   <Card key={usuario.id} className="hover:shadow-md transition-all duration-200">
-                    <CardContent className="p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
                           <h3 className="font-semibold text-[13px]">{usuario.nombre} {usuario.apellido}</h3>
                           {usuario.cargo && <p className="text-xs text-muted-foreground">{usuario.cargo}</p>}
                         </div>
@@ -354,7 +354,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
 
       {/* Modal de detalles */}
       <Dialog open={mostrarModal} onOpenChange={setMostrarModal}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <User className="w-5 h-5 text-primary" />
@@ -370,7 +370,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
                   <User className="w-4 h-4" />
                   Datos Personales
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-xs text-muted-foreground">Nombre completo</Label>
                     <p className="text-sm font-medium">{usuarioSeleccionado.nombre} {usuarioSeleccionado.apellido}</p>
@@ -418,7 +418,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
                   <Calendar className="w-4 h-4" />
                   Balance de Vacaciones
                 </h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3 sm:gap-4">
                   <div className="bg-background rounded-xl p-3 border shadow-sm">
                     <div className="text-xs text-muted-foreground text-center">Asignados</div>
                     <div className="text-lg font-bold text-primary text-center mt-1">{usuarioSeleccionado.diasAsignados}</div>

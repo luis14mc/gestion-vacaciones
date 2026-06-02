@@ -248,12 +248,12 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
     <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-muted p-2.5 rounded-xl">
               <Building2 className="w-5 h-5 text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 Gestión de Departamentos
               </h1>
@@ -262,20 +262,20 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
               </p>
             </div>
           </div>
-          <Button onClick={abrirModalNuevo}>
+          <Button onClick={abrirModalNuevo} className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Departamento
           </Button>
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-primary/10 rounded-lg">
                 <Building2 className="w-5 h-5 text-primary" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">
                   Departamentos
                 </p>
@@ -284,12 +284,12 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
             </div>
           </div>
 
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-green-500/10 rounded-lg">
                 <Users className="w-5 h-5 text-green-500" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">
                   Total Empleados
                 </p>
@@ -298,7 +298,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
             </div>
           </div>
 
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div
                 className={`p-3 rounded-lg ${
@@ -313,7 +313,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
                   <UserCheck className="w-5 h-5 text-green-500" />
                 )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">
                   Sin Jefe Asignado
                 </p>
@@ -325,7 +325,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
 
         {/* Búsqueda */}
         <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -340,7 +340,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
 
         {/* Tabla */}
         <div className="bg-card text-card-foreground border shadow-sm rounded-xl">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             {loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -491,8 +491,8 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between text-sm">
-                        <div>
+                      <div className="grid gap-2 text-sm min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
+                        <div className="min-w-0">
                           <span className="text-muted-foreground">Jefe: </span>
                           {dept.jefe ? (
                             <span className="font-medium">
@@ -504,12 +504,12 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
                             </span>
                           )}
                         </div>
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="w-fit text-xs">
                           {dept.totalEmpleados} empleados
                         </Badge>
                       </div>
 
-                      <div className="flex gap-2 pt-2 border-t border-border">
+                      <div className="grid grid-cols-1 gap-2 border-t border-border pt-2 min-[420px]:grid-cols-2">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -553,7 +553,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="codigo">Código *</Label>
                 <Input

@@ -65,20 +65,20 @@ export function QuickActions({ session }: QuickActionsProps) {
         </h2>
       </div>
       <div className="p-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3">
           {actions.map((action) => {
             const Icon = action.icon;
             return (
               <Link
                 key={action.href + action.label}
                 href={action.href}
-                className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-[13px] font-medium
+                className="flex min-w-0 items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-medium
                   text-card-foreground bg-muted/50 hover:bg-muted
                   border hover:border-primary/50
                   transition-all duration-200"
               >
                 <Icon className="w-4 h-4 text-muted-foreground" />
-                <span>{action.label}</span>
+                <span className="truncate">{action.label}</span>
               </Link>
             );
           })}

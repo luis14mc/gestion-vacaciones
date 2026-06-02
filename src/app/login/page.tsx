@@ -188,7 +188,7 @@ function LoginForm() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="tu.email@cni.cl"
+                      placeholder="tu.email@cni.hn"
                       className="h-10 rounded-lg text-[13px]"
                       required
                       autoComplete="email"

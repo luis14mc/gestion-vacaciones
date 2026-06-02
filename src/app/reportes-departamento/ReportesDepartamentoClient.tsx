@@ -248,18 +248,18 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
 
         {/* Filtros de período */}
         <Card className="rounded-2xl">
-          <CardContent className="p-5">
+          <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <h2 className="text-[13px] font-semibold flex items-center gap-2">
                 <Filter className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                 Período de análisis
               </h2>
-              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,1fr)_6rem] md:flex md:w-auto">
                 <Select
                   value={String(mesSeleccionado)}
                   onValueChange={(v) => setMesSeleccionado(Number(v))}
                 >
-                  <SelectTrigger className="flex-1 min-w-[140px]" size="sm">
+                  <SelectTrigger className="min-w-0 md:w-[140px]" size="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -274,7 +274,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                   value={String(anioSeleccionado)}
                   onValueChange={(v) => setAnioSeleccionado(Number(v))}
                 >
-                  <SelectTrigger className="w-24" size="sm">
+                  <SelectTrigger className="w-full md:w-24" size="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -285,7 +285,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 gap-2 min-[420px]:col-span-2 min-[420px]:grid-cols-2 md:flex">
                   <Button
                     size="sm"
                     className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"

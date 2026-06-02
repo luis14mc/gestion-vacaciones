@@ -61,14 +61,24 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
   } = params;
 
   return await db.transaction(async (tx) => {
+    const diasParaBalance = tipo === 'permiso_salida' && duracionPermiso === 'dia_completo'
+      ? 1
+      : Number(diasSolicitados || 0);
+    const descuentaBalance = tipo === 'vacaciones' || (tipo === 'permiso_salida' && duracionPermiso === 'dia_completo');
+    const diasParaSolicitud = tipo === 'permiso_salida' ? diasParaBalance : Number(diasSolicitados || 0);
+
     // 1. Validar días solicitados
-    if (tipo === 'vacaciones' && diasSolicitados !== undefined && diasSolicitados <= 0) {
+    if (tipo === 'vacaciones' && diasParaSolicitud <= 0) {
       throw new Error('La cantidad de días solicitados debe ser mayor a 0');
     }
 
+    if (tipo === 'permiso_salida' && (!motivo?.trim() || motivo.trim().length < 5)) {
+      throw new Error('Para permisos de salida es obligatorio indicar un motivo de al menos 5 caracteres.');
+    }
+
     // 2. Validar fechas
-    if (fechaInicio && fechaFin && fechaInicio >= fechaFin) {
-      throw new Error('La fecha de inicio debe ser anterior a la fecha de fin');
+    if (fechaInicio && fechaFin && fechaInicio > fechaFin) {
+      throw new Error('La fecha de inicio no puede ser posterior a la fecha de fin');
     }
 
     // 3. Validar VoBo de Ministro para Directores
@@ -95,7 +105,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     }
 
     // 3. Si es vacación, validar balance
-    if (tipo === 'vacaciones' && diasSolicitados) {
+    if (descuentaBalance && diasParaBalance > 0) {
       const balance = await tx.query.balances.findFirst({
         where: and(
           eq(balances.usuarioId, usuarioId),
@@ -109,7 +119,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       }
 
       const disponible = parseFloat(balance.cantidadDisponible);
-      if (disponible < diasSolicitados) {
+      if (disponible < diasParaBalance) {
         throw new Error(
           `Balance insuficiente. Disponible: ${disponible} días, solicitado: ${diasSolicitados} días`
         );
@@ -139,6 +149,27 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     // Empleado crea → pendiente_jefe (va a su Jefe/Director para aprobación)
     const estadoInicial = esDirector ? 'aprobada_jefe' : 'pendiente_jefe';
 
+    // Resolver horas para permisos de salida
+    // El CHECK constraint de la BD exige hora_salida y hora_regreso NOT NULL para permiso_salida
+    let horaSalidaFinal = horaSalida || null;
+    let horaRegresoFinal = horaRegreso || null;
+
+    if (tipo === 'permiso_salida') {
+      if (duracionPermiso === 'dia_completo') {
+        // Para día completo, auto-asignar jornada laboral
+        horaSalidaFinal = horaSalidaFinal || '08:00';
+        horaRegresoFinal = horaRegresoFinal || '17:00';
+      } else {
+        // Para 1-2h y 2-4h, asegurar que las horas estén presentes
+        if (!horaSalidaFinal) horaSalidaFinal = '08:00';
+        if (!horaRegresoFinal) {
+          if (duracionPermiso === '1-2h') horaRegresoFinal = '10:00';
+          else if (duracionPermiso === '2-4h') horaRegresoFinal = '12:00';
+          else horaRegresoFinal = '17:00';
+        }
+      }
+    }
+
     const [nuevaSolicitud] = await tx
       .insert(solicitudes)
       .values({
@@ -148,10 +179,10 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         tipo,
         fechaInicio,
         fechaFin,
-        diasSolicitados: diasSolicitados?.toString(),
+        diasSolicitados: diasParaSolicitud.toString(),
         duracionPermiso,
-        horaSalida,
-        horaRegreso,
+        horaSalida: horaSalidaFinal,
+        horaRegreso: horaRegresoFinal,
         motivo,
         comentarioEmpleado,
         documentosAdjuntos,
@@ -168,11 +199,11 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       .returning();
 
     // 6. Si es vacación, actualizar balance (cantidad_pendiente)
-    if (tipo === 'vacaciones' && diasSolicitados) {
+    if (descuentaBalance && diasParaBalance > 0) {
       await tx.execute(sql`
         UPDATE balances
-        SET cantidad_pendiente = cantidad_pendiente + ${diasSolicitados},
-            cantidad_disponible = GREATEST(0, cantidad_disponible - ${diasSolicitados}),
+        SET cantidad_pendiente = cantidad_pendiente + ${diasParaBalance},
+            cantidad_disponible = GREATEST(0, cantidad_disponible - ${diasParaBalance}),
             updated_at = NOW()
         WHERE usuario_id = ${usuarioId}
           AND ano_laboral_id = ${anoLaboral.id}
@@ -281,7 +312,7 @@ export async function aprobarSolicitudRRHH(
     }
 
     // Si es vacación, mover días: pendiente → usada
-    if (solicitud.tipo === 'vacaciones' && solicitud.diasSolicitados) {
+    if ((solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo')) && solicitud.diasSolicitados) {
       const dias = parseFloat(solicitud.diasSolicitados);
 
       await tx.execute(sql`
@@ -341,8 +372,8 @@ export async function rechazarSolicitud(
       throw new Error('Conflicto de versión: la solicitud fue modificada por otro usuario');
     }
 
-    const TIPOS_CON_BALANCE = ['vacaciones', 'licencia_medica', 'permiso_personal', 'licencia_paternidad', 'compensacion'];
-    if (TIPOS_CON_BALANCE.includes(solicitud.tipo) && solicitud.diasSolicitados) {
+    const devuelveBalance = solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo');
+    if (devuelveBalance && solicitud.diasSolicitados) {
       const dias = parseFloat(solicitud.diasSolicitados);
 
       await tx.execute(sql`
@@ -352,7 +383,7 @@ export async function rechazarSolicitud(
             updated_at = NOW()
         WHERE usuario_id = ${solicitud.usuarioId}
           AND ano_laboral_id = ${solicitud.anoLaboralId}
-          AND tipo_ausencia = ${solicitud.tipo}
+          AND tipo_ausencia = 'vacaciones'
       `);
     }
 
@@ -452,7 +483,7 @@ export async function cancelarSolicitud(
     }
 
     // Devolver días al balance según el estado
-    if (solicitud.tipo === 'vacaciones' && solicitud.diasSolicitados) {
+    if ((solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo')) && solicitud.diasSolicitados) {
       const dias = parseFloat(solicitud.diasSolicitados);
 
       if (solicitud.estado === 'aprobada_rrhh') {

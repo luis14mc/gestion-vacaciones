@@ -24,16 +24,16 @@ export function MetricCard({ title, value, subtitle, icon: Icon, color }: Metric
   const colorStyles = COLOR_MAP[color] || COLOR_MAP.primary;
 
   return (
-    <div className="group bg-card text-card-foreground border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1.5">
+    <div className="group rounded-xl border bg-card p-4 text-card-foreground shadow-sm transition-colors hover:border-primary/50 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1.5">
           <p className="text-[13px] text-muted-foreground font-medium">{title}</p>
           <p className="text-2xl font-semibold tracking-tight text-foreground">{value}</p>
           {subtitle && (
             <p className="text-[11px] text-muted-foreground">{subtitle}</p>
           )}
         </div>
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${colorStyles.split(' ')[0]}`}>
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${colorStyles.split(' ')[0]}`}>
           <Icon className={`w-[18px] h-[18px] ${colorStyles.split(' ')[1]}`} />
         </div>
       </div>

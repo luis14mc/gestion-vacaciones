@@ -15,11 +15,17 @@
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     color: oklch(20% 0.02 260);
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
     background: linear-gradient(160deg, oklch(92% 0.03 260) 0%, oklch(93.5% 0.025 285) 40%, oklch(92.5% 0.02 200) 100%);
     min-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
     @apply bg-background text-foreground;
   }
 
@@ -61,6 +67,41 @@
       0 0 0 0.5px oklch(0% 0 0 / 0.06),
       0 8px 32px oklch(0% 0 0 / 0.12),
       0 24px 60px oklch(0% 0 0 / 0.10);
+  }
+
+  [data-slot="dialog-content"],
+  [data-slot="card"],
+  [data-slot="table-container"] {
+    min-width: 0;
+  }
+
+  [data-slot="button"],
+  [data-slot="badge"],
+  [data-slot="select-trigger"] {
+    max-width: 100%;
+  }
+
+  @media (max-width: 640px) {
+    [data-slot="card"] {
+      border-radius: 1rem;
+    }
+
+    [data-slot="dialog-content"] {
+      border-radius: 1rem;
+    }
+
+    [data-slot="button"]:not([data-size^="icon"]) {
+      height: auto;
+      min-height: 2.25rem;
+      white-space: normal;
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    [data-slot="card"],
+    [data-slot="dialog-content"] {
+      overflow-wrap: anywhere;
+    }
   }
 
   /* Glass treatment for shadcn DropdownMenu */

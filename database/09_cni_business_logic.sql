@@ -1,4 +1,4 @@
-b-- =====================================================
+-- =====================================================
 -- CNI BUSINESS LOGIC: Triggers & Functions
 -- =====================================================
 -- @description Lógica de negocio para CNI (triggers, funciones, auto-generación)

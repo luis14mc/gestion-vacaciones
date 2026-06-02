@@ -22,7 +22,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:seed": "tsx scripts/seed-database.ts",
     "db:install": "node scripts/install-database.mjs",
-    "db:init": "node scripts/install-database.mjs",
+    "db:init": "node scripts/init-prod.mjs",
     "db:create-admin": "tsx scripts/create-admin.ts",
     "db:setup": "node scripts/init-prod.mjs"
   },

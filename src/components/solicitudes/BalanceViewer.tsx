@@ -9,7 +9,7 @@ interface Props {
 export function BalanceViewer({ diasDisponibles, diasSolicitados, diasRestantes }: Props) {
     return (
         <div className="bg-white/40 dark:bg-black/20 backdrop-blur-sm rounded-xl p-4 sm:p-6 mb-4">
-            <div className="grid grid-cols-3 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3 sm:gap-6">
                 <div className="flex flex-col items-center justify-center py-2 border-r-2 dark:border-white/10">
                     <p className="text-xs sm:text-sm text-muted-foreground mb-2 font-medium">Días Disponibles</p>
                     <p className="text-xl font-semibold text-blue-600 dark:text-blue-400">{diasDisponibles}</p>

@@ -523,7 +523,7 @@ export default function AprobarSolicitudesClient({
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                           <Button
                             size="sm"
                             className="flex-1 bg-green-600 text-white hover:bg-green-700"
@@ -604,7 +604,7 @@ export default function AprobarSolicitudesClient({
         }}
       >
         <DialogContent
-          className="max-w-2xl sm:max-w-2xl"
+          className="sm:max-w-2xl"
           showCloseButton
         >
           {solicitudSeleccionada && (
@@ -633,8 +633,8 @@ export default function AprobarSolicitudesClient({
               </DialogHeader>
 
               <div className="space-y-4">
-                <div className="rounded-xl bg-muted/50 p-4">
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-muted/50 p-3 sm:p-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label className="text-foreground">Colaborador</Label>
                       <p className="text-sm text-foreground">
@@ -693,7 +693,7 @@ export default function AprobarSolicitudesClient({
                       <div className="space-y-3 rounded-md bg-muted p-3">
                         {solicitudSeleccionada.metadata.comentarios.map((com: any, i: number) => (
                           <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                               <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
                               <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
                             </div>
@@ -738,7 +738,7 @@ export default function AprobarSolicitudesClient({
 
                 {!accion && (
                   <div
-                    className="flex gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground"
+                    className="flex gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground sm:p-4"
                     role="status"
                   >
                     <Info className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />

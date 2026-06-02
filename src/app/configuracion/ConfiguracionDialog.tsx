@@ -191,7 +191,7 @@ export function ConfiguracionDialog({
                             )}
                         />
 
-                        <DialogFooter className="mr-2">
+                        <DialogFooter>
                             <Button
                                 type="button"
                                 variant="ghost"

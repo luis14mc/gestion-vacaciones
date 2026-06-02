@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Globe,
   Wrench,
+  Server,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
@@ -104,6 +105,13 @@ const LABELS: Record<string, string> = {
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
   "notificaciones.email_remitente": "Correo Remitente",
+  "notificaciones.smtp_host": "Servidor SMTP",
+  "notificaciones.smtp_port": "Puerto SMTP",
+  "notificaciones.smtp_user": "Usuario SMTP",
+  "notificaciones.smtp_password": "Contraseña SMTP",
+  "notificaciones.smtp_secure": "Usar SSL/TLS Directo",
+  "notificaciones.smtp_require_tls": "Requerir STARTTLS",
+  "notificaciones.smtp_reject_unauthorized": "Validar Certificado TLS",
   "notificaciones.notificar_jefe_nueva_solicitud": "Notificar al Jefe (Nueva Solicitud)",
   "notificaciones.notificar_empleado_aprobacion": "Notificar al Empleado (Aprobación)",
   "notificaciones.notificar_empleado_rechazo": "Notificar al Empleado (Rechazo)",
@@ -184,11 +192,25 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
   notificaciones: [
     {
       titulo: "Correo Electrónico",
-      descripcion: "Configuración general del sistema de notificaciones",
+      descripcion: "Estado general y correo remitente visible en las notificaciones",
       icon: Mail,
       claves: [
         "notificaciones.email_habilitado",
         "notificaciones.email_remitente",
+      ],
+    },
+    {
+      titulo: "Servidor SMTP",
+      descripcion: "Credenciales y parámetros de conexión para enviar correos",
+      icon: Server,
+      claves: [
+        "notificaciones.smtp_host",
+        "notificaciones.smtp_port",
+        "notificaciones.smtp_user",
+        "notificaciones.smtp_password",
+        "notificaciones.smtp_secure",
+        "notificaciones.smtp_require_tls",
+        "notificaciones.smtp_reject_unauthorized",
       ],
     },
     {
@@ -256,6 +278,24 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
   ],
 };
 
+const CONFIG_FALLBACKS: ConfigItem[] = [
+  { id: -1, clave: "notificaciones.smtp_host", valor: "smtp.office365.com", descripcion: "Servidor SMTP para el envio de notificaciones", categoria: "notificaciones", tipoDato: "string", esPublico: false },
+  { id: -2, clave: "notificaciones.smtp_port", valor: "587", descripcion: "Puerto del servidor SMTP", categoria: "notificaciones", tipoDato: "number", esPublico: false },
+  { id: -3, clave: "notificaciones.smtp_user", valor: "", descripcion: "Usuario o cuenta SMTP autenticada", categoria: "notificaciones", tipoDato: "string", esPublico: false },
+  { id: -4, clave: "notificaciones.smtp_password", valor: "", descripcion: "Contrasena de la cuenta SMTP", categoria: "notificaciones", tipoDato: "password", esPublico: false },
+  { id: -5, clave: "notificaciones.smtp_secure", valor: "false", descripcion: "Usar SSL/TLS directo. Normalmente false para STARTTLS en puerto 587", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
+  { id: -6, clave: "notificaciones.smtp_require_tls", valor: "true", descripcion: "Exigir STARTTLS cuando el servidor lo soporte", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
+  { id: -7, clave: "notificaciones.smtp_reject_unauthorized", valor: "true", descripcion: "Validar el certificado TLS del servidor SMTP", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
+];
+
+function mergeConfigFallbacks(configs: ConfigItem[]) {
+  const existingKeys = new Set(configs.map((c) => c.clave));
+  return [
+    ...configs,
+    ...CONFIG_FALLBACKS.filter((fallback) => !existingKeys.has(fallback.clave)),
+  ];
+}
+
 // ─── Componente Principal ─────────────────────────────
 export default function ConfiguracionClient({ session }: ConfiguracionClientProps) {
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
@@ -273,10 +313,11 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       const data = await res.json();
 
       if (data.success) {
-        setConfigs(data.data);
+        const configsConFallbacks = mergeConfigFallbacks(data.data);
+        setConfigs(configsConFallbacks);
         // Inicializar valores editados
         const valores: Record<string, string> = {};
-        for (const c of data.data) {
+        for (const c of configsConFallbacks) {
           valores[c.clave] = c.valor;
         }
         setEditedValues(valores);
@@ -357,12 +398,12 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
     <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-primary/10 p-2.5 rounded-xl">
               <Settings className="w-5 h-5 text-primary" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 Configuración del Sistema
               </h1>
@@ -429,19 +470,19 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
           {/* ── Contenido principal ── */}
           <div className="lg:col-span-3 space-y-6">
             {/* Header de categoría + botón guardar */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className={`p-2 rounded-lg ${categoriaActiva === 'seguridad' ? 'bg-red-500/10' : 'bg-primary/10'}`}>
                   <categoriaInfo.icon className={`w-4 h-4 ${categoriaActiva === 'seguridad' ? 'text-red-500' : 'text-primary'}`} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-lg font-semibold text-foreground">{categoriaInfo.nombre}</h2>
                   <p className="text-[12px] text-muted-foreground">{categoriaInfo.descripcion}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                 {cambiosPendientes > 0 && (
-                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                  <Badge variant="outline" className="w-fit text-amber-600 border-amber-300 bg-amber-50 text-xs">
                     {cambiosPendientes} {cambiosPendientes === 1 ? "cambio" : "cambios"} pendiente{cambiosPendientes === 1 ? "" : "s"}
                   </Badge>
                 )}
@@ -449,7 +490,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                   onClick={guardarCambios}
                   disabled={saving || cambiosPendientes === 0}
                   size="sm"
-                  className="gap-2"
+                  className="gap-2 sm:w-auto"
                 >
                   {saving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -513,11 +554,11 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange }: GrupoCa
   return (
     <Card className="bg-card text-card-foreground border shadow-sm transition-shadow duration-200 hover:shadow-md">
       <CardHeader className="pb-4">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-start gap-2.5">
           <div className="p-1.5 rounded-lg bg-muted">
             <Icon className="w-4 h-4 text-muted-foreground" />
           </div>
-          <div>
+          <div className="min-w-0">
             <CardTitle className="text-[14px] font-semibold">{grupo.titulo}</CardTitle>
             <CardDescription className="text-[12px] mt-0.5">{grupo.descripcion}</CardDescription>
           </div>
@@ -533,6 +574,7 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange }: GrupoCa
             const valor = values[clave] ?? config.valor;
             const esBool = config.tipoDato === "boolean" || valor === "true" || valor === "false";
             const esNumero = config.tipoDato === "number";
+            const esPassword = config.tipoDato === "password" || clave.toLowerCase().includes("password");
             const isDirty = dirtyKeys.has(clave);
 
             return (
@@ -543,6 +585,7 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange }: GrupoCa
                 descripcion={config.descripcion}
                 esBool={esBool}
                 esNumero={esNumero}
+                esPassword={esPassword}
                 isDirty={isDirty}
                 onChange={(v) => onValueChange(clave, v)}
               />
@@ -561,16 +604,17 @@ interface ConfigFieldProps {
   descripcion?: string;
   esBool: boolean;
   esNumero: boolean;
+  esPassword: boolean;
   isDirty: boolean;
   onChange: (valor: string) => void;
 }
 
-function ConfigField({ clave, valor, descripcion, esBool, esNumero, isDirty, onChange }: ConfigFieldProps) {
+function ConfigField({ clave, valor, descripcion, esBool, esNumero, esPassword, isDirty, onChange }: ConfigFieldProps) {
   const label = LABELS[clave] || clave;
 
   if (esBool) {
     return (
-      <div className="flex items-center justify-between py-1 group">
+      <div className="flex items-start justify-between gap-3 py-1 group">
         <div className="flex-1 min-w-0 pr-4">
           <div className="flex items-center gap-2">
             <Label className="text-[13px] font-medium text-foreground cursor-pointer">
@@ -607,10 +651,10 @@ function ConfigField({ clave, valor, descripcion, esBool, esNumero, isDirty, onC
       )}
       <Input
         id={`config-${clave}`}
-        type={esNumero ? "number" : "text"}
+        type={esPassword ? "password" : esNumero ? "number" : "text"}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
-        className={`max-w-sm h-9 text-[13px] transition-all duration-200 ${
+        className={`w-full sm:max-w-sm h-9 text-[13px] transition-all duration-200 ${
           isDirty
             ? "border-amber-400 ring-1 ring-amber-200 focus:ring-amber-300"
             : ""

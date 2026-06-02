@@ -2,7 +2,7 @@
  * =====================================================
  * SCRIPT: Crear Usuario Administrador de Soporte TI
  * =====================================================
- * Ejecución: npx tsx scripts/create-admin.ts
+ * Ejecucion: pnpm exec tsx scripts/create-admin.ts
  */
 
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -39,8 +39,7 @@ async function createAdmin() {
     // 1. Buscar el rol ADMIN
     const rolesAdmin = await db.select().from(roles).where(eq(roles.codigo, 'ADMIN'));
     if (rolesAdmin.length === 0) {
-      console.error('❌ Error: No se encontró el rol ADMIN en la base de datos. Ejecuta el seed primero.');
-      process.exit(1);
+      throw new Error('No se encontro el rol ADMIN en la base de datos. Ejecuta el seed primero.');
     }
     const adminRole = rolesAdmin[0];
 
@@ -49,8 +48,7 @@ async function createAdmin() {
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (!adminPassword) {
-      console.error('❌ Error: ADMIN_PASSWORD no está definida en el entorno.');
-      process.exit(1);
+      throw new Error('ADMIN_PASSWORD no esta definida en el entorno.');
     }
 
     const usuariosExistentes = await db.select().from(usuarios).where(eq(usuarios.email, email));
@@ -65,18 +63,22 @@ async function createAdmin() {
         .where(eq(usuarios.id, adminExistente.id));
         
       const rolesExistentes = await db.select().from(usuariosRoles).where(eq(usuariosRoles.usuarioId, adminExistente.id));
-      const tieneRolAdmin = rolesExistentes.some(r => r.rolId === adminRole.id);
+      const rolAdminExistente = rolesExistentes.find(r => r.rolId === adminRole.id);
       
-      if (!tieneRolAdmin) {
+      if (!rolAdminExistente) {
         await db.insert(usuariosRoles).values({
           usuarioId: adminExistente.id,
           rolId: adminRole.id,
           activo: true,
         });
+      } else if (!rolAdminExistente.activo) {
+        await db.update(usuariosRoles)
+          .set({ activo: true })
+          .where(eq(usuariosRoles.id, rolAdminExistente.id));
       }
       
       console.log('✅ Usuario actualizado exitosamente.');
-      process.exit(0);
+      return;
     }
 
     // 3. Crear el usuario
@@ -107,11 +109,15 @@ async function createAdmin() {
 
   } catch (error) {
     console.error('❌ ERROR:', error);
+    process.exitCode = 1;
   } finally {
     await client.end();
   }
 }
 
 createAdmin()
-  .then(() => process.exit(0))
+  .then(() => {
+    if (process.exitCode && process.exitCode !== 0) process.exit(process.exitCode);
+    process.exit(0);
+  })
   .catch(() => process.exit(1));

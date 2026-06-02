@@ -126,7 +126,7 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={`sm:max-w-[800px] ${step === "preview" ? "max-h-[90vh] flex flex-col" : ""}`}>
+      <DialogContent className={`sm:max-w-[800px] ${step === "preview" ? "flex flex-col" : ""}`}>
         <DialogHeader>
           <DialogTitle>Importación Masiva de Usuarios</DialogTitle>
           <DialogDescription>
@@ -139,7 +139,7 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
         {step === "upload" && (
           <div className="py-6">
             <div 
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+              className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors sm:p-8 ${
                 file ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
               }`}
               onClick={() => fileInputRef.current?.click()}
@@ -158,7 +158,7 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                     <FileText className="w-8 h-8" />
                   </div>
                   <div>
-                    <p className="font-semibold">{file.name}</p>
+                    <p className="break-all font-semibold">{file.name}</p>
                     <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(2)} KB</p>
                   </div>
                 </div>
@@ -206,13 +206,13 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
         )}
 
         {step === "preview" && previewData && (
-          <div className="py-4 flex-1 overflow-hidden flex flex-col gap-4 min-h-[400px]">
-            <div className="flex items-center gap-4 bg-muted/50 p-3 rounded-lg border">
-              <div className="flex-1">
+          <div className="py-4 flex min-h-[320px] flex-1 flex-col gap-4 overflow-hidden sm:min-h-[400px]">
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 p-3 sm:flex-row sm:items-center sm:gap-4">
+              <div className="min-w-0 flex-1">
                 <span className="text-sm text-muted-foreground">Total filas:</span>
                 <span className="ml-2 font-semibold">{previewData.total}</span>
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <span className="text-sm text-muted-foreground">Estado:</span>
                 {previewData.valido ? (
                   <Badge className="ml-2 bg-green-500">Todo Correcto</Badge>

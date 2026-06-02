@@ -33,7 +33,7 @@ export const solicitudSchema = z.object({
                 path: ['tipoPermiso'],
             });
         }
-        if (data.tipoPermiso && data.tipoPermiso !== 'dia_completo') {
+        if (data.tipoPermiso === '1-2h') {
             if (!data.horaSalida) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,

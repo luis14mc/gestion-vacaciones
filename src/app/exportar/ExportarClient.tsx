@@ -169,12 +169,12 @@ export default function ExportarClient({ session }: ExportarClientProps) {
   return (
     <div>
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-muted p-2.5 rounded-xl">
               <Download className="w-4 h-4 text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight">
                 Exportar Datos
               </h1>
@@ -203,8 +203,8 @@ export default function ExportarClient({ session }: ExportarClientProps) {
                       : "border-border bg-muted hover:bg-muted/80"
                   )}
                 >
-                  <div className="p-5">
-                    <div className="flex items-start gap-3">
+                  <div className="p-4 sm:p-5">
+                    <div className="flex min-w-0 items-start gap-3">
                       <Icono
                         className={cn(
                           "w-8 h-8",
@@ -213,7 +213,7 @@ export default function ExportarClient({ session }: ExportarClientProps) {
                             : opcion.color
                         )}
                       />
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <h3 className="text-[13px] font-semibold">
                           {opcion.nombre}
                         </h3>
@@ -241,12 +241,12 @@ export default function ExportarClient({ session }: ExportarClientProps) {
 
         {exportacionSeleccionada && (
           <Card className="rounded-2xl mb-6 gap-0 py-0 shadow-sm">
-            <CardHeader className="px-5 pt-5 pb-0">
+            <CardHeader className="px-4 pt-5 pb-0 sm:px-5">
               <CardTitle className="text-[13px] font-semibold">
                 Configuración de Exportación
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-5 pt-4">
+            <CardContent className="p-4 pt-4 sm:p-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label className="font-semibold">Formato de archivo</Label>
@@ -353,9 +353,9 @@ export default function ExportarClient({ session }: ExportarClientProps) {
 
         {exportacionSeleccionada && opcionSeleccionada && (
           <Card className="rounded-2xl gap-0 py-0 shadow-sm">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-4">
                   <div className="bg-muted p-2.5 rounded-xl">
                     {(() => {
                       const Icono = opcionSeleccionada.icono;
@@ -364,7 +364,7 @@ export default function ExportarClient({ session }: ExportarClientProps) {
                       );
                     })()}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-xl font-semibold tracking-tight">
                       {opcionSeleccionada.nombre}
                     </h3>
@@ -378,7 +378,7 @@ export default function ExportarClient({ session }: ExportarClientProps) {
                   onClick={exportarDatos}
                   disabled={cargando}
                   size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-green-600 text-white hover:bg-green-700 sm:w-auto"
                 >
                   {cargando ? (
                     <>

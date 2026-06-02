@@ -22,8 +22,11 @@ const crearSolicitudSchema = z.object({
   fechaInicio: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   fechaFin: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   diasSolicitados: z.number().min(0).optional(),
-  motivo: z.string().optional(),
-  observaciones: z.string().optional(),
+  duracionPermiso: z.enum(['1-2h', '2-4h', 'dia_completo']).optional(),
+  horaSalida: z.string().optional(),
+  horaRegreso: z.string().optional(),
+  motivo: z.string().nullish(),
+  observaciones: z.string().nullish(),
   documentosAdjuntos: z.array(
     z.object({
       nombre: z.string(),
@@ -225,12 +228,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     tipo,
     fechaInicio,
     diasSolicitados,
+    duracionPermiso,
+    horaSalida,
+    horaRegreso,
     motivo,
     observaciones,
     documentosAdjuntos
   } = validatedData;
 
   const fechaFin = validatedData.fechaFin || fechaInicio;
+  const motivoNormalizado = motivo?.trim() || '';
+
+  if (tipo === 'permiso_salida' && motivoNormalizado.length < 5) {
+    return NextResponse.json(
+      { success: false, error: 'Para permisos de salida es obligatorio indicar un motivo de al menos 5 caracteres.' },
+      { status: 400 }
+    );
+  }
 
   // 🔐 3. VALIDACIÓN DE PROPIEDAD
   // Solo ADMIN y RRHH pueden crear solicitudes para otros usuarios
@@ -278,7 +292,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     fechaInicio,
     fechaFin,
     diasSolicitados: diasSolicitados || 0,
-    motivo: motivo || '',
+    duracionPermiso,
+    horaSalida,
+    horaRegreso,
+    motivo: motivoNormalizado,
     comentarioEmpleado: observaciones || undefined,
     esDirector: sessionUser.esDirector || false,
     documentosAdjuntos

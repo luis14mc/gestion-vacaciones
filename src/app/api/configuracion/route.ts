@@ -20,6 +20,56 @@ import { getSession } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
+const CONFIG_DEFAULTS: Record<string, {
+  descripcion: string;
+  categoria: string;
+  tipoDato: string;
+  esPublico: boolean;
+}> = {
+  'notificaciones.smtp_host': {
+    descripcion: 'Servidor SMTP para el envio de notificaciones',
+    categoria: 'notificaciones',
+    tipoDato: 'string',
+    esPublico: false,
+  },
+  'notificaciones.smtp_port': {
+    descripcion: 'Puerto del servidor SMTP',
+    categoria: 'notificaciones',
+    tipoDato: 'number',
+    esPublico: false,
+  },
+  'notificaciones.smtp_user': {
+    descripcion: 'Usuario o cuenta SMTP autenticada',
+    categoria: 'notificaciones',
+    tipoDato: 'string',
+    esPublico: false,
+  },
+  'notificaciones.smtp_password': {
+    descripcion: 'Contrasena de la cuenta SMTP',
+    categoria: 'notificaciones',
+    tipoDato: 'password',
+    esPublico: false,
+  },
+  'notificaciones.smtp_secure': {
+    descripcion: 'Usar SSL/TLS directo. Normalmente false para STARTTLS en puerto 587',
+    categoria: 'notificaciones',
+    tipoDato: 'boolean',
+    esPublico: false,
+  },
+  'notificaciones.smtp_require_tls': {
+    descripcion: 'Exigir STARTTLS cuando el servidor lo soporte',
+    categoria: 'notificaciones',
+    tipoDato: 'boolean',
+    esPublico: false,
+  },
+  'notificaciones.smtp_reject_unauthorized': {
+    descripcion: 'Validar el certificado TLS del servidor SMTP',
+    categoria: 'notificaciones',
+    tipoDato: 'boolean',
+    esPublico: false,
+  },
+};
+
 // ─── GET: Obtener configuraciones ─────────────────────
 export async function GET() {
   try {
@@ -97,10 +147,28 @@ export async function PATCH(request: NextRequest) {
       await db.transaction(async (tx) => {
         const ahora = new Date().toISOString();
         for (const item of body) {
+          const defaults = CONFIG_DEFAULTS[item.clave] ?? {
+            descripcion: null,
+            categoria: 'general',
+            tipoDato: 'string',
+            esPublico: false,
+          };
+
           await tx
-            .update(configuracion)
-            .set({ valor: String(item.valor), updatedAt: ahora })
-            .where(eq(configuracion.clave, item.clave));
+            .insert(configuracion)
+            .values({
+              clave: item.clave,
+              valor: String(item.valor),
+              descripcion: defaults.descripcion,
+              categoria: defaults.categoria,
+              tipoDato: defaults.tipoDato,
+              esPublico: defaults.esPublico,
+              updatedAt: ahora,
+            })
+            .onConflictDoUpdate({
+              target: configuracion.clave,
+              set: { valor: String(item.valor), updatedAt: ahora },
+            });
         }
       });
 

@@ -70,14 +70,14 @@ async function initProd() {
 
     // ===== PASO 3: SEED =====
     console.log('📊 [3/3] SEED DE DATOS BASE...\n');
-    execSync('npx tsx scripts/seed-database.ts', {
+    execSync('pnpm exec tsx scripts/seed-database.ts', {
       stdio: 'inherit',
       cwd: process.cwd()
     });
 
     // ===== PASO 4: ADMIN EXTRA =====
     console.log('\n🛡️  INYECCIÓN DE ADMINS EXTRA...');
-    execSync('npx tsx scripts/create-admin.ts', {
+    execSync('pnpm exec tsx scripts/create-admin.ts', {
       stdio: 'inherit',
       cwd: process.cwd()
     });

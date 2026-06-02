@@ -161,7 +161,7 @@ export default function AppShell({ children, session }: AppShellProps) {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen min-w-0 overflow-x-hidden">
       {/* ── Mobile overlay ── */}
       {sidebarOpen && (
         <div
@@ -265,9 +265,9 @@ export default function AppShell({ children, session }: AppShellProps) {
       </aside>
 
       {/* ── Main area ── */}
-      <div className="lg:ml-[260px] min-h-screen flex flex-col">
+      <div className="lg:ml-[260px] min-h-screen min-w-0 flex flex-col">
         {/* Top header */}
-        <header className="sticky top-0 z-30 h-14 bg-white/65 backdrop-blur-2xl backdrop-saturate-[1.8] border-b border-white/50 shadow-[0_1px_8px_oklch(0%_0_0/0.04)] flex items-center justify-between px-4 lg:px-6">
+        <header className="sticky top-0 z-30 h-14 bg-white/65 backdrop-blur-2xl backdrop-saturate-[1.8] border-b border-white/50 shadow-[0_1px_8px_oklch(0%_0_0/0.04)] flex items-center justify-between gap-3 px-3 sm:px-4 lg:px-6">
           {/* Left: hamburger + breadcrumb */}
           <div className="flex items-center gap-3">
             <Button
@@ -341,7 +341,7 @@ export default function AppShell({ children, session }: AppShellProps) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-4 lg:px-8 py-6 max-w-[1440px] w-full mx-auto">
+        <main className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:px-8 max-w-[1440px] w-full mx-auto">
           {children}
         </main>
 

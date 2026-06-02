@@ -181,7 +181,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>{isEditing ? "Editar Usuario" : "Nuevo Usuario"}</DialogTitle>
                     <DialogDescription>
@@ -191,7 +191,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <FormField
                                 control={form.control}
                                 name="nombre"
@@ -407,7 +407,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                         control={form.control}
                                         name={role.name}
                                         render={({ field }) => (
-                                            <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                            <FormItem className="flex min-w-[9rem] flex-row items-center space-x-2 space-y-0">
                                                 <FormControl>
                                                     <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                                                 </FormControl>

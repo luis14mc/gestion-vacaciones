@@ -38,17 +38,21 @@ export async function GET() {
       solicitudesCondition = and(solicitudesCondition, eq(solicitudes.usuarioId, session.id));
     }
     // Si es jefe, solo su departamento
-    else if (esDirectorOJefe && session.departamentoId && !puedeVerTodo) {
-      const usuariosDept = await db
-        .select({ id: usuarios.id })
-        .from(usuarios)
-        .where(and(
-          eq(usuarios.departamentoId, session.departamentoId),
-          isNull(usuarios.deletedAt)
-        ));
-      const usuariosIds = usuariosDept.map(u => u.id);
-      if (usuariosIds.length > 0) {
-        solicitudesCondition = and(solicitudesCondition, inArray(solicitudes.usuarioId, usuariosIds));
+    else if (esDirectorOJefe && !puedeVerTodo) {
+      if (!session.departamentoId) {
+        solicitudesCondition = and(solicitudesCondition, sql`false`);
+      } else {
+        const usuariosDept = await db
+          .select({ id: usuarios.id })
+          .from(usuarios)
+          .where(and(
+            eq(usuarios.departamentoId, session.departamentoId),
+            isNull(usuarios.deletedAt)
+          ));
+        const usuariosScopeIds = usuariosDept.map(u => u.id);
+        solicitudesCondition = usuariosScopeIds.length > 0
+          ? and(solicitudesCondition, inArray(solicitudes.usuarioId, usuariosScopeIds))
+          : and(solicitudesCondition, sql`false`);
       }
     }
 
@@ -97,27 +101,40 @@ export async function GET() {
     }
 
     // Obtener últimos usuarios creados
-    const ultimosUsuarios = await db
-      .select({
-        id: usuarios.id,
-        nombre: usuarios.nombre,
-        apellido: usuarios.apellido,
-        departamentoId: usuarios.departamentoId,
-        createdAt: usuarios.createdAt,
-      })
-      .from(usuarios)
-      .where(isNull(usuarios.deletedAt))
-      .orderBy(desc(usuarios.createdAt))
-      .limit(3);
+    let usuariosCondition: any | null = null;
+    if (!esEmpleado) {
+      usuariosCondition = isNull(usuarios.deletedAt);
 
-    for (const usuario of ultimosUsuarios) {
-      actividades.push({
-        id: `usuario-${usuario.id}`,
-        tipo: "nuevo_usuario",
-        titulo: "Nuevo Usuario",
-        descripcion: `${usuario.nombre} ${usuario.apellido}${usuario.departamentoId ? ` - Dept. ID ${usuario.departamentoId}` : ""}`,
-        fecha: usuario.createdAt,
-      });
+      if (esDirectorOJefe && !puedeVerTodo) {
+        usuariosCondition = session.departamentoId
+          ? and(usuariosCondition, eq(usuarios.departamentoId, session.departamentoId))
+          : and(usuariosCondition, sql`false`);
+      }
+    }
+
+    if (usuariosCondition) {
+      const ultimosUsuarios = await db
+        .select({
+          id: usuarios.id,
+          nombre: usuarios.nombre,
+          apellido: usuarios.apellido,
+          departamentoId: usuarios.departamentoId,
+          createdAt: usuarios.createdAt,
+        })
+        .from(usuarios)
+        .where(usuariosCondition)
+        .orderBy(desc(usuarios.createdAt))
+        .limit(3);
+
+      for (const usuario of ultimosUsuarios) {
+        actividades.push({
+          id: `usuario-${usuario.id}`,
+          tipo: "nuevo_usuario",
+          titulo: "Nuevo Usuario",
+          descripcion: `${usuario.nombre} ${usuario.apellido}${usuario.departamentoId ? ` - Dept. ID ${usuario.departamentoId}` : ""}`,
+          fecha: usuario.createdAt,
+        });
+      }
     }
 
     // Ordenar todas las actividades por fecha

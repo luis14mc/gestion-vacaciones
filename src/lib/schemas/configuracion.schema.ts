@@ -58,6 +58,16 @@ export const vacacionesConfigSchema = z.object({
 export const notificacionesConfigSchema = z.object({
   "notificaciones.email_habilitado": z.string().regex(/^(true|false)$/),
   "notificaciones.email_remitente": z.string().email("Debe ser un correo electrónico válido"),
+  "notificaciones.smtp_host": z.string().min(1, "El host SMTP es requerido").max(255),
+  "notificaciones.smtp_port": z.string().refine(
+    (v) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 65535; },
+    "Debe ser un puerto entre 1 y 65535"
+  ),
+  "notificaciones.smtp_user": z.string().min(1, "El usuario SMTP es requerido").max(255),
+  "notificaciones.smtp_password": z.string().optional(),
+  "notificaciones.smtp_secure": z.string().regex(/^(true|false)$/),
+  "notificaciones.smtp_require_tls": z.string().regex(/^(true|false)$/),
+  "notificaciones.smtp_reject_unauthorized": z.string().regex(/^(true|false)$/),
   "notificaciones.notificar_jefe_nueva_solicitud": z.string().regex(/^(true|false)$/),
   "notificaciones.notificar_empleado_aprobacion": z.string().regex(/^(true|false)$/),
   "notificaciones.notificar_empleado_rechazo": z.string().regex(/^(true|false)$/),

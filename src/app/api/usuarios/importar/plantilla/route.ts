@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
       { header: 'Fecha Ingreso', key: 'fechaIngreso', width: 15 },
       { header: 'Es Jefe', key: 'esJefe', width: 10 },
       { header: 'Es Director', key: 'esDirector', width: 12 },
+      { header: 'Email Jefe Superior', key: 'emailJefeSuperior', width: 28 },
     ];
 
     // Estilos para la cabecera
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
       pattern: 'solid',
       fgColor: { argb: 'FF182243' } // CNI Deep Navy
     };
+    worksheet.getCell('J1').note = 'Opcional para todos. Si se deja vacío, el sistema usará el jefe del departamento si existe.';
 
     // Añadir una fila de ejemplo (instruccional)
     worksheet.addRow({
@@ -49,12 +51,28 @@ export async function GET(request: NextRequest) {
       cargo: 'Analista',
       fechaIngreso: '2025-01-15',
       esJefe: 'No',
-      esDirector: 'No'
+      esDirector: 'No',
+      emailJefeSuperior: 'jefe@cni.hn'
     });
 
-    // Poner la fila de ejemplo en cursiva y texto gris para indicar que es un ejemplo
+    worksheet.addRow({
+      email: 'directora@cni.hn',
+      nombre: 'Laura',
+      apellido: 'Martinez',
+      numeroEmpleado: 'CNI-1026',
+      departamento: 'Direccion Ejecutiva',
+      cargo: 'Directora',
+      fechaIngreso: '2025-01-15',
+      esJefe: 'No',
+      esDirector: 'Si',
+      emailJefeSuperior: ''
+    });
+
+    // Poner las filas de ejemplo en cursiva y texto gris para indicar que son ejemplos
     const exampleRow = worksheet.getRow(2);
     exampleRow.font = { italic: true, color: { argb: 'FF888888' } };
+    const directorExampleRow = worksheet.getRow(3);
+    directorExampleRow.font = { italic: true, color: { argb: 'FF888888' } };
 
     // Generar buffer
     const buffer = await workbook.xlsx.writeBuffer();

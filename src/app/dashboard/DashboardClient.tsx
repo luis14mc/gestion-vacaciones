@@ -83,11 +83,12 @@ export default function DashboardClient({ session }: { session: Session }) {
       else if (esRrhh && !esAdmin) metricsUrl = '/api/dashboard/rrhh/metricas';
       else metricsUrl = '/api/dashboard/mi-balance';
 
+      const debeCargarBalancePersonal = !isEmpleado;
       const urls = [
         metricsUrl,
         '/api/dashboard/actividad',
         `/api/dashboard/calendario?mes=${mes}&anio=${anio}`,
-        ...(esRrhh && !esAdmin ? ['/api/dashboard/mi-balance'] : []),
+        ...(debeCargarBalancePersonal ? ['/api/dashboard/mi-balance'] : []),
       ];
 
       const responses = await Promise.all(
@@ -111,8 +112,8 @@ export default function DashboardClient({ session }: { session: Session }) {
           setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
         }
 
-        // RRHH also gets personal balance
-        if (esRrhh && !esAdmin && responses.length > 3 && responses[3].success) {
+        // Los usuarios con rol operativo también deben ver su balance personal.
+        if (debeCargarBalancePersonal && responses.length > 3 && responses[3].success) {
           setBalance(responses[3].data);
         }
       }
@@ -160,8 +161,8 @@ export default function DashboardClient({ session }: { session: Session }) {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-[13px] text-muted-foreground mt-0.5">{roleConfig.desc}</p>
         </div>
@@ -187,7 +188,7 @@ export default function DashboardClient({ session }: { session: Session }) {
 
       {/* Metric Cards */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-card border shadow-sm rounded-xl p-5">
               <div className="animate-pulse h-3 w-20 rounded bg-muted" />
@@ -199,7 +200,7 @@ export default function DashboardClient({ session }: { session: Session }) {
         <>
           {/* Admin metrics */}
           {esAdmin && metrics && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="Total Usuarios"
                 value={metrics.usuarios_totales}
@@ -233,7 +234,7 @@ export default function DashboardClient({ session }: { session: Session }) {
 
           {/* Jefe metrics */}
           {(esDirector || esJefe) && !esAdmin && !esRrhh && metrics && (
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <MetricCard title="Pendientes" value={metrics.solicitudes_pendientes || 0} subtitle="Tu aprobación" icon={Clock} color="warning" />
               <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
               <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
@@ -244,7 +245,7 @@ export default function DashboardClient({ session }: { session: Session }) {
 
           {/* RRHH metrics */}
           {esRrhh && !esAdmin && metrics && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard title="Pendientes" value={metrics.solicitudes_pendientes || 0} subtitle="Requieren aprobación" icon={Hourglass} color="warning" />
               <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
               <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
@@ -254,7 +255,7 @@ export default function DashboardClient({ session }: { session: Session }) {
 
           {/* Employee balance */}
           {isEmpleado && balance && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard title="Días Asignados" value={balance.diasAsignados} subtitle="Total este año" icon={Calendar} color="primary" />
               <MetricCard title="Disponibles" value={balance.diasDisponibles} subtitle="Puedes solicitar" icon={CheckCircle} color="success" />
               <MetricCard title="Días Usados" value={balance.diasUsados} subtitle={balance.diasAsignados ? `${Math.round((balance.diasUsados / balance.diasAsignados) * 100)}% utilizado` : '0%'} icon={Car} color="error" />
@@ -262,13 +263,13 @@ export default function DashboardClient({ session }: { session: Session }) {
             </div>
           )}
 
-          {esRrhh && !esAdmin && balance && (
+          {!isEmpleado && balance && (
             <div>
               <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
                 <User className="w-3.5 h-3.5" />
                 Mi Balance Personal
               </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <MetricCard title="Días Asignados" value={balance.diasAsignados} icon={Calendar} color="primary" />
                 <MetricCard title="Disponibles" value={balance.diasDisponibles} icon={CheckCircle} color="success" />
                 <MetricCard title="Usados" value={balance.diasUsados} icon={Car} color="error" />
@@ -285,7 +286,7 @@ export default function DashboardClient({ session }: { session: Session }) {
                   Resumen de Solicitudes
                 </h2>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-border">
+              <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 <div className="p-5 text-center">
                   <p className="text-2xl font-semibold text-orange-500">{balance.solicitudesPendientes}</p>
                   <p className="text-[11px] text-muted-foreground mt-1">Pendientes</p>
@@ -305,7 +306,7 @@ export default function DashboardClient({ session }: { session: Session }) {
       )}
 
       {/* Quick Actions + Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
         <QuickActions session={session} />
         <ActivityFeed actividades={actividades} />
       </div>

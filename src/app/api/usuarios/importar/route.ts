@@ -2,11 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { departamentos, usuarios } from '@/lib/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { crearUsuario } from '@/services/usuarios.service';
 
 export const runtime = 'nodejs';
+
+const TRUE_VALUES = new Set(['si', 'sí', 'yes', 'true', '1', 'x']);
+
+function parseBooleanCell(value: string) {
+  return TRUE_VALUES.has(value.trim().toLowerCase());
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,15 +66,19 @@ export async function POST(request: NextRequest) {
     const columnMap: Record<string, number> = {};
     headerRow.eachCell((cell: any, colNumber: number) => {
       const headerText = cell.text.trim().toLowerCase();
-      if (headerText.includes('email') || headerText.includes('correo')) columnMap['email'] = colNumber;
+      if (headerText.includes('email') && !headerText.includes('jefe')) columnMap['email'] = colNumber;
       else if (headerText.includes('nombre')) columnMap['nombre'] = colNumber;
       else if (headerText.includes('apellido')) columnMap['apellido'] = colNumber;
       else if (headerText.includes('empleado') && (headerText.includes('número') || headerText.includes('numero') || headerText.includes('num') || headerText.includes('nro'))) columnMap['numeroEmpleado'] = colNumber;
       else if (headerText.includes('departamento') || headerText.includes('área') || headerText.includes('area')) columnMap['departamento'] = colNumber;
       else if (headerText.includes('cargo') || headerText.includes('puesto')) columnMap['cargo'] = colNumber;
       else if (headerText.includes('fecha') && headerText.includes('ingreso')) columnMap['fechaIngreso'] = colNumber;
-      else if (headerText.includes('jefe')) columnMap['esJefe'] = colNumber;
+      else if (headerText.includes('jefe') && !headerText.includes('email') && !headerText.includes('correo') && !headerText.includes('superior')) columnMap['esJefe'] = colNumber;
       else if (headerText.includes('director')) columnMap['esDirector'] = colNumber;
+      // Columna para el email del jefe superior
+      else if ((headerText.includes('jefe') || headerText.includes('superior')) && (headerText.includes('email') || headerText.includes('correo'))) columnMap['emailJefeSuperior'] = colNumber;
+      // También aceptar "email jefe superior" como una columna completa
+      else if (headerText.includes('jefe') && headerText.includes('superior')) columnMap['emailJefeSuperior'] = colNumber;
     });
 
     // Validar columnas obligatorias
@@ -79,11 +93,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener departamentos y usuarios existentes
-    const dbDepartamentos = await db.select({ id: departamentos.id, nombre: departamentos.nombre }).from(departamentos);
+    const dbDepartamentos = await db.select({ id: departamentos.id, nombre: departamentos.nombre, jefeId: departamentos.jefeId }).from(departamentos);
     const deptoMap = new Map(dbDepartamentos.map(d => [d.nombre.toLowerCase().trim(), d.id]));
+    const deptoJefeMap = new Map(dbDepartamentos.map(d => [d.id, d.jefeId]));
     
-    const dbUsuarios = await db.select({ email: usuarios.email }).from(usuarios);
+    const dbUsuarios = await db.select({ id: usuarios.id, email: usuarios.email }).from(usuarios);
     const correosExistentes = new Set(dbUsuarios.map(u => u.email.toLowerCase().trim()));
+    const emailToIdMap = new Map(dbUsuarios.map(u => [u.email.toLowerCase().trim(), u.id]));
 
     const rowsParsed: any[] = [];
     let validacionExitosa = true;
@@ -108,6 +124,9 @@ export async function POST(request: NextRequest) {
       const fechaIngresoStr = getVal('fechaIngreso');
       const esJefeStr = getVal('esJefe').toLowerCase();
       const esDirectorStr = getVal('esDirector').toLowerCase();
+      const emailJefeSuperior = getVal('emailJefeSuperior').toLowerCase();
+      const esJefe = parseBooleanCell(esJefeStr);
+      const esDirector = parseBooleanCell(esDirectorStr);
 
       // Skip empty rows
       if (!email && !nombre && !apellido) return;
@@ -132,6 +151,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // El jefe superior es opcional para todos. Si viene informado,
+      // debe tener formato de correo válido.
+      if (emailJefeSuperior && !isValidEmail(emailJefeSuperior)) {
+        erroresFila.push('Email Jefe Superior inválido');
+      }
+
       if (erroresFila.length > 0) validacionExitosa = false;
 
       // Intentar parsear fecha
@@ -153,8 +178,9 @@ export async function POST(request: NextRequest) {
         departamentoId: deptoId,
         cargo,
         fechaIngreso: fechaIngresoParsed.toISOString(),
-        esJefe: esJefeStr === 'si' || esJefeStr === 'sí' || esJefeStr === 'yes' || esJefeStr === 'true',
-        esDirector: esDirectorStr === 'si' || esDirectorStr === 'sí' || esDirectorStr === 'yes' || esDirectorStr === 'true',
+        esJefe,
+        esDirector,
+        emailJefeSuperior: esDirector ? null : emailJefeSuperior || null,
         errores: erroresFila
       });
     });
@@ -182,10 +208,13 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
+      // ── PRIMERA PASADA: Crear todos los usuarios ──
       let creados = 0;
+      const usuariosCreados: { id: number; email: string; emailJefeSuperior: string | null; departamentoId: number | null; esDirector: boolean }[] = [];
+
       for (const userData of rowsParsed) {
         try {
-          await crearUsuario({
+          const nuevoUsuario = await crearUsuario({
             nombre: userData.nombre,
             apellido: userData.apellido,
             email: userData.email,
@@ -201,15 +230,75 @@ export async function POST(request: NextRequest) {
             telefono: undefined,
             direccion: undefined
           });
-          creados++;
+
+          if (nuevoUsuario?.id) {
+            creados++;
+            usuariosCreados.push({
+              id: nuevoUsuario.id,
+              email: userData.email,
+              emailJefeSuperior: userData.emailJefeSuperior,
+              departamentoId: userData.departamentoId,
+              esDirector: userData.esDirector
+            });
+
+            // Registrar en el mapa para que otros usuarios del mismo archivo puedan referenciarlo como jefe
+            emailToIdMap.set(userData.email.toLowerCase(), nuevoUsuario.id);
+          }
         } catch (e) {
           console.error(`Error importando fila ${userData.fila} (${userData.email}):`, e);
         }
       }
 
+      // ── SEGUNDA PASADA: Asignar jefeSuperiorId ──
+      let jefesAsignados = 0;
+      let jefesAsignadosPorDepto = 0;
+
+      for (const uc of usuariosCreados) {
+        if (uc.esDirector) continue;
+
+        let jefeSuperiorId: number | null = null;
+
+        // Prioridad 1: Email del jefe especificado en el Excel
+        if (uc.emailJefeSuperior && isValidEmail(uc.emailJefeSuperior)) {
+          const jefeId = emailToIdMap.get(uc.emailJefeSuperior.toLowerCase());
+          if (jefeId && jefeId !== uc.id) {
+            jefeSuperiorId = jefeId;
+          }
+        }
+
+        // Prioridad 2 (Fallback): Jefe del departamento asignado
+        if (!jefeSuperiorId && uc.departamentoId) {
+          const jefeDepto = deptoJefeMap.get(uc.departamentoId);
+          if (jefeDepto && jefeDepto !== uc.id) {
+            jefeSuperiorId = jefeDepto;
+          }
+        }
+
+        // Actualizar el usuario con su jefeSuperiorId
+        if (jefeSuperiorId) {
+          try {
+            await db
+              .update(usuarios)
+              .set({
+                jefeSuperiorId: jefeSuperiorId,
+                updatedAt: new Date().toISOString()
+              })
+              .where(eq(usuarios.id, uc.id));
+
+            if (uc.emailJefeSuperior) {
+              jefesAsignados++;
+            } else {
+              jefesAsignadosPorDepto++;
+            }
+          } catch (e) {
+            console.error(`Error asignando jefe superior a usuario ${uc.id}:`, e);
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
-        message: `Importación exitosa. Se crearon ${creados} usuarios de ${rowsParsed.length} filas.`
+        message: `Importación exitosa. Se crearon ${creados} usuarios de ${rowsParsed.length} filas. Jefes asignados: ${jefesAsignados} por email, ${jefesAsignadosPorDepto} por departamento.`
       });
     }
 

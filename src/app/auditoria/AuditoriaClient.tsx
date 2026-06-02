@@ -195,12 +195,12 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
     <div>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="bg-muted p-2.5 rounded-xl">
               <FileText className="w-4 h-4 text-muted-foreground" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">Auditoría del Sistema</h1>
               <p className="text-[13px] text-muted-foreground mt-0.5">
                 Registro detallado de todas las acciones realizadas en el sistema
@@ -210,13 +210,13 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-primary/10 rounded-lg text-primary">
                 <Activity className="w-6 h-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">Registros Totales</p>
                 <p className="text-2xl font-bold">{totalRegistros}</p>
                 <p className="text-xs text-muted-foreground mt-1">En esta página</p>
@@ -224,12 +224,12 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
             </div>
           </div>
 
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 rounded-lg text-blue-500">
                 <Clock className="w-6 h-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">Acciones Hoy</p>
                 <p className="text-2xl font-bold">{registrosHoy}</p>
                 <p className="text-xs text-muted-foreground mt-1">En las últimas 24 horas</p>
@@ -237,12 +237,12 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
             </div>
           </div>
 
-          <div className="bg-card text-card-foreground border shadow-sm rounded-xl p-5">
+          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-amber-500/10 rounded-lg text-amber-500">
                 <Calendar className="w-6 h-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[13px] text-muted-foreground font-medium">Página Actual</p>
                 <p className="text-2xl font-bold">{paginaActual}</p>
                 <p className="text-xs text-muted-foreground mt-1">de {totalPaginas} páginas</p>
@@ -253,13 +253,13 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
 
         {/* Filtros */}
         <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
-          <div className="p-5">
+          <div className="p-4 sm:p-5">
             <h2 className="text-[13px] font-semibold mb-4 flex items-center gap-2">
               <Filter className="w-4 h-4" />
               Filtros de Búsqueda
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {/* Búsqueda de texto */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Buscar</label>
@@ -342,7 +342,7 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
               {/* Botones */}
               <div className="space-y-2">
                 <label className="text-sm font-medium hidden md:block">&nbsp;</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                   <Button
                     onClick={aplicarFiltros}
                     className="flex-1 h-10"
@@ -514,31 +514,31 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
             </DialogHeader>
             {selectedLog && (
               <div className="space-y-4 py-4">
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">Acción:</span>
                   <Badge variant={getBadgeVariant(selectedLog.accion)} className={getBadgeColorClass(selectedLog.accion)}>{selectedLog.accion}</Badge>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">Usuario:</span>
-                  <span className="font-semibold text-sm">{selectedLog.usuario.nombre} {selectedLog.usuario.apellido}</span>
+                  <span className="text-sm font-semibold min-[420px]:text-right">{selectedLog.usuario.nombre} {selectedLog.usuario.apellido}</span>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">Email:</span>
-                  <span className="font-medium text-sm">{selectedLog.usuario.email}</span>
+                  <span className="break-all text-sm font-medium min-[420px]:text-right">{selectedLog.usuario.email}</span>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">Tabla:</span>
                   <Badge variant="outline">{selectedLog.tabla_afectada}</Badge>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">ID Registro:</span>
                   <span className="font-medium text-sm">{selectedLog.registro_id || "N/A"}</span>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">Fecha:</span>
-                  <span className="font-medium text-sm">{new Date(selectedLog.fecha_creacion).toLocaleString("es-ES")}</span>
+                  <span className="text-sm font-medium min-[420px]:text-right">{new Date(selectedLog.fecha_creacion).toLocaleString("es-ES")}</span>
                 </div>
-                <div className="flex justify-between items-center border-b pb-2">
+                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                   <span className="text-muted-foreground text-sm">IP:</span>
                   <span className="font-mono text-xs">{selectedLog.ip_address || "N/A"}</span>
                 </div>

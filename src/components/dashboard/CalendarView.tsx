@@ -45,14 +45,14 @@ export function CalendarView({
   return (
     <div className="bg-card border text-card-foreground shadow-sm rounded-xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-3.5 border-b">
-        <h2 className="text-[13px] font-semibold flex items-center gap-2">
+      <div className="flex flex-col items-start justify-between gap-3 border-b px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+        <h2 className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
           <Calendar className="w-4 h-4 text-primary" />
           {calendario?.nombreMes || '...'} {anioSeleccionado}
         </h2>
-        <div className="flex gap-2">
+        <div className="grid w-full grid-cols-[minmax(0,1fr)_5.5rem] gap-2 sm:flex sm:w-auto">
           <Select value={String(mesSeleccionado)} onValueChange={(val) => onMesChange(Number(val))}>
-            <SelectTrigger className="h-8 w-[130px] text-xs">
+            <SelectTrigger className="h-8 text-xs sm:w-[130px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -64,7 +64,7 @@ export function CalendarView({
             </SelectContent>
           </Select>
           <Select value={String(anioSeleccionado)} onValueChange={(val) => onAnioChange(Number(val))}>
-            <SelectTrigger className="h-8 w-[80px] text-xs">
+            <SelectTrigger className="h-8 text-xs sm:w-[80px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -76,7 +76,7 @@ export function CalendarView({
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         {/* Stats badges */}
         {calendario && calendario.estadisticas.totalSolicitudes > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
@@ -149,7 +149,7 @@ export function CalendarView({
             </div>
 
             {/* Legend */}
-            <div className="flex gap-4 mt-3 text-[11px] text-muted-foreground justify-center">
+            <div className="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-muted-foreground sm:gap-4">
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                 Con vacaciones

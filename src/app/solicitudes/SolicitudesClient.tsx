@@ -262,7 +262,7 @@ export default function SolicitudesClient({ session }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:gap-4 md:grid-cols-4">
           <Card className="gap-0 rounded-2xl py-4 sm:py-5">
             <CardContent className="space-y-1 px-4 sm:px-5">
               <FileText className="mb-1 hidden h-4 w-4 text-primary sm:block" />
@@ -470,8 +470,8 @@ export default function SolicitudesClient({ session }: Props) {
                           {getEstadoBadge(sol.estado)}
                         </div>
 
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <Badge variant="outline" className="text-xs">
+                        <div className="mb-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
+                          <Badge variant="outline" className="w-fit max-w-full text-xs">
                             {sol.tipoAusencia}
                           </Badge>
                           <Badge className="text-xs">{sol.dias} días</Badge>
@@ -489,7 +489,7 @@ export default function SolicitudesClient({ session }: Props) {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                        <div className="grid grid-cols-1 gap-2 border-t border-border pt-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
                           <div className="text-xs text-muted-foreground">
                             <Clock className="mr-1 inline h-3 w-3" />
                             {calcularDiasDesde(sol.fechaCreacion)}
@@ -614,19 +614,19 @@ export default function SolicitudesClient({ session }: Props) {
         }}
       >
         <DialogContent
-          className="max-w-2xl gap-0 p-0 sm:max-w-2xl"
+          className="gap-0 p-0 sm:max-w-2xl"
           showCloseButton
         >
           {solicitudSeleccionada && (
             <>
-              <DialogHeader className="border-b border-border px-6 pb-4 pt-6 text-left">
+              <DialogHeader className="border-b border-border px-4 pb-4 pt-6 text-left sm:px-6">
                 <DialogTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   Detalles de la Solicitud
                 </DialogTitle>
               </DialogHeader>
-              <div className="max-h-[min(70vh,560px)] space-y-4 overflow-y-auto px-6 py-4">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-muted-foreground">Usuario</Label>
                     <p className="text-foreground">{solicitudSeleccionada.usuario}</p>
@@ -680,7 +680,7 @@ export default function SolicitudesClient({ session }: Props) {
                     <div className="space-y-3 rounded-xl bg-muted/50 p-3">
                       {solicitudSeleccionada.metadata.comentarios.map((com: any, i: number) => (
                         <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
                             <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
                           </div>
@@ -701,7 +701,7 @@ export default function SolicitudesClient({ session }: Props) {
                   </p>
                 </div>
               </div>
-              <DialogFooter className="border-t border-border px-6 py-4 sm:justify-end">
+              <DialogFooter className="border-t border-border px-4 py-4 sm:justify-end sm:px-6">
                 <Button
                   type="button"
                   onClick={() => setSolicitudSeleccionada(null)}

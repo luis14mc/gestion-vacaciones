@@ -298,8 +298,8 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
 
           <div className="space-y-4 lg:col-span-2">
             <Card className="gap-0 rounded-2xl py-0 shadow-sm">
-              <CardContent className="p-5">
-                <div className="mb-4 flex items-center justify-between">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-[13px] font-semibold text-foreground">Información Laboral</h3>
                   <Briefcase className="h-5 w-5 text-primary" />
                 </div>
@@ -347,8 +347,8 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
             </Card>
 
             <Card className="gap-0 rounded-2xl py-0 shadow-sm">
-              <CardContent className="p-5">
-                <div className="mb-4 flex items-center justify-between">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
                   <h3 className="text-[13px] font-semibold text-foreground">Información de Contacto</h3>
                   {!isEditing && (
                     <Button variant="ghost" size="sm" className="gap-2" onClick={() => setIsEditing(true)}>
@@ -390,7 +390,7 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
                   </div>
 
                   {isEditing && (
-                    <div className="flex justify-end gap-2">
+                    <div className="grid grid-cols-1 justify-end gap-2 min-[420px]:grid-cols-2 sm:flex">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -417,8 +417,8 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
             </Card>
 
             <Card className="gap-0 rounded-2xl py-0 shadow-sm">
-              <CardContent className="p-5">
-                <div className="mb-4 flex items-center justify-between">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-[13px] font-semibold text-foreground">Seguridad</h3>
                   <Lock className="h-5 w-5 text-muted-foreground" />
                 </div>
@@ -532,7 +532,7 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
                       </div>
                     </div>
 
-                    <div className="flex justify-end gap-2">
+                    <div className="grid grid-cols-1 justify-end gap-2 min-[420px]:grid-cols-2 sm:flex">
                       <Button
                         variant="ghost"
                         size="sm"

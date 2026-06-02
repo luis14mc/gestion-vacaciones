@@ -87,7 +87,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
   const diasRestantes = diasDisponibles - diasLaborables;
   
-  const mostrarBalances = esVacaciones || esLicenciaMedica;
+  const mostrarBalances = esVacaciones;
 
   // Set unit and requiereMotivo default depending on selection
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   }, [tipoSeleccionado, form]);
 
   const onSubmit = async (data: SolicitudFormData) => {
-    if ((esVacaciones || esLicenciaMedica) && balanceActual && diasRestantes < 0) {
+    if (esVacaciones && balanceActual && diasRestantes < 0) {
       sileo.error({ title: 'Error', description: 'No tienes suficientes días disponibles.' });
       return;
     }
@@ -120,17 +120,19 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       const fechaInicioVal = data.fechaInicio || undefined;
       const fechaFinVal = esPermiso ? fechaInicioVal : (data.fechaFin || undefined);
 
+      const duracionPermiso = (data.tipoPermiso as '1-2h' | '2-4h' | 'dia_completo') || undefined;
+
       const payload = {
         usuarioId,
         tipo: tipoSeleccionado?.tipo || data.tipoAusenciaId,
         fechaInicio: fechaInicioVal,
         fechaFin: fechaFinVal,
-        diasSolicitados: esPermiso ? 1 : diasLaborables,
+        diasSolicitados: esPermiso ? (duracionPermiso === 'dia_completo' ? 1 : 0) : diasLaborables,
         horaSalida: data.horaSalida || undefined,
         horaRegreso: data.horaRegreso || undefined,
-        motivo: data.motivo || null,
-        observaciones: data.observaciones || null,
-        duracionPermiso: (data.tipoPermiso as '1-2h' | '2-4h' | 'dia_completo') || undefined,
+        motivo: data.motivo || undefined,
+        observaciones: data.observaciones || undefined,
+        duracionPermiso,
         documentosAdjuntos: archivoBase64 ? [{ nombre: esLicenciaMedica ? 'constancia_medica' : 'vobo_ministro', data: archivoBase64 }] : [],
       };
 
@@ -140,7 +142,10 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
+      const text = await response.text();
+      const result = text
+        ? JSON.parse(text)
+        : { success: false, error: 'El servidor no devolvió una respuesta válida.' };
 
       if (result.success) {
         Swal.fire({
@@ -172,8 +177,8 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
   return (
     <Card className="max-w-4xl mx-auto border-none shadow-none bg-transparent">
-      <CardHeader className="text-center px-0">
-        <CardTitle className="text-2xl tracking-tight">SOLICITUD DE PERMISO / VACACIONES</CardTitle>
+      <CardHeader className="px-0 text-center">
+        <CardTitle className="text-xl tracking-tight sm:text-2xl">SOLICITUD DE PERMISO / VACACIONES</CardTitle>
         <CardDescription>
           Fecha de solicitud: {new Date().toLocaleDateString('es-HN')}
         </CardDescription>
@@ -268,7 +273,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
             )}
 
             {requiereAdjunto && (
-              <div className="space-y-2 border border-dashed border-primary/30 rounded-lg p-6 bg-primary/5">
+              <div className="space-y-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 sm:p-6">
                 <FormLabel className="text-base font-semibold block">
                   {esLicenciaMedica ? 'Constancia Médica (Obligatorio)' : 'VoBo del Ministro (Obligatorio)'}
                 </FormLabel>
@@ -297,7 +302,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-border mt-8">
+            <div className="mt-8 flex flex-col justify-end gap-3 border-t border-border pt-6 sm:flex-row">
               <Button
                 type="button"
                 variant="outline"
@@ -321,8 +326,8 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         </Form>
       </CardContent>
 
-      <CardFooter className="bg-muted/30 rounded-xl mt-6">
-        <div className="w-full text-xs text-muted-foreground p-2">
+      <CardFooter className="mt-6 rounded-xl bg-muted/30">
+        <div className="w-full p-2 text-xs text-muted-foreground">
           <p className="font-semibold mb-2">Proceso de aprobación:</p>
           <ul className="list-disc list-inside space-y-1">
             {esDirector ? (

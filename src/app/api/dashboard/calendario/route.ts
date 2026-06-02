@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { solicitudes, usuarios } from "@/lib/db/schema";
-import { eq, and, isNull, gte, lte, or, inArray } from "drizzle-orm";
+import { eq, and, isNull, gte, lte, or, inArray, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,17 +65,21 @@ export async function GET(request: NextRequest) {
       whereConditions = and(whereConditions, eq(solicitudes.usuarioId, session.id));
     }
     // Si es jefe, ver solo su departamento
-    else if (esDirectorOJefe && session.departamentoId && !puedeVerTodo) {
-      const usuariosDept = await db
-        .select({ id: usuarios.id })
-        .from(usuarios)
-        .where(and(
-          eq(usuarios.departamentoId, session.departamentoId),
-          isNull(usuarios.deletedAt)
-        ));
-      const usuariosIds = usuariosDept.map(u => u.id);
-      if (usuariosIds.length > 0) {
-        whereConditions = and(whereConditions, inArray(solicitudes.usuarioId, usuariosIds));
+    else if (esDirectorOJefe && !puedeVerTodo) {
+      if (!session.departamentoId) {
+        whereConditions = and(whereConditions, sql`false`);
+      } else {
+        const usuariosDept = await db
+          .select({ id: usuarios.id })
+          .from(usuarios)
+          .where(and(
+            eq(usuarios.departamentoId, session.departamentoId),
+            isNull(usuarios.deletedAt)
+          ));
+        const usuariosIds = usuariosDept.map(u => u.id);
+        whereConditions = usuariosIds.length > 0
+          ? and(whereConditions, inArray(solicitudes.usuarioId, usuariosIds))
+          : and(whereConditions, sql`false`);
       }
     }
 

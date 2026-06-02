@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Calendar,
   Users,
@@ -73,6 +73,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
   const [filtroDepartamento, setFiltroDepartamento] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modoModal, setModoModal] = useState<"individual" | "departamento">("individual");
+  const loadRequestRef = useRef(0);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -89,15 +90,27 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
   }, [anioSeleccionado]);
 
   const cargarDatos = async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+
     try {
       setLoading(true);
-      await Promise.all([
+      const [usuariosData, balancesData] = await Promise.all([
         cargarUsuarios(),
+        cargarBalances(),
         cargarDepartamentos(),
         cargarTiposAusencia(),
       ]);
+
+      if (loadRequestRef.current !== requestId) return;
+
+      if (usuariosData) setUsuarios(usuariosData);
+      if (balancesData) setBalances(balancesData);
+      setRefreshKey(prev => prev + 1);
     } finally {
-      setLoading(false);
+      if (loadRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -109,47 +122,37 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
       });
       const data = await res.json();
       if (data.success) {
-        setUsuarios(data.usuarios);
-        // Cargar balances de todos los usuarios
-        await cargarTodosBalances(data.usuarios.map((u: Usuario) => u.id));
+        return data.usuarios as Usuario[];
       }
     } catch (error) {
       console.error("Error cargando usuarios:", error);
     }
+    return [];
   };
 
-  const cargarTodosBalances = async (usuarioIds: number[]) => {
+  const cargarBalances = async () => {
     try {
       const timestamp = Date.now();
-      const promesas = usuarioIds.map(id =>
-        fetch(`/api/balances?usuarioId=${id}&anio=${anioSeleccionado}&_t=${timestamp}`, {
-          cache: 'no-store'
-        }).then(r => r.json())
-      );
-      const resultados = await Promise.all(promesas);
+      const res = await fetch(`/api/balances?anio=${anioSeleccionado}&_t=${timestamp}`, {
+        cache: 'no-store'
+      });
+      const data = await res.json();
 
-      const todosBalances: Balance[] = [];
-      for (const resultado of resultados) {
-        if (resultado.success && resultado.data) {
-          for (const b of resultado.data) {
-            todosBalances.push({
-              id: Number(b.id),
-              usuarioId: Number(b.usuarioId),
-              tipoAusencia: b.tipoAusencia,
-              cantidadInicial: b.cantidadInicial ?? '0',
-              cantidadUsada: b.cantidadUsada ?? '0',
-              cantidadPendiente: b.cantidadPendiente ?? '0',
-              cantidadDisponible: b.cantidadDisponible ?? '0',
-            });
-          }
-        }
+      if (data.success && data.data) {
+        return data.data.map((b: any) => ({
+          id: Number(b.id),
+          usuarioId: Number(b.usuarioId),
+          tipoAusencia: b.tipoAusencia,
+          cantidadInicial: b.cantidadInicial ?? '0',
+          cantidadUsada: b.cantidadUsada ?? '0',
+          cantidadPendiente: b.cantidadPendiente ?? '0',
+          cantidadDisponible: b.cantidadDisponible ?? '0',
+        })) as Balance[];
       }
-
-      setBalances([...todosBalances]);
-      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error("Error cargando balances:", error);
     }
+    return [];
   };
 
   const cargarDepartamentos = async () => {

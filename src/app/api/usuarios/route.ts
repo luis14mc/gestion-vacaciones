@@ -8,6 +8,7 @@ import { crearUsuario } from '@/services/usuarios.service';
 import { withErrorHandler } from '@/lib/api-handler';
 import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // GET: Listar usuarios con filtros

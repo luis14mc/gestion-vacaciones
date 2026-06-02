@@ -103,7 +103,10 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
   const cargarUsuarios = async () => {
     try {
-      const res = await fetch("/api/usuarios?activo=true");
+      const timestamp = Date.now();
+      const res = await fetch(`/api/usuarios?activo=true&_t=${timestamp}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       if (data.success) {
         setUsuarios(data.usuarios);
@@ -151,7 +154,10 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
   const cargarDepartamentos = async () => {
     try {
-      const res = await fetch("/api/departamentos");
+      const timestamp = Date.now();
+      const res = await fetch(`/api/departamentos?_t=${timestamp}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       if (data.success) {
         setDepartamentos(data.data);
@@ -163,7 +169,10 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
 
   const cargarTiposAusencia = async () => {
     try {
-      const res = await fetch("/api/tipos-ausencia");
+      const timestamp = Date.now();
+      const res = await fetch(`/api/tipos-ausencia?_t=${timestamp}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       if (data.success) {
         setTiposAusencia(data.data);

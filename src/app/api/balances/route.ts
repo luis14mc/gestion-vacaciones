@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { balances, anosLaborales } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // GET: Obtener balances de un usuario

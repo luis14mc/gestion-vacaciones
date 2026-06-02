@@ -6,6 +6,7 @@ import { getSession, tienePermiso } from '@/lib/auth';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // Esquemas Zod para la API

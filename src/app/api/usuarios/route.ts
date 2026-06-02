@@ -6,7 +6,7 @@ import { eq, and, like, or, isNull, inArray, asc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
 import { withErrorHandler } from '@/lib/api-handler';
-import { usuarioSchema } from '@/lib/schemas/usuario.schema';
+import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
 export const runtime = 'nodejs';
 
@@ -170,13 +170,49 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   
   // Validación OWASP A03 estricta vía Zod
-  const validatedData = usuarioSchema.parse(body);
+  const validatedData = usuarioApiSchema.parse(body);
+
+  if (!validatedData.password) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error de validación de datos',
+        detalles: [
+          {
+            campo: 'password',
+            mensaje: 'La contraseña es requerida para nuevos usuarios',
+          },
+        ],
+      },
+      { status: 400 }
+    );
+  }
+
+  const usuarioExistente = await db.query.usuarios.findFirst({
+    where: eq(usuarios.email, validatedData.email.toLowerCase()),
+  });
+
+  if (usuarioExistente) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error de validación de datos',
+        detalles: [
+          {
+            campo: 'email',
+            mensaje: 'El correo ya está registrado',
+          },
+        ],
+      },
+      { status: 400 }
+    );
+  }
 
   const usuarioCreado = await crearUsuario({
     nombre: validatedData.nombre,
     apellido: validatedData.apellido,
     email: validatedData.email,
-    password: validatedData.password || '1234',
+    password: validatedData.password,
     departamentoId: Number(validatedData.departamentoId),
     cargo: validatedData.cargo || undefined,
     fechaIngreso: validatedData.fechaIngreso ? new Date(validatedData.fechaIngreso).toISOString() : new Date().toISOString(),
@@ -226,13 +262,14 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
 
   const body = await request.json();
   const { id, ...dataToUpdate } = body;
+  const shouldUpdateJefeSuperior = Object.prototype.hasOwnProperty.call(dataToUpdate, 'jefeSuperiorId');
 
   if (!id) {
     return NextResponse.json({ success: false, error: 'ID de usuario requerido' }, { status: 400 });
   }
 
   // Usamos el partial del esquema para permitir actualizaciones parciales
-  const validatedData = usuarioSchema.partial().parse(dataToUpdate);
+  const validatedData = usuarioApiSchema.partial().parse(dataToUpdate);
 
   const camposPermitidos: Record<string, any> = {};
   if (validatedData.nombre !== undefined) camposPermitidos.nombre = validatedData.nombre;
@@ -242,7 +279,11 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (validatedData.departamentoId !== undefined) camposPermitidos.departamentoId = Number(validatedData.departamentoId);
   if (validatedData.activo !== undefined) camposPermitidos.activo = validatedData.activo;
   if (validatedData.fechaIngreso !== undefined) camposPermitidos.fechaIngreso = validatedData.fechaIngreso;
-  if (validatedData.jefeSuperiorId !== undefined) camposPermitidos.jefeSuperiorId = Number(validatedData.jefeSuperiorId);
+  if (shouldUpdateJefeSuperior) {
+    camposPermitidos.jefeSuperiorId = validatedData.jefeSuperiorId
+      ? Number(validatedData.jefeSuperiorId)
+      : null;
+  }
   if (validatedData.numeroEmpleado !== undefined) camposPermitidos.numeroEmpleado = validatedData.numeroEmpleado;
   if (validatedData.telefono !== undefined) camposPermitidos.telefono = validatedData.telefono;
   if (validatedData.direccion !== undefined) camposPermitidos.direccion = validatedData.direccion;

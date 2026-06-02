@@ -25,6 +25,7 @@ interface UsuarioDialogProps {
 
 export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSuccess }: UsuarioDialogProps) {
     const [showPassword, setShowPassword] = useState(false);
+    const [serverError, setServerError] = useState<string | null>(null);
     const isEditing = !!usuario;
 
     const [posiblesJefes, setPosiblesJefes] = useState<any[]>([]);
@@ -53,6 +54,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
     useEffect(() => {
         if (open) {
+            setServerError(null);
             if (usuario) {
                 const fechaRaw = usuario.fechaIngreso || "";
                 const fechaFormato = fechaRaw ? fechaRaw.substring(0, 10) : "";
@@ -100,7 +102,6 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
     const watchDeptId = form.watch("departamentoId");
     const esDirectorChecked = form.watch("esDirector");
-    const esJefeChecked = form.watch("esJefe");
 
     const prevDeptRef = useRef<string>("");
     useEffect(() => {
@@ -129,6 +130,8 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
     }, [watchDeptId, usuario?.id, form]);
 
     const onSubmit = async (values: UsuarioFormValues) => {
+        setServerError(null);
+
         if (!isEditing && !values.password) {
             form.setError("password", { type: "manual", message: "La contraseña es requerida para nuevos usuarios" });
             return;
@@ -142,16 +145,16 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                 email: values.email,
                 nombre: values.nombre,
                 apellido: values.apellido,
-                departamentoId: Number(values.departamentoId),
+                departamentoId: values.departamentoId,
                 esAdmin: values.esAdmin,
                 esRrhh: values.esRrhh,
                 esDirector: values.esDirector,
                 esJefe: values.esJefe,
-                jefeSuperiorId: values.jefeSuperiorId ? Number(values.jefeSuperiorId) : null,
+                jefeSuperiorId: values.jefeSuperiorId && values.jefeSuperiorId !== "none" ? values.jefeSuperiorId : null,
                 activo: values.activo,
-                numeroEmpleado: values.numeroEmpleado || null,
-                telefono: values.telefono || null,
-                direccion: values.direccion || null,
+                numeroEmpleado: values.numeroEmpleado || undefined,
+                telefono: values.telefono || undefined,
+                direccion: values.direccion || undefined,
             };
 
             if (values.cargo) body.cargo = values.cargo;
@@ -165,16 +168,39 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                 body: JSON.stringify(body),
             });
 
+            const responseText = await res.text();
+            let responseData: any = {};
+            try {
+                responseData = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                responseData = {};
+            }
+
             if (res.ok) {
                 onSuccess();
                 onOpenChange(false);
                 notify.success(isEditing ? "Usuario actualizado" : "Usuario creado exitosamente");
             } else {
-                const errorData = await res.json();
-                notify.error(errorData.error || "Error al guardar el usuario");
+                const detalles = Array.isArray(responseData.detalles) ? responseData.detalles : [];
+                for (const detalle of detalles) {
+                    if (detalle?.campo) {
+                        form.setError(detalle.campo as keyof UsuarioFormValues, {
+                            type: "server",
+                            message: detalle.mensaje || "Revise este campo",
+                        });
+                    }
+                }
+
+                const mensaje = detalles.length > 0
+                    ? "Revise los campos marcados antes de guardar."
+                    : responseData.error || "Error al guardar el usuario";
+
+                setServerError(mensaje);
+                notify.error(mensaje);
             }
         } catch (error) {
             console.error(error);
+            setServerError("Error procesando solicitud");
             notify.error("Error procesando solicitud");
         }
     };
@@ -191,6 +217,15 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        {serverError && (
+                            <Alert className="border-destructive/30 bg-destructive/10 text-destructive">
+                                <Info className="h-4 w-4" />
+                                <AlertDescription className="text-sm">
+                                    {serverError}
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <FormField
                                 control={form.control}
@@ -244,18 +279,6 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         </div>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            <FormField
-                                control={form.control}
-                                name="numeroEmpleado"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Número de Empleado (Opcional)</FormLabel>
-                                        <FormControl><Input placeholder="EMP-001" {...field} /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -361,7 +384,10 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Jefe Superior</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                                        <Select
+                                            onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                                            value={field.value || "none"}
+                                        >
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Seleccionar jefe superior..." />

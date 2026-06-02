@@ -1,59 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import ExcelJS from 'exceljs';
 
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getSession();
-    
+
     if (!session) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Sistema de Vacaciones CNI';
-    
+
     const worksheet = workbook.addWorksheet('Empleados');
 
-    // Definir columnas
     worksheet.columns = [
       { header: 'Email', key: 'email', width: 25 },
       { header: 'Nombre', key: 'nombre', width: 20 },
       { header: 'Apellido', key: 'apellido', width: 20 },
-      { header: 'Número Empleado', key: 'numeroEmpleado', width: 18 },
-      { header: 'Departamento', key: 'departamento', width: 25 },
+      { header: 'Numero Empleado', key: 'numeroEmpleado', width: 18 },
+      { header: 'Departamento', key: 'departamento', width: 28 },
       { header: 'Cargo', key: 'cargo', width: 25 },
       { header: 'Fecha Ingreso', key: 'fechaIngreso', width: 15 },
       { header: 'Es Jefe', key: 'esJefe', width: 10 },
       { header: 'Es Director', key: 'esDirector', width: 12 },
-      { header: 'Email Jefe Superior', key: 'emailJefeSuperior', width: 28 },
+      { header: 'Email Jefe Superior', key: 'emailJefeSuperior', width: 30 },
     ];
 
-    // Estilos para la cabecera
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF182243' } // CNI Deep Navy
+      fgColor: { argb: 'FF182243' },
     };
-    worksheet.getCell('J1').note = 'Opcional para todos. Si se deja vacío, el sistema usará el jefe del departamento si existe.';
 
-    // Añadir una fila de ejemplo (instruccional)
-    worksheet.addRow({
-      email: 'ejemplo@cni.hn',
-      nombre: 'Juan',
-      apellido: 'Perez',
-      numeroEmpleado: 'CNI-1025',
-      departamento: 'Recursos Humanos',
-      cargo: 'Analista',
-      fechaIngreso: '2025-01-15',
-      esJefe: 'No',
-      esDirector: 'No',
-      emailJefeSuperior: 'jefe@cni.hn'
-    });
+    worksheet.getCell('E1').note = 'Puede llamarse Departamento, Direccion, Area, Unidad o Gerencia. Debe coincidir con una unidad registrada.';
+    worksheet.getCell('H1').note = 'Si indica Si, este usuario queda como jefe de la unidad indicada cuando no haya director para esa misma unidad.';
+    worksheet.getCell('I1').note = 'Si indica Si, este usuario queda como director/jefe principal de la unidad indicada.';
+    worksheet.getCell('J1').note = 'Opcional para todos. Puede referenciar un correo existente o un usuario incluido en este mismo Excel.';
 
     worksheet.addRow({
       email: 'directora@cni.hn',
@@ -65,26 +53,47 @@ export async function GET(request: NextRequest) {
       fechaIngreso: '2025-01-15',
       esJefe: 'No',
       esDirector: 'Si',
-      emailJefeSuperior: ''
+      emailJefeSuperior: '',
     });
 
-    // Poner las filas de ejemplo en cursiva y texto gris para indicar que son ejemplos
-    const exampleRow = worksheet.getRow(2);
-    exampleRow.font = { italic: true, color: { argb: 'FF888888' } };
-    const directorExampleRow = worksheet.getRow(3);
-    directorExampleRow.font = { italic: true, color: { argb: 'FF888888' } };
+    worksheet.addRow({
+      email: 'jefe@cni.hn',
+      nombre: 'Carlos',
+      apellido: 'Lopez',
+      numeroEmpleado: 'CNI-1024',
+      departamento: 'Recursos Humanos',
+      cargo: 'Jefe de Recursos Humanos',
+      fechaIngreso: '2025-01-15',
+      esJefe: 'Si',
+      esDirector: 'No',
+      emailJefeSuperior: 'directora@cni.hn',
+    });
 
-    // Generar buffer
+    worksheet.addRow({
+      email: 'ejemplo@cni.hn',
+      nombre: 'Juan',
+      apellido: 'Perez',
+      numeroEmpleado: 'CNI-1025',
+      departamento: 'Recursos Humanos',
+      cargo: 'Analista',
+      fechaIngreso: '2025-01-15',
+      esJefe: 'No',
+      esDirector: 'No',
+      emailJefeSuperior: 'jefe@cni.hn',
+    });
+
+    for (const rowNumber of [2, 3, 4]) {
+      worksheet.getRow(rowNumber).font = { italic: true, color: { argb: 'FF888888' } };
+    }
+
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Retornar archivo
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': 'attachment; filename="Plantilla_Importacion_Empleados.xlsx"'
-      }
+        'Content-Disposition': 'attachment; filename="Plantilla_Importacion_Empleados.xlsx"',
+      },
     });
-
   } catch (error) {
     console.error('Error generando plantilla:', error);
     return NextResponse.json({ success: false, error: 'Error interno generando plantilla' }, { status: 500 });

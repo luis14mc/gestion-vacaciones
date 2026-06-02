@@ -15,6 +15,8 @@ interface FilaImportacion {
   departamento: string;
   cargo: string;
   esJefe: boolean;
+  esDirector: boolean;
+  emailJefeSuperior?: string | null;
   errores: string[];
 }
 
@@ -199,6 +201,8 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                 <li>La columna "Número Empleado" (opcional) permite asociar el código único de empleado.</li>
                 <li>Los nombres de departamentos deben coincidir <strong>exactamente</strong> con los registrados en el sistema.</li>
                 <li>La columna "Es Jefe" (opcional) acepta valores "Si" o "No".</li>
+                <li>La columna "Es Director" (opcional) acepta valores "Si" o "No".</li>
+                <li>El "Email Jefe Superior" puede referenciar un usuario existente o una fila del mismo Excel.</li>
                 <li>Todos los usuarios nuevos tendrán "1234" como contraseña.</li>
               </ul>
             </div>
@@ -250,7 +254,18 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                         </div>
                       </TableCell>
                       <TableCell>{fila.departamento || "-"}</TableCell>
-                      <TableCell>{fila.cargo || "-"}</TableCell>
+                      <TableCell>
+                        <div>{fila.cargo || "-"}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {fila.esDirector && <Badge variant="secondary">Director</Badge>}
+                          {fila.esJefe && <Badge variant="secondary">Jefe</Badge>}
+                        </div>
+                        {fila.emailJefeSuperior && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Jefe: {fila.emailJefeSuperior}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {fila.errores.length > 0 ? (
                           <div className="flex flex-col gap-1">

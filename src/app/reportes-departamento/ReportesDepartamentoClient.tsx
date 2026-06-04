@@ -64,7 +64,9 @@ interface ReporteDepartamento {
   }>;
   topUsuarios: Array<{
     usuario: string;
+    diasAsignados: number;
     diasUsados: number;
+    diasPendientes: number;
     diasDisponibles: number;
   }>;
 }
@@ -88,6 +90,7 @@ function normalizarReporte(payload: any): ReporteDepartamento {
   const raw = payload?.reporte ?? payload?.data ?? {};
   const resumen = raw.resumen ?? raw;
   const solicitudes = raw.solicitudes ?? raw;
+  const topUsuarios = raw.topUsuarios ?? raw.historialDias ?? [];
 
   return {
     totalColaboradores: Number(resumen.totalColaboradores ?? 0),
@@ -101,7 +104,15 @@ function normalizarReporte(payload: any): ReporteDepartamento {
     diasTotalesDisponibles: Number(resumen.diasTotalesDisponibles ?? 0),
     promedioUsoPorPersona: Number(resumen.promedioUsoPorPersona ?? 0),
     proximasVacaciones: Array.isArray(raw.proximasVacaciones) ? raw.proximasVacaciones : [],
-    topUsuarios: Array.isArray(raw.topUsuarios) ? raw.topUsuarios : [],
+    topUsuarios: Array.isArray(topUsuarios)
+      ? topUsuarios.map((usuario: any) => ({
+        usuario: String(usuario.usuario ?? usuario.nombre ?? 'Usuario sin nombre'),
+        diasAsignados: Number(usuario.diasAsignados ?? usuario.asignados ?? 0),
+        diasUsados: Number(usuario.diasUsados ?? usuario.usados ?? 0),
+        diasPendientes: Number(usuario.diasPendientes ?? usuario.pendientes ?? 0),
+        diasDisponibles: Number(usuario.diasDisponibles ?? usuario.disponibles ?? 0),
+      }))
+      : [],
   };
 }
 
@@ -207,11 +218,17 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
           doc.addPage();
           doc.setFontSize(14);
           doc.setTextColor(59, 130, 246);
-          doc.text('Mayor Uso de Días', doc.internal.pageSize.width / 2, 15, { align: 'center' });
+          doc.text('Historial de Dias', doc.internal.pageSize.width / 2, 15, { align: 'center' });
 
           autoTable(doc, {
-            head: [['Colaborador', 'Días Usados', 'Días Disponibles']],
-            body: topUsuarios.map(u => [u.usuario, u.diasUsados, u.diasDisponibles]),
+            head: [['Colaborador', 'Dias Asignados', 'Dias Usados', 'Dias Pendientes', 'Dias Disponibles']],
+            body: topUsuarios.map(u => [
+              u.usuario,
+              u.diasAsignados,
+              u.diasUsados,
+              u.diasPendientes,
+              u.diasDisponibles,
+            ]),
             startY: 25,
             theme: 'grid',
             styles: { fontSize: 9, cellPadding: 3 },
@@ -584,19 +601,19 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                 </CardContent>
               </Card>
 
-              {/* Top colaboradores por uso */}
+              {/* Historial de dias por colaborador */}
               <Card className="rounded-2xl">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-                    Mayor Uso de Días
+                    Historial de Dias
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {reporte.topUsuarios.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                      <p className="text-sm">No hay datos disponibles</p>
+                      <p className="text-sm">No hay historial de dias disponible</p>
                     </div>
                   ) : (
                     <div className="space-y-2 md:space-y-3 mt-2">
@@ -610,8 +627,10 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                             <span className="font-medium text-sm md:text-base">{usuario.usuario}</span>
                           </div>
                           <div className="text-left sm:text-right">
-                            <p className="font-semibold text-destructive text-[13px]">{usuario.diasUsados} usados</p>
-                            <p className="text-xs text-muted-foreground">{usuario.diasDisponibles} disponibles</p>
+                            <p className="font-semibold text-primary text-[13px]">{usuario.diasAsignados} asignados</p>
+                            <p className="text-xs text-muted-foreground">
+                              {usuario.diasUsados} usados / {usuario.diasPendientes} pendientes / {usuario.diasDisponibles} disponibles
+                            </p>
                           </div>
                         </div>
                       ))}

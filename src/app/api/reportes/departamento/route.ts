@@ -59,9 +59,11 @@ export async function GET(request: NextRequest) {
     // Balances de días
     let diasTotalesAsignados = 0;
     let diasTotalesUsados = 0;
+    let diasTotalesDisponibles = 0;
+    let balancesData: Array<typeof balances.$inferSelect> = [];
 
     if (anoLaboral && usuariosIds.length > 0) {
-      const balancesData = await db.query.balances.findMany({
+      balancesData = await db.query.balances.findMany({
         where: and(
           eq(balances.anoLaboralId, anoLaboral.id),
           eq(balances.tipoAusencia, 'vacaciones' as any),
@@ -69,11 +71,11 @@ export async function GET(request: NextRequest) {
         )
       });
 
-      diasTotalesAsignados = balancesData.reduce((sum, b) => sum + Number(b.cantidadInicial), 0);
+      diasTotalesAsignados = balancesData.reduce((sum, b) => sum + Number(b.cantidadInicial) + Number(b.cantidadAcumulada), 0);
       diasTotalesUsados = balancesData.reduce((sum, b) => sum + Number(b.cantidadUsada), 0);
+      diasTotalesDisponibles = balancesData.reduce((sum, b) => sum + Number(b.cantidadDisponible), 0);
     }
 
-    const diasTotalesDisponibles = diasTotalesAsignados - diasTotalesUsados;
     const promedioUsoPorPersona = totalColaboradores > 0 && diasTotalesAsignados > 0
       ? Math.round((diasTotalesUsados / diasTotalesAsignados) * 100)
       : 0;
@@ -98,7 +100,8 @@ export async function GET(request: NextRequest) {
         and(
           inArray(solicitudes.usuarioId, usuariosIds),
           sql`${solicitudes.fechaInicio} <= ${ultimoDia}`,
-          sql`${solicitudes.fechaFin} >= ${primerDia}`
+          sql`${solicitudes.fechaFin} >= ${primerDia}`,
+          isNull(solicitudes.deletedAt)
         )
       ) : [];
 
@@ -112,6 +115,58 @@ export async function GET(request: NextRequest) {
       (s: any) => ['rechazada_jefe', 'rechazada_rrhh'].includes(s.estado)
     ).length;
 
+    const usuariosMap = new Map(
+      usuariosDept.map((usuario) => [
+        usuario.id,
+        `${usuario.nombre ?? ''} ${usuario.apellido ?? ''}`.trim() || usuario.email,
+      ])
+    );
+
+    const topUsuarios = balancesData
+      .map((balance) => ({
+        usuario: usuariosMap.get(balance.usuarioId) || 'Usuario sin nombre',
+        diasAsignados: Number(balance.cantidadInicial) + Number(balance.cantidadAcumulada),
+        diasUsados: Number(balance.cantidadUsada),
+        diasPendientes: Number(balance.cantidadPendiente),
+        diasDisponibles: Number(balance.cantidadDisponible),
+      }))
+      .filter((usuario) =>
+        usuario.diasAsignados > 0 ||
+        usuario.diasUsados > 0 ||
+        usuario.diasPendientes > 0 ||
+        usuario.diasDisponibles > 0
+      )
+      .sort((a, b) =>
+        b.diasUsados - a.diasUsados ||
+        b.diasAsignados - a.diasAsignados ||
+        a.usuario.localeCompare(b.usuario)
+      );
+
+    const hoy = new Date().toISOString().split('T')[0];
+    const enVacacionesHoy = solicitudesDept.filter(
+      (s: any) =>
+        ['aprobada_rrhh', 'finalizada'].includes(s.estado) &&
+        s.fechaInicio &&
+        s.fechaFin &&
+        s.fechaInicio <= hoy &&
+        s.fechaFin >= hoy
+    ).length;
+
+    const proximasVacaciones = solicitudesDept
+      .filter(
+        (s: any) =>
+          ['aprobada_rrhh', 'finalizada'].includes(s.estado) &&
+          s.fechaInicio &&
+          s.fechaFin
+      )
+      .map((solicitud: any) => ({
+        usuario: solicitud.usuario || usuariosMap.get(solicitud.usuarioId) || 'Usuario sin nombre',
+        fechaInicio: solicitud.fechaInicio,
+        fechaFin: solicitud.fechaFin,
+        dias: Number(solicitud.dias ?? 0),
+      }))
+      .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
+
     return NextResponse.json({
       success: true,
       data: {
@@ -119,6 +174,7 @@ export async function GET(request: NextRequest) {
         resumen: {
           totalColaboradores,
           colaboradoresActivos,
+          enVacacionesHoy,
           diasTotalesAsignados,
           diasTotalesUsados,
           diasTotalesDisponibles,
@@ -130,6 +186,9 @@ export async function GET(request: NextRequest) {
           pendientes: solicitudesPendientes,
           rechazadas: solicitudesRechazadas,
         },
+        proximasVacaciones,
+        topUsuarios,
+        historialDias: topUsuarios,
         detalle: solicitudesDept,
       },
     });

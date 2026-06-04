@@ -26,8 +26,8 @@ function calcularDiasSegunAntiguedad(fechaIngreso: string): number {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
-    if (!session || !session.esRrhh) {
-      return NextResponse.json({ success: false, error: 'No autorizado. Se requiere rol RRHH.' }, { status: 403 });
+    if (!session || (!session.esRrhh && !session.esAdmin)) {
+      return NextResponse.json({ success: false, error: 'No autorizado. Se requiere rol RRHH o Administrador.' }, { status: 403 });
     }
 
     // Obtener año laboral activo

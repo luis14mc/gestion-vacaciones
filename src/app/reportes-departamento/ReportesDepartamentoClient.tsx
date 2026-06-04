@@ -69,6 +69,42 @@ interface ReporteDepartamento {
   }>;
 }
 
+const reporteVacio: ReporteDepartamento = {
+  totalColaboradores: 0,
+  colaboradoresActivos: 0,
+  enVacacionesHoy: 0,
+  solicitudesPendientes: 0,
+  solicitudesAprobadas: 0,
+  solicitudesRechazadas: 0,
+  diasTotalesAsignados: 0,
+  diasTotalesUsados: 0,
+  diasTotalesDisponibles: 0,
+  promedioUsoPorPersona: 0,
+  proximasVacaciones: [],
+  topUsuarios: [],
+};
+
+function normalizarReporte(payload: any): ReporteDepartamento {
+  const raw = payload?.reporte ?? payload?.data ?? {};
+  const resumen = raw.resumen ?? raw;
+  const solicitudes = raw.solicitudes ?? raw;
+
+  return {
+    totalColaboradores: Number(resumen.totalColaboradores ?? 0),
+    colaboradoresActivos: Number(resumen.colaboradoresActivos ?? 0),
+    enVacacionesHoy: Number(resumen.enVacacionesHoy ?? resumen.enVacaciones ?? 0),
+    solicitudesPendientes: Number(solicitudes.pendientes ?? raw.solicitudesPendientes ?? 0),
+    solicitudesAprobadas: Number(solicitudes.aprobadas ?? raw.solicitudesAprobadas ?? 0),
+    solicitudesRechazadas: Number(solicitudes.rechazadas ?? raw.solicitudesRechazadas ?? 0),
+    diasTotalesAsignados: Number(resumen.diasTotalesAsignados ?? 0),
+    diasTotalesUsados: Number(resumen.diasTotalesUsados ?? 0),
+    diasTotalesDisponibles: Number(resumen.diasTotalesDisponibles ?? 0),
+    promedioUsoPorPersona: Number(resumen.promedioUsoPorPersona ?? 0),
+    proximasVacaciones: Array.isArray(raw.proximasVacaciones) ? raw.proximasVacaciones : [],
+    topUsuarios: Array.isArray(raw.topUsuarios) ? raw.topUsuarios : [],
+  };
+}
+
 export default function ReportesDepartamentoClient({ session }: { session?: any } = {}) {
   const [reporte, setReporte] = useState<ReporteDepartamento | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,11 +122,15 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
       const response = await fetch(`/api/reportes/departamento?mes=${mesSeleccionado}&anio=${anioSeleccionado}`);
       const data = await response.json();
 
-      if (data.success) {
-        setReporte(data.reporte);
+      if (response.ok && data.success) {
+        setReporte(normalizarReporte(data));
+      } else {
+        setReporte(reporteVacio);
+        notify.error(data.error || "No se pudo cargar el reporte");
       }
     } catch (error) {
       console.error("Error al cargar reporte:", error);
+      setReporte(reporteVacio);
       notify.error("No se pudo cargar el reporte");
     } finally {
       setLoading(false);

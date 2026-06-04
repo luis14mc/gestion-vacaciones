@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
-    if (!tienePermiso(session, 'reportes.departamento')) {
+    const esDirectorOJefe = session.roles?.some(r => ['JEFE', 'DIRECTOR'].includes(r.codigo)) || session.esDirector || session.esJefe;
+    const esAdminORrhh = session.roles?.some(r => ['ADMIN', 'RRHH'].includes(r.codigo)) || session.esAdmin || session.esRrhh;
+
+    if (!tienePermiso(session, 'reportes.departamento') && !esDirectorOJefe && !esAdminORrhh) {
       return NextResponse.json(
         { error: 'No tienes permiso para consultar reportes por departamento' },
         { status: 403 }
@@ -26,9 +29,6 @@ export async function GET(request: NextRequest) {
 
     // Filtro contextual: Si es JEFE, solo su departamento
     let departamentoCondition = undefined;
-    const esDirectorOJefe = session.roles?.some(r => ['JEFE', 'DIRECTOR'].includes(r.codigo)) || session.esDirector || session.esJefe;
-    const esAdminORrhh = session.roles?.some(r => ['ADMIN', 'RRHH'].includes(r.codigo));
-
     if (esDirectorOJefe && !esAdminORrhh) {
       if (session.departamentoId) {
         departamentoCondition = eq(usuarios.departamentoId, session.departamentoId);

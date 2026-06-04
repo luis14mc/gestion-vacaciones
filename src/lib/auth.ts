@@ -33,6 +33,8 @@ export async function getSession(): Promise<SessionUser | null> {
     let esRrhhDb = false;
     let esDirectorDb = false;
     let esJefeDb = false;
+    let departamentoIdDb: number | null | undefined;
+    let cargoDb: string | null | undefined;
 
     try {
       const [row] = await db
@@ -41,6 +43,8 @@ export async function getSession(): Promise<SessionUser | null> {
           esRrhh: usuarios.esRrhh,
           esDirector: usuarios.esDirector,
           esJefe: usuarios.esJefe,
+          departamentoId: usuarios.departamentoId,
+          cargo: usuarios.cargo,
         })
         .from(usuarios)
         .where(eq(usuarios.id, userId))
@@ -51,6 +55,8 @@ export async function getSession(): Promise<SessionUser | null> {
         esRrhhDb = row.esRrhh;
         esDirectorDb = row.esDirector;
         esJefeDb = row.esJefe;
+        departamentoIdDb = row.departamentoId;
+        cargoDb = row.cargo;
       }
     } catch (dbErr) {
       console.error('Error leyendo flags de BD, usando token:', dbErr);
@@ -61,9 +67,9 @@ export async function getSession(): Promise<SessionUser | null> {
       email: session.user.email!,
       nombre: session.user.nombre,
       apellido: session.user.apellido,
-      departamentoId: session.user.departamentoId,
+      departamentoId: departamentoIdDb ?? session.user.departamentoId,
       departamentoNombre: session.user.departamentoNombre || undefined,
-      cargo: session.user.cargo || undefined,
+      cargo: (cargoDb ?? session.user.cargo) || undefined,
       
       roles: session.user.roles || [],
       permisos: session.user.permisos || [],

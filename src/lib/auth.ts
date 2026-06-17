@@ -15,8 +15,14 @@ import { obtenerRolesYPermisos } from '@/services/rbac.service';
 export async function getSession(): Promise<SessionUser | null> {
   try {
     const session = await auth();
-    
+
     if (!session?.user) {
+      return null;
+    }
+
+    // Expiración absoluta de sesión (Configuración → Seguridad)
+    const absExp = (session as any).absExp as number | null | undefined;
+    if (absExp && Date.now() > absExp) {
       return null;
     }
 

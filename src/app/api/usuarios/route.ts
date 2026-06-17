@@ -6,6 +6,7 @@ import { eq, and, like, or, isNull, inArray, asc, sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
 import { syncUserRoles } from '@/services/rbac.service';
+import { validarPasswordPolitica } from '@/lib/config/password-policy';
 import { withErrorHandler } from '@/lib/api-handler';
 import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
@@ -190,6 +191,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
+  const errorPolitica = await validarPasswordPolitica(validatedData.password);
+  if (errorPolitica) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error de validación de datos',
+        detalles: [{ campo: 'password', mensaje: errorPolitica }],
+      },
+      { status: 400 }
+    );
+  }
+
   const usuarioExistente = await db.query.usuarios.findFirst({
     where: eq(usuarios.email, validatedData.email.toLowerCase()),
   });
@@ -291,6 +304,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (validatedData.direccion !== undefined) camposPermitidos.direccion = validatedData.direccion;
   
   if (validatedData.password && validatedData.password.trim().length > 0) {
+    const errorPolitica = await validarPasswordPolitica(validatedData.password);
+    if (errorPolitica) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Error de validación de datos',
+          detalles: [{ campo: 'password', mensaje: errorPolitica }],
+        },
+        { status: 400 }
+      );
+    }
     camposPermitidos.passwordHash = await bcrypt.hash(validatedData.password, 10);
   }
 

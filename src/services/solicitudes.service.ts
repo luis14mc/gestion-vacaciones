@@ -217,6 +217,12 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
 
 /**
  * Aprobar solicitud por jefe de departamento
+ *
+ * @deprecated Workflow imperativo legacy. La vía viva de aprobación es
+ * `ejecutarAccion` en workflow.service.ts (ruta /api/solicitudes/[id]/accion),
+ * que centraliza estado + efectos de balance + guards de jerarquía vía la
+ * máquina de estados. Esta función se conserva solo como objetivo de los
+ * tests de integración; no la uses en código nuevo ni la conectes a rutas.
  */
 export async function aprobarSolicitudJefe(
   solicitudId: number,
@@ -269,6 +275,9 @@ export async function aprobarSolicitudJefe(
 
 /**
  * Aprobar solicitud por RRHH (aprobación final)
+ *
+ * @deprecated Workflow imperativo legacy. Usar `ejecutarAccion`
+ * (workflow.service.ts). Conservada solo para tests de integración.
  */
 export async function aprobarSolicitudRRHH(
   solicitudId: number,
@@ -332,6 +341,9 @@ export async function aprobarSolicitudRRHH(
 
 /**
  * Rechazar solicitud
+ *
+ * @deprecated Workflow imperativo legacy. Usar `ejecutarAccion`
+ * (workflow.service.ts). Conservada solo para tests de integración.
  */
 export async function rechazarSolicitud(
   solicitudId: number,
@@ -453,6 +465,9 @@ export async function listarSolicitudes(filtros: {
 /**
  * Cancelar solicitud
  * Permite al usuario o admin cancelar una solicitud
+ *
+ * @deprecated Workflow imperativo legacy. Usar `ejecutarAccion` con la
+ * acción 'cancelar' (workflow.service.ts). Conservada para tests.
  */
 export async function cancelarSolicitud(
   solicitudId: number,

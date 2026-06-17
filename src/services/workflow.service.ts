@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { solicitudes, balances, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
+import { solicitudes, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
 import { eq, and, sql, isNull } from 'drizzle-orm';
 import { notificarAprobacionJefeARRHH, notificarResolucionAEmpleado } from './email.service';
 import {
@@ -177,18 +177,29 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     updateData.motivoRechazo = motivoCancelacion || comentario || 'Cancelada por el usuario';
   }
 
-  const updateResult = await db
-    .update(solicitudes)
-    .set(updateData)
-    .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
-    .returning({ id: solicitudes.id });
+  // Persistir el cambio de estado y APLICAR los efectos de balance de la
+  // máquina de estados de forma ATÓMICA (misma transacción). Antes el
+  // balance se ajustaba fuera de transacción y los efectos declarados
+  // (RESERVAR/CONFIRMAR/LIBERAR) nunca se ejecutaban: el paso a usada en
+  // aprobar_rrhh no ocurría. Ahora la máquina de estados es la autoridad.
+  let conflicto = false;
+  await db.transaction(async (tx) => {
+    const updateResult = await tx
+      .update(solicitudes)
+      .set(updateData)
+      .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
+      .returning({ id: solicitudes.id });
 
-  if (updateResult.length === 0) {
+    if (updateResult.length === 0) {
+      conflicto = true;
+      return;
+    }
+
+    await aplicarEfectos(tx, resultado.efectos, solicitud, estadoActual);
+  });
+
+  if (conflicto) {
     return { exito: false, error: 'Conflicto de versión: la solicitud fue modificada por otro usuario' };
-  }
-
-  if (['rechazada_jefe', 'rechazada_rrhh', 'cancelada'].includes(nuevoEstado) && solicitudConsumeBalance(solicitud)) {
-    await devolverDiasBalance({ ...solicitud, estadoAnterior: estadoActual });
   }
 
   const [updated] = await db.select().from(solicitudes).where(eq(solicitudes.id, solicitudId)).limit(1);
@@ -226,44 +237,64 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   };
 }
 
-async function devolverDiasBalance(solicitud: any) {
-  if (!solicitud.diasSolicitados || Number(solicitud.diasSolicitados) <= 0) return;
+/**
+ * Aplica los efectos de balance declarados por la máquina de estados,
+ * dentro de la transacción recibida. Es la ÚNICA autoridad sobre los
+ * movimientos de balance del workflow, eliminando la lógica duplicada.
+ *
+ * Convención de columnas:
+ * - RESERVAR_BALANCE  (al enviar): disponible → pendiente
+ * - CONFIRMAR_BALANCE (aprobar_rrhh): pendiente → usada
+ * - LIBERAR_BALANCE   (rechazar/cancelar): devuelve a disponible desde
+ *   usada (si ya estaba confirmada) o desde pendiente (si seguía en curso)
+ */
+async function aplicarEfectos(
+  tx: any,
+  efectos: { tipo: string; dias?: number }[],
+  solicitud: any,
+  estadoOrigen: string
+) {
   if (!solicitudConsumeBalance(solicitud)) return;
 
-  const dias = Number(solicitud.diasSolicitados);
-  const estadoOrigen = solicitud.estadoAnterior || solicitud.estado;
-
-  const [balance] = await db
-    .select()
-    .from(balances)
-    .where(
-      and(
-        eq(balances.usuarioId, solicitud.usuarioId),
-        eq(balances.anoLaboralId, solicitud.anoLaboralId),
-        eq(balances.tipoAusencia, 'vacaciones')
-      )
-    )
-    .limit(1);
-
-  if (!balance) return;
-
-  const updateData: Record<string, any> = {
-    cantidadDisponible: (Number(balance.cantidadDisponible ?? 0) + dias).toFixed(2),
-    version: balance.version + 1,
-    updatedAt: new Date().toISOString(),
-  };
-
   const estadosConUsada = ['aprobada_rrhh', 'finalizada'];
-  if (estadosConUsada.includes(estadoOrigen)) {
-    updateData.cantidadUsada = Math.max(0, Number(balance.cantidadUsada ?? 0) - dias).toFixed(2);
-  } else {
-    updateData.cantidadPendiente = Math.max(0, Number(balance.cantidadPendiente ?? 0) - dias).toFixed(2);
-  }
+  const filtro = sql`usuario_id = ${solicitud.usuarioId} AND ano_laboral_id = ${solicitud.anoLaboralId} AND tipo_ausencia = 'vacaciones'`;
 
-  await db
-    .update(balances)
-    .set(updateData)
-    .where(eq(balances.id, balance.id));
+  for (const efecto of efectos) {
+    const dias = Number(efecto.dias ?? 0);
+    if (dias <= 0) continue;
+
+    if (efecto.tipo === 'RESERVAR_BALANCE') {
+      await tx.execute(sql`
+        UPDATE balances SET
+          cantidad_pendiente = cantidad_pendiente + ${dias},
+          cantidad_disponible = GREATEST(0, cantidad_disponible - ${dias}),
+          updated_at = NOW()
+        WHERE ${filtro}`);
+    } else if (efecto.tipo === 'CONFIRMAR_BALANCE') {
+      await tx.execute(sql`
+        UPDATE balances SET
+          cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
+          cantidad_usada = cantidad_usada + ${dias},
+          updated_at = NOW()
+        WHERE ${filtro}`);
+    } else if (efecto.tipo === 'LIBERAR_BALANCE') {
+      if (estadosConUsada.includes(estadoOrigen)) {
+        await tx.execute(sql`
+          UPDATE balances SET
+            cantidad_usada = GREATEST(0, cantidad_usada - ${dias}),
+            cantidad_disponible = cantidad_disponible + ${dias},
+            updated_at = NOW()
+          WHERE ${filtro}`);
+      } else {
+        await tx.execute(sql`
+          UPDATE balances SET
+            cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
+            cantidad_disponible = cantidad_disponible + ${dias},
+            updated_at = NOW()
+          WHERE ${filtro}`);
+      }
+    }
+  }
 }
 
 export async function procesarTransicionesAutomaticas(): Promise<{

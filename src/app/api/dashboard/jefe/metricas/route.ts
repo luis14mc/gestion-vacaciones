@@ -69,7 +69,8 @@ export async function GET() {
         );
     }
 
-    // Usuarios en vacaciones del departamento
+    // Usuarios en vacaciones HOY del departamento (vigentes, no las ya finalizadas)
+    const hoy = new Date().toISOString().split('T')[0];
     let enVacaciones = { count: 0 };
     if (usuariosIds.length > 0) {
       [enVacaciones] = await db
@@ -77,7 +78,9 @@ export async function GET() {
         .from(solicitudes)
         .where(
           and(
-            eq(solicitudes.estado, "finalizada"),
+            sql`${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada')`,
+            sql`${solicitudes.fechaInicio} <= ${hoy}`,
+            sql`${solicitudes.fechaFin} >= ${hoy}`,
             inArray(solicitudes.usuarioId, usuariosIds),
             isNull(solicitudes.deletedAt)
           )

@@ -349,13 +349,34 @@ describe('State Machine - Solicitudes', () => {
   // ─── Cron (transiciones automáticas) ───
 
   describe('Transiciones automáticas (cron)', () => {
-    it('aprobada_rrhh es estado final (no transiciona)', () => {
+    it('el sistema puede finalizar una solicitud aprobada_rrhh', () => {
+      const sistema: TransicionContexto = {
+        usuarioId: 0,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSistema: true,
+      };
+      const resultado = transicionar('aprobada_rrhh', 'finalizar', sistema, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('finalizada');
+    });
+
+    it('un admin también puede finalizar manualmente', () => {
+      const resultado = transicionar('aprobada_rrhh', 'finalizar', admin, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('finalizada');
+    });
+
+    it('RRHH (sin ser sistema/admin) NO puede finalizar', () => {
       const resultado = transicionar('aprobada_rrhh', 'finalizar', rrhh, 5);
       expect(resultado.exito).toBe(false);
     });
 
-    it('aprobada_rrhh bloquea transiciones incluso para admin', () => {
-      const resultado = transicionar('aprobada_rrhh', 'finalizar', admin, 5);
+    it('finalizada es estado final (no transiciona)', () => {
+      const resultado = transicionar('finalizada', 'finalizar', admin, 5);
       expect(resultado.exito).toBe(false);
     });
   });

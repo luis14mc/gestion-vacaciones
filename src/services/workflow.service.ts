@@ -288,10 +288,31 @@ export async function procesarTransicionesAutomaticas(): Promise<{
 
     for (const sol of paraFinalizar) {
       try {
+        // Validar la transición vía la máquina de estados (no UPDATE crudo)
+        const resultado = transicionar(
+          sol.estado as EstadoSolicitud,
+          'finalizar',
+          {
+            usuarioId: 0,
+            solicitanteId: sol.usuarioId,
+            esDirector: false,
+            esJefe: false,
+            esRrhh: false,
+            esAdmin: false,
+            esSistema: true,
+          },
+          Number(sol.diasSolicitados ?? 0)
+        );
+
+        if (!resultado.exito || !resultado.estadoNuevo) {
+          errores++;
+          continue;
+        }
+
         await db
           .update(solicitudes)
           .set({
-            estado: 'finalizada',
+            estado: resultado.estadoNuevo,
             estadoAnterior: sol.estado,
             version: sol.version + 1,
             updatedAt: new Date().toISOString(),

@@ -30,6 +30,8 @@ export interface TransicionContexto {
   departamentoSolicitante?: number | null;
   // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
   solicitanteEsJefe?: boolean;
+  // Acción ejecutada por el sistema (cron/jobs), no por un usuario
+  esSistema?: boolean;
 }
 
 interface Efecto {
@@ -57,7 +59,7 @@ export const ESTADOS_CONFIG: Record<EstadoSolicitud, EstadoConfig> = {
   pendiente_jefe:        { label: 'Pendiente Jefe',        bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', esFinal: false },
   aprobada_jefe:         { label: 'Aprobada Jefe',         bgColor: 'bg-blue-100',   textColor: 'text-blue-800',   esFinal: false },
   rechazada_jefe:        { label: 'Rechazada Jefe',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
-  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: true  },
+  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: false },
   rechazada_rrhh:        { label: 'Rechazada RRHH',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
   cancelada:             { label: 'Cancelada',             bgColor: 'bg-gray-100',   textColor: 'text-gray-600',   esFinal: true  },
   finalizada:            { label: 'Finalizada',            bgColor: 'bg-emerald-100',textColor: 'text-emerald-800',esFinal: true  },
@@ -109,6 +111,12 @@ const guardCancelar: Guard = (ctx) => {
   return 'No tiene permisos para cancelar esta solicitud';
 };
 
+// Finalizar es una acción del sistema (al vencer la fecha de fin) o de un admin.
+const guardSistema: Guard = (ctx) => {
+  if (ctx.esSistema || ctx.esAdmin) return null;
+  return 'Solo el sistema o un administrador puede finalizar una solicitud';
+};
+
 const sinEfectos = () => [] as Efecto[];
 
 const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
@@ -156,6 +164,13 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
       destino: 'cancelada',
       guard: guardCancelar,
       efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+  },
+  aprobada_rrhh: {
+    finalizar: {
+      destino: 'finalizada',
+      guard: guardSistema,
+      efectos: sinEfectos,
     },
   },
 };

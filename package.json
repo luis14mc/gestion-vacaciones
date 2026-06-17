@@ -24,7 +24,8 @@
     "db:install": "node scripts/install-database.mjs",
     "db:init": "node scripts/init-prod.mjs",
     "db:create-admin": "tsx scripts/create-admin.ts",
-    "db:setup": "node scripts/init-prod.mjs"
+    "db:setup": "node scripts/init-prod.mjs",
+    "db:reconciliar-balances": "node scripts/reconciliar-balances.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

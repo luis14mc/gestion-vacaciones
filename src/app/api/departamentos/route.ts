@@ -4,6 +4,8 @@ import { departamentos, usuarios } from '@/lib/db/schema';
 import { isNull, asc, eq, inArray, and, sql } from 'drizzle-orm';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { withErrorHandler } from '@/lib/api-handler';
+import { syncUserRolesDesdeBD } from '@/services/rbac.service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -110,13 +112,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       })
       .returning();
 
-    // Si se asignó un jefe, marcar al usuario como esDirector
+    // Si se asignó un jefe, marcar al usuario como esDirector y sincronizar rol
     if (jefeId) {
       await db
         .update(usuarios)
         .set({ esDirector: true, updatedAt: new Date().toISOString() })
         .where(eq(usuarios.id, jefeId));
+      await syncUserRolesDesdeBD(jefeId);
     }
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'crear',
+      tablaAfectada: 'departamentos',
+      registroId: nuevo?.id ?? null,
+      detalles: { codigo: nuevo?.codigo, nombre, jefeId: jefeId ?? null },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,
@@ -180,6 +194,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
           .update(usuarios)
           .set({ esDirector: false, updatedAt: new Date().toISOString() })
           .where(eq(usuarios.id, deptActual.jefeId));
+        await syncUserRolesDesdeBD(deptActual.jefeId);
       }
     }
 
@@ -192,6 +207,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
           updatedAt: new Date().toISOString(),
         })
         .where(eq(usuarios.id, nuevoJefeId));
+      await syncUserRolesDesdeBD(nuevoJefeId);
     }
   }
 
@@ -200,6 +216,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
     .set(campos)
     .where(eq(departamentos.id, id))
     .returning();
+
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: session.id,
+    accion: 'actualizar',
+    tablaAfectada: 'departamentos',
+    registroId: id,
+    detalles: { campos: Object.keys(campos).filter((k) => k !== 'updatedAt') },
+    ipAddress,
+    userAgent,
+  });
 
   return NextResponse.json({
     success: true,
@@ -251,6 +278,16 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
       updatedAt: new Date().toISOString(),
     })
     .where(eq(departamentos.id, deptId));
+
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: session.id,
+    accion: 'eliminar',
+    tablaAfectada: 'departamentos',
+    registroId: deptId,
+    ipAddress,
+    userAgent,
+  });
 
   return NextResponse.json({
     success: true,

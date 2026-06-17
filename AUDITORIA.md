@@ -96,6 +96,14 @@ pruebas unitarias y validaciones puntuales contra la BD real).
 - Política de contraseñas aplicada en creación/edición/cambio.
 - Importación registrada en auditoría.
 
+## 8.b Adjuntos de solicitudes
+
+- Los adjuntos llegaban como base64 en el JSON **sin límite ni validación**
+  (la ruta usa `request.json()`, ajena al límite de 2 MB de server actions).
+- Nuevo `validarAdjuntos()`: máximo 5 archivos, ≤ 5 MB c/u y ≤ 15 MB total,
+  base64 bien formado y **tipo real por firma (magic number)** — solo PDF e
+  imágenes (JPG/PNG/WEBP), ignorando la extensión/tipo declarado.
+
 ## 8. Seguridad transversal
 
 - **Rate limiter** migrado de memoria a **Postgres**
@@ -125,7 +133,5 @@ pruebas unitarias y validaciones puntuales contra la BD real).
 
 - **Catálogo de feriados nacionales** (para no descontar feriados como
   vacación).
-- **Adjuntos de solicitudes**: validar MIME/tamaño/firma (ver
-  `validaciones.md` #6).
 - Atomicidad total de la asignación masiva/automática (hoy fila por fila).
 - Pruebas de integración: corregir import roto (`validaciones.md` #8).

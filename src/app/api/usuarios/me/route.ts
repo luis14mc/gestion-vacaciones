@@ -3,6 +3,16 @@ import { db } from "@/lib/db";
 import { usuarios, departamentos, balances, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { z } from "zod";
+
+// Solo datos de contacto/identidad personales; el cargo y los roles los
+// gestiona RRHH/Admin, no el propio usuario.
+const perfilSchema = z.object({
+  nombre: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres").max(100).optional(),
+  apellido: z.string().trim().min(2, "El apellido debe tener al menos 2 caracteres").max(100).optional(),
+  telefono: z.string().trim().max(50).optional(),
+  direccion: z.string().trim().max(500).optional(),
+});
 
 // GET: Obtener perfil del usuario autenticado
 export async function GET(request: NextRequest) {
@@ -111,12 +121,18 @@ export async function PATCH(request: NextRequest) {
     const userId = session.id;
     const body = await request.json();
 
+    const parsed = perfilSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" },
+        { status: 400 }
+      );
+    }
+
     const camposPermitidos: Record<string, any> = {};
-    if (body.nombre !== undefined) camposPermitidos.nombre = body.nombre;
-    if (body.apellido !== undefined) camposPermitidos.apellido = body.apellido;
-    if (body.cargo !== undefined) camposPermitidos.cargo = body.cargo;
-    if (body.telefono !== undefined) camposPermitidos.telefono = body.telefono;
-    if (body.direccion !== undefined) camposPermitidos.direccion = body.direccion;
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v !== undefined) camposPermitidos[k] = v;
+    }
 
     if (Object.keys(camposPermitidos).length === 0) {
       return NextResponse.json(

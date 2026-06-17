@@ -29,6 +29,7 @@ export async function GET(
       esJefe: session.esJefe || false,
       esRrhh: session.esRrhh || false,
       esAdmin: session.esAdmin || false,
+      departamentoId: session.departamentoId ?? null,
     });
 
     return NextResponse.json({ success: true, data: acciones });
@@ -71,6 +72,7 @@ export async function POST(
       esJefe: session.esJefe || false,
       esRrhh: session.esRrhh || false,
       esAdmin: session.esAdmin || false,
+      departamentoId: session.departamentoId ?? null,
       comentario,
       motivoRechazo,
       motivoCancelacion,

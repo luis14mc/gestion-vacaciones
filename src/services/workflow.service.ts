@@ -19,6 +19,7 @@ interface UsuarioAccion {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  departamentoId?: number | null;
 }
 
 interface EjecutarAccionParams {
@@ -29,6 +30,7 @@ interface EjecutarAccionParams {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  departamentoId?: number | null;
   comentario?: string;
   motivoRechazo?: string;
   motivoCancelacion?: string;
@@ -53,6 +55,13 @@ export async function obtenerAccionesParaSolicitud(
 
   if (!solicitud) return [];
 
+  // Departamento del solicitante para validar alcance de aprobación
+  const [solicitanteInfo] = await db
+    .select({ departamentoId: usuarios.departamentoId })
+    .from(usuarios)
+    .where(eq(usuarios.id, solicitud.usuarioId))
+    .limit(1);
+
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const acciones = obtenerAccionesDisponibles(estadoActual);
 
@@ -73,6 +82,8 @@ export async function obtenerAccionesParaSolicitud(
     esJefe: usuario.esJefe,
     esRrhh: usuario.esRrhh,
     esAdmin: usuario.esAdmin,
+    departamentoAprobador: usuario.departamentoId ?? null,
+    departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
   };
 
   return acciones
@@ -87,7 +98,7 @@ export async function obtenerAccionesParaSolicitud(
 }
 
 export async function ejecutarAccion(params: EjecutarAccionParams): Promise<ResultadoAccion> {
-  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, comentario, motivoRechazo, motivoCancelacion } = params;
+  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, departamentoId, comentario, motivoRechazo, motivoCancelacion } = params;
 
   const [solicitud] = await db
     .select()
@@ -99,6 +110,13 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     return { exito: false, error: 'Solicitud no encontrada' };
   }
 
+  // Departamento del solicitante para validar alcance de aprobación
+  const [solicitanteInfo] = await db
+    .select({ departamentoId: usuarios.departamentoId })
+    .from(usuarios)
+    .where(eq(usuarios.id, solicitud.usuarioId))
+    .limit(1);
+
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const dias = Number(solicitud.diasSolicitados ?? 0);
 
@@ -109,6 +127,8 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     esJefe,
     esRrhh,
     esAdmin,
+    departamentoAprobador: departamentoId ?? null,
+    departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
   }, dias);
 
   if (!resultado.exito || !resultado.estadoNuevo) {

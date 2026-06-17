@@ -5,6 +5,7 @@ import { usuarios, departamentos, usuariosRoles, roles, balances, anosLaborales 
 import { eq, and, like, or, isNull, inArray, asc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
+import { syncUserRoles } from '@/services/rbac.service';
 import { withErrorHandler } from '@/lib/api-handler';
 import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
@@ -334,6 +335,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
           .set({ jefeId: null, updatedAt: new Date().toISOString() })
           .where(eq(departamentos.id, usuarioActualizado.departamentoId));
       }
+    }
+
+    // Mantener usuarios_roles sincronizado con los flags (solo admin pudo cambiarlos).
+    // Fuente única de verdad: evita que un flag activo quede sin su rol RBAC.
+    if (session.esAdmin) {
+      await syncUserRoles(usuarioActualizado.id, {
+        esAdmin: usuarioActualizado.esAdmin,
+        esRrhh: usuarioActualizado.esRrhh,
+        esDirector: usuarioActualizado.esDirector,
+        esJefe: usuarioActualizado.esJefe,
+      });
     }
   }
 

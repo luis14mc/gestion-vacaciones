@@ -300,6 +300,103 @@ export async function listarPermisos() {
 }
 
 /**
+ * ============================================================
+ * SINCRONIZACIÓN FLAGS ↔ RBAC (Fuente única de verdad)
+ * ============================================================
+ * Mapeo entre los flags booleanos legacy de la tabla `usuarios`
+ * y los roles del sistema RBAC. Mientras coexistan ambos modelos,
+ * esta es la ÚNICA función autorizada para escribir en
+ * `usuarios_roles` a partir de flags, evitando la divergencia
+ * descrita en la auditoría (un flag activo sin su rol, o viceversa).
+ */
+export const FLAG_A_ROL: Record<'esAdmin' | 'esRrhh' | 'esDirector' | 'esJefe', string> = {
+  esAdmin: 'ADMIN',
+  esRrhh: 'RRHH',
+  esDirector: 'DIRECTOR',
+  esJefe: 'JEFE',
+};
+
+// Roles gestionados por los flags. syncUserRoles SOLO añade/quita estos;
+// nunca toca roles personalizados asignados directamente vía RBAC.
+const ROLES_GESTIONADOS = Object.values(FLAG_A_ROL);
+
+export interface FlagsRol {
+  esAdmin?: boolean;
+  esRrhh?: boolean;
+  esDirector?: boolean;
+  esJefe?: boolean;
+}
+
+/**
+ * Sincroniza las asignaciones en `usuarios_roles` con los flags dados.
+ * - Añade los roles gestionados cuyos flags están activos.
+ * - Quita los roles gestionados cuyos flags están inactivos.
+ * - Garantiza el rol base EMPLEADO siempre presente.
+ * - No altera roles fuera del set gestionado.
+ *
+ * Acepta un `tx` opcional para participar en una transacción mayor.
+ */
+export async function syncUserRoles(
+  usuarioId: number,
+  flags: FlagsRol,
+  tx: any = db
+): Promise<void> {
+  const deseados = new Set<string>();
+  if (flags.esAdmin) deseados.add('ADMIN');
+  if (flags.esRrhh) deseados.add('RRHH');
+  if (flags.esDirector) deseados.add('DIRECTOR');
+  if (flags.esJefe) deseados.add('JEFE');
+
+  // Cargar filas de roles relevantes (gestionados + EMPLEADO base)
+  const codigosRelevantes = [...ROLES_GESTIONADOS, 'EMPLEADO'];
+  const rolesDb = await tx.query.roles.findMany({
+    where: inArray(roles.codigo, codigosRelevantes),
+  });
+  const porCodigo = new Map<string, { id: number }>(
+    rolesDb.map((r: any) => [r.codigo, r])
+  );
+
+  // Asignaciones actuales del usuario
+  const actuales = await tx.query.usuariosRoles.findMany({
+    where: eq(usuariosRoles.usuarioId, usuarioId),
+  });
+  const idsActuales = new Set<number>(actuales.map((a: any) => a.rolId));
+
+  // 1. Añadir roles deseados ausentes
+  for (const codigo of deseados) {
+    const rol = porCodigo.get(codigo);
+    if (rol && !idsActuales.has(rol.id)) {
+      await tx.insert(usuariosRoles).values({ usuarioId, rolId: rol.id, activo: true });
+      idsActuales.add(rol.id);
+    }
+  }
+
+  // 2. Quitar roles gestionados que ya no se desean
+  const idsAQuitar = ROLES_GESTIONADOS
+    .filter((c) => !deseados.has(c))
+    .map((c) => porCodigo.get(c)?.id)
+    .filter((id): id is number => typeof id === 'number' && idsActuales.has(id));
+
+  if (idsAQuitar.length > 0) {
+    await tx
+      .delete(usuariosRoles)
+      .where(
+        and(
+          eq(usuariosRoles.usuarioId, usuarioId),
+          inArray(usuariosRoles.rolId, idsAQuitar)
+        )
+      );
+    idsAQuitar.forEach((id) => idsActuales.delete(id));
+  }
+
+  // 3. Garantizar rol base EMPLEADO
+  const empleado = porCodigo.get('EMPLEADO');
+  if (empleado && !idsActuales.has(empleado.id)) {
+    await tx.insert(usuariosRoles).values({ usuarioId, rolId: empleado.id, activo: true });
+  }
+}
+
+/**
  * Verificar si usuario es administrador
  */
 export async function esAdministrador(usuarioId: number): Promise<boolean> {

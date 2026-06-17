@@ -25,6 +25,9 @@ export interface TransicionContexto {
   esRrhh: boolean;
   esAdmin: boolean;
   tipo?: string;
+  // Departamentos para validar alcance de aprobación (regla CNI: mismo depto)
+  departamentoAprobador?: number | null;
+  departamentoSolicitante?: number | null;
 }
 
 interface Efecto {
@@ -75,6 +78,16 @@ const guardJefe: Guard = (ctx) => {
   if (ctx.esAdmin) return null;
   if (!ctx.esJefe && !ctx.esDirector) return 'Solo un Jefe o Director puede realizar esta acción';
   if (ctx.usuarioId === ctx.solicitanteId) return 'No puede aprobar/rechazar su propia solicitud';
+  // Regla CNI: el jefe/director solo aprueba a empleados de su MISMO departamento.
+  // Cierra la escalada horizontal (un jefe del depto A aprobando al depto B).
+  // Default seguro: si falta el dato de departamento, se deniega.
+  if (
+    ctx.departamentoAprobador == null ||
+    ctx.departamentoSolicitante == null ||
+    ctx.departamentoAprobador !== ctx.departamentoSolicitante
+  ) {
+    return 'Solo puede aprobar solicitudes de empleados de su mismo departamento';
+  }
   return null;
 };
 

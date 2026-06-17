@@ -39,6 +39,9 @@ const director: TransicionContexto = {
   esRrhh: false,
   esAdmin: false,
   tipo: 'vacaciones',
+  // Mismo departamento que el solicitante (regla CNI de alcance)
+  departamentoAprobador: 1,
+  departamentoSolicitante: 1,
 };
 
 const jefe: TransicionContexto = {
@@ -49,6 +52,9 @@ const jefe: TransicionContexto = {
   esRrhh: false,
   esAdmin: false,
   tipo: 'vacaciones',
+  // Mismo departamento que el solicitante (regla CNI de alcance)
+  departamentoAprobador: 1,
+  departamentoSolicitante: 1,
 };
 
 const rrhh: TransicionContexto = {
@@ -187,6 +193,45 @@ describe('State Machine - Solicitudes', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorSolicitante, 5);
       expect(resultado.exito).toBe(false);
       expect(resultado.error).toContain('propia solicitud');
+    });
+
+    it('jefe NO puede aprobar solicitud de OTRO departamento (escalada horizontal)', () => {
+      const jefeOtroDepto: TransicionContexto = {
+        usuarioId: 21,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+        departamentoAprobador: 2,
+        departamentoSolicitante: 1,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeOtroDepto, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('mismo departamento');
+    });
+
+    it('jefe SIN dato de departamento es denegado (default seguro)', () => {
+      const jefeSinDepto: TransicionContexto = {
+        usuarioId: 22,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeSinDepto, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('mismo departamento');
+    });
+
+    it('admin aprueba aunque difieran los departamentos (bypass)', () => {
+      const adminOtroDepto: TransicionContexto = {
+        ...admin,
+        departamentoAprobador: 99,
+        departamentoSolicitante: 1,
+      };
+      expect(transicionar('pendiente_jefe', 'aprobar_jefe', adminOtroDepto, 5).exito).toBe(true);
     });
 
     it('admin puede hacer cualquier acción', () => {

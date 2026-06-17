@@ -10,6 +10,7 @@ import type { SessionUser, RolUsuario } from '@/types';
 import { db } from '@/lib/db';
 import { usuarios } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { obtenerRolesYPermisos } from '@/services/rbac.service';
 
 export async function getSession(): Promise<SessionUser | null> {
   try {
@@ -62,6 +63,23 @@ export async function getSession(): Promise<SessionUser | null> {
       console.error('Error leyendo flags de BD, usando token:', dbErr);
     }
 
+    // Fuente única de verdad: roles y permisos se leen FRESCOS desde BD
+    // en cada request, no del token JWT (que solo se llena al login y vive
+    // 24h). Así una revocación de permisos surte efecto de inmediato.
+    let rolesDb: RolUsuario[] = [];
+    let permisosDb: string[] = [];
+    try {
+      const rbac = await obtenerRolesYPermisos(userId);
+      if (rbac) {
+        rolesDb = rbac.roles as RolUsuario[];
+        permisosDb = rbac.permisos;
+      }
+    } catch (rbacErr) {
+      console.error('Error leyendo RBAC de BD, usando token:', rbacErr);
+      rolesDb = (session.user.roles as RolUsuario[]) || [];
+      permisosDb = session.user.permisos || [];
+    }
+
     const sessionUser: SessionUser = {
       id: userId,
       email: session.user.email!,
@@ -70,16 +88,17 @@ export async function getSession(): Promise<SessionUser | null> {
       departamentoId: departamentoIdDb ?? session.user.departamentoId,
       departamentoNombre: session.user.departamentoNombre || undefined,
       cargo: (cargoDb ?? session.user.cargo) || undefined,
-      
-      roles: session.user.roles || [],
-      permisos: session.user.permisos || [],
-      
-      esAdmin: session.user.esAdmin || esAdminDb || false,
-      esRrhh: session.user.esRrhh || esRrhhDb || false,
-      esDirector: session.user.esDirector || esDirectorDb || false,
-      esJefe: session.user.esJefe || esJefeDb || false,
+
+      roles: rolesDb,
+      permisos: permisosDb,
+
+      // Flags: BD como fuente de verdad (el token queda como respaldo).
+      esAdmin: esAdminDb || session.user.esAdmin || false,
+      esRrhh: esRrhhDb || session.user.esRrhh || false,
+      esDirector: esDirectorDb || session.user.esDirector || false,
+      esJefe: esJefeDb || session.user.esJefe || false,
     };
-    
+
     return sessionUser;
   } catch (error) {
     console.error('Error al obtener sesión:', error);

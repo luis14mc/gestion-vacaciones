@@ -10,6 +10,7 @@
 import { db } from '@/lib/db';
 import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
+import { obtenerConfigs, asBool, asNumber } from '@/lib/config/service';
 
 // =====================================================
 // TIPOS
@@ -70,6 +71,40 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     // 1. Validar días solicitados
     if (tipo === 'vacaciones' && diasParaSolicitud <= 0) {
       throw new Error('La cantidad de días solicitados debe ser mayor a 0');
+    }
+
+    // 1b. Reglas de vacaciones configurables (Configuración → Vacaciones)
+    if (tipo === 'vacaciones') {
+      const reglas = await obtenerConfigs([
+        'vacaciones.dias_minimos_solicitud',
+        'vacaciones.dias_maximos_consecutivos',
+        'vacaciones.dias_anticipacion',
+        'vacaciones.permitir_medio_dia',
+      ]);
+      const minDias = asNumber(reglas['vacaciones.dias_minimos_solicitud'], 1);
+      const maxDias = asNumber(reglas['vacaciones.dias_maximos_consecutivos'], 365);
+      const anticipacion = asNumber(reglas['vacaciones.dias_anticipacion'], 0);
+      const permitirMedioDia = asBool(reglas['vacaciones.permitir_medio_dia']);
+
+      if (diasParaSolicitud < minDias) {
+        throw new Error(`La solicitud debe ser de al menos ${minDias} día(s).`);
+      }
+      if (diasParaSolicitud > maxDias) {
+        throw new Error(`No puede solicitar más de ${maxDias} días consecutivos.`);
+      }
+      if (!permitirMedioDia && !Number.isInteger(diasParaSolicitud)) {
+        throw new Error('No está permitido solicitar medios días.');
+      }
+      if (anticipacion > 0 && fechaInicio) {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const minInicio = new Date(hoy);
+        minInicio.setDate(minInicio.getDate() + anticipacion);
+        const inicio = new Date(`${fechaInicio}T00:00:00`);
+        if (inicio < minInicio) {
+          throw new Error(`Las vacaciones deben solicitarse con al menos ${anticipacion} día(s) de anticipación.`);
+        }
+      }
     }
 
     if (tipo === 'permiso_salida' && (!motivo?.trim() || motivo.trim().length < 5)) {

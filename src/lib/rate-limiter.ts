@@ -1,54 +1,70 @@
 /**
  * ============================================================
- * RATE LIMITER (In-Memory)
+ * RATE LIMITER (Postgres-backed)
  * ============================================================
  * @description Mitigación de Fuerza Bruta (OWASP A07:2026).
- * Implementación de Token Bucket en memoria para limitar
- * intentos de inicio de sesión por email y/o IP.
- * Nota: En un entorno distribuido o serverless (ej. Vercel),
- * esta memoria se reinicia con cada cold start. Para producción
- * a gran escala, se recomienda Redis o PostgreSQL.
+ * Persistido en Postgres (tabla `rate_limits`) para que funcione
+ * de forma consistente en despliegues multi-instancia / serverless,
+ * donde la memoria de proceso se reinicia con cada cold start.
+ *
+ * Estrategia: contador con ventana fija por identificador (email/IP),
+ * resuelto atómicamente con un UPSERT (INSERT ... ON CONFLICT).
+ *
+ * Política fail-open: si la BD no responde, se permite el intento
+ * (registrando el error) para no bloquear el acceso de todos los
+ * usuarios por una incidencia de infraestructura.
  * ============================================================
  */
 
-interface RateLimitInfo {
-  count: number;
-  resetTime: number;
-}
+import { db } from '@/lib/db';
+import { sql } from 'drizzle-orm';
 
-const loginAttempts = new Map<string, RateLimitInfo>();
-
-const MAX_ATTEMPTS = 5; // Intentos máximos
+const MAX_ATTEMPTS = 5; // Intentos máximos por ventana
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutos de bloqueo
 
-export function checkRateLimit(identifier: string): { allowed: boolean; remainingMs: number } {
-  const now = Date.now();
-  const attempt = loginAttempts.get(identifier);
-
-  if (!attempt) {
-    // Primer intento
-    loginAttempts.set(identifier, { count: 1, resetTime: now + WINDOW_MS });
-    return { allowed: true, remainingMs: 0 };
-  }
-
-  // Si ya pasó la ventana de tiempo, resetear
-  if (now > attempt.resetTime) {
-    loginAttempts.set(identifier, { count: 1, resetTime: now + WINDOW_MS });
-    return { allowed: true, remainingMs: 0 };
-  }
-
-  // Si aún está dentro de la ventana y superó el límite
-  if (attempt.count >= MAX_ATTEMPTS) {
-    return { allowed: false, remainingMs: attempt.resetTime - now };
-  }
-
-  // Incrementar contador
-  attempt.count += 1;
-  loginAttempts.set(identifier, attempt);
-  
-  return { allowed: true, remainingMs: 0 };
+function firstRow(result: unknown): any {
+  if (Array.isArray(result)) return result[0];
+  const rows = (result as any)?.rows;
+  return Array.isArray(rows) ? rows[0] : undefined;
 }
 
-export function resetRateLimit(identifier: string): void {
-  loginAttempts.delete(identifier);
+export async function checkRateLimit(
+  identifier: string
+): Promise<{ allowed: boolean; remainingMs: number }> {
+  const windowSeconds = Math.floor(WINDOW_MS / 1000);
+
+  try {
+    const result = await db.execute(sql`
+      INSERT INTO rate_limits (identifier, count, reset_time, updated_at)
+      VALUES (${identifier}, 1, NOW() + (${windowSeconds} * INTERVAL '1 second'), NOW())
+      ON CONFLICT (identifier) DO UPDATE SET
+        count = CASE WHEN rate_limits.reset_time < NOW() THEN 1 ELSE rate_limits.count + 1 END,
+        reset_time = CASE WHEN rate_limits.reset_time < NOW()
+          THEN NOW() + (${windowSeconds} * INTERVAL '1 second')
+          ELSE rate_limits.reset_time END,
+        updated_at = NOW()
+      RETURNING count, EXTRACT(EPOCH FROM (reset_time - NOW())) * 1000 AS remaining_ms
+    `);
+
+    const row = firstRow(result);
+    const count = Number(row?.count ?? 1);
+    const remainingMs = Math.max(0, Math.round(Number(row?.remaining_ms ?? 0)));
+
+    if (count > MAX_ATTEMPTS) {
+      return { allowed: false, remainingMs };
+    }
+    return { allowed: true, remainingMs: 0 };
+  } catch (error) {
+    // Fail-open: no bloquear logins por un fallo de infraestructura.
+    console.error('[RateLimiter] Error consultando rate_limits, permitiendo intento:', error);
+    return { allowed: true, remainingMs: 0 };
+  }
+}
+
+export async function resetRateLimit(identifier: string): Promise<void> {
+  try {
+    await db.execute(sql`DELETE FROM rate_limits WHERE identifier = ${identifier}`);
+  } catch (error) {
+    console.error('[RateLimiter] Error reseteando rate_limits:', error);
+  }
 }

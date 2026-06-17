@@ -23,7 +23,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = credentials.password as string;
 
         // 🛡️ Rate Limiting (Protección contra fuerza bruta)
-        const rateLimitResult = checkRateLimit(email.toLowerCase());
+        const rateLimitResult = await checkRateLimit(email.toLowerCase());
         if (!rateLimitResult.allowed) {
           const waitMinutes = Math.ceil(rateLimitResult.remainingMs / 60000);
           throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${waitMinutes} minutos.`);
@@ -46,7 +46,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // ✅ Login exitoso: Resetear contador de intentos fallidos
-        resetRateLimit(email.toLowerCase());
+        await resetRateLimit(email.toLowerCase());
 
         // Actualizar último acceso
         await db

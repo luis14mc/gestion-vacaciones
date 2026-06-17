@@ -5,11 +5,13 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   test: {
-    // Detectar automáticamente el entorno según el archivo de test
-    environment: 'node', // Por defecto node para tests de integración
+    environment: 'node',
     globals: true,
     setupFiles: './tests/setup.ts',
     pool: 'forks',
+    // Solo pruebas unitarias en el run por defecto. Las de integración
+    // golpean la BD real y se ejecutan aparte (vitest.config.integration.ts).
+    include: ['./tests/unit/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

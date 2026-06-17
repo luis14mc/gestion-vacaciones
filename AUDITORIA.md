@@ -133,5 +133,8 @@ pruebas unitarias y validaciones puntuales contra la BD real).
 
 - **Catálogo de feriados nacionales** (para no descontar feriados como
   vacación).
-- Atomicidad total de la asignación masiva/automática (hoy fila por fila).
-- Pruebas de integración: corregir import roto (`validaciones.md` #8).
+- Pruebas de integración: el import roto se corrigió y el run por defecto
+  (`vitest run`) ya solo ejecuta unit. **Pendiente**: las pruebas de
+  integración aún apuntan a la BD real (`.env`) — conviene una BD de test
+  dedicada — y pueden requerir ajuste de asserts tras los cambios de
+  cálculo de días/efectos.

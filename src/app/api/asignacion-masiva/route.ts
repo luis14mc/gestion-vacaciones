@@ -65,11 +65,11 @@ export async function POST(request: NextRequest) {
 
     let usuariosCreados = 0;
     let usuariosActualizados = 0;
-    const errores: string[] = [];
 
-    for (const usuario of usuariosDepartamento) {
-      try {
-        const balanceExistente = await db.query.balances.findFirst({
+    // Atomico: todo el departamento se asigna o nada (sin estado parcial).
+    await db.transaction(async (tx) => {
+      for (const usuario of usuariosDepartamento) {
+        const balanceExistente = await tx.query.balances.findFirst({
           where: and(
             eq(balances.usuarioId, usuario.id),
             eq(balances.tipoAusencia, tipoAusencia as any),
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
         if (balanceExistente) {
           const balanceActual = balanceExistente;
-          
+
           if (operacion === "sumar") {
             cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) + cantidadFinal;
           } else if (operacion === "restar") {
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
           }
 
           // cantidad_disponible la recalcula el trigger de BD (incluye acumulada).
-          await db
+          await tx
             .update(balances)
             .set({
               cantidadInicial: cantidadFinal.toFixed(2),
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
           }
 
           const cantidadStr = cantidadFinal.toFixed(2);
-          await db.insert(balances).values({
+          await tx.insert(balances).values({
             usuarioId: usuario.id,
             tipoAusencia: tipoAusencia as any,
             anoLaboralId,
@@ -113,11 +113,8 @@ export async function POST(request: NextRequest) {
           });
           usuariosCreados++;
         }
-      } catch (error) {
-        console.error(`Error procesando usuario ${usuario.id}:`, error);
-        errores.push(`${usuario.nombre} ${usuario.apellido}`);
       }
-    }
+    });
 
     const totalProcesados = usuariosCreados + usuariosActualizados;
 
@@ -145,7 +142,6 @@ export async function POST(request: NextRequest) {
       usuariosAfectados: totalProcesados,
       usuariosCreados,
       usuariosActualizados,
-      errores: errores.length > 0 ? errores : undefined,
     });
   } catch (error) {
     console.error("Error en POST /api/asignacion-masiva:", error);

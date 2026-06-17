@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { usuarios, departamentos, usuariosRoles, roles, balances, anosLaborales } from '@/lib/db/schema';
-import { eq, and, like, or, isNull, inArray, asc } from 'drizzle-orm';
+import { eq, and, like, or, isNull, inArray, asc, sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
 import { syncUserRoles } from '@/services/rbac.service';
@@ -376,6 +376,41 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
   }
 
   const usuarioId = Number.parseInt(id);
+
+  if (Number.isNaN(usuarioId)) {
+    return NextResponse.json({ success: false, error: 'ID de usuario inválido' }, { status: 400 });
+  }
+
+  // No permitir auto-desactivación (un admin no puede eliminarse a sí mismo)
+  if (usuarioId === session.id) {
+    return NextResponse.json(
+      { success: false, error: 'No puede desactivar su propia cuenta' },
+      { status: 400 }
+    );
+  }
+
+  // No permitir desactivar al último administrador activo
+  const objetivo = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioId),
+  });
+
+  if (!objetivo) {
+    return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
+  }
+
+  if (objetivo.esAdmin) {
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(usuarios)
+      .where(and(eq(usuarios.esAdmin, true), eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
+
+    if (Number(total) <= 1) {
+      return NextResponse.json(
+        { success: false, error: 'No se puede desactivar al último administrador activo' },
+        { status: 400 }
+      );
+    }
+  }
 
   const [usuarioDesactivado] = await db
     .update(usuarios)

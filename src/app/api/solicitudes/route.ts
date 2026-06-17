@@ -3,12 +3,7 @@ import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
-import { 
-  crearSolicitud, 
-  aprobarSolicitudJefe, 
-  aprobarSolicitudRRHH, 
-  rechazarSolicitud 
-} from '@/services/solicitudes.service';
+import { crearSolicitud } from '@/services/solicitudes.service';
 import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';

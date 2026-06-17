@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { registrarAuditoria, datosPeticion } from "@/services/auditoria.service";
 import { db } from "@/lib/db";
 import { balances, usuarios, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -124,6 +125,24 @@ export async function POST(request: NextRequest) {
     }
 
     const totalProcesados = usuariosCreados + usuariosActualizados;
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'balances',
+      detalles: {
+        evento: 'asignacion_masiva',
+        departamentoId,
+        tipoAusencia,
+        cantidadAsignada,
+        operacion,
+        usuariosCreados,
+        usuariosActualizados,
+      },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,

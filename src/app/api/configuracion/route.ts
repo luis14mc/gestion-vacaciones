@@ -19,6 +19,7 @@ import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { getConfigMeta, validarConfig } from '@/lib/config/catalog';
 import { invalidarCacheConfig } from '@/lib/config/service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 
 export const runtime = 'nodejs';
 
@@ -134,6 +135,16 @@ export async function PATCH(request: NextRequest) {
 
       invalidarCacheConfig();
 
+      const { ipAddress, userAgent } = datosPeticion(request);
+      await registrarAuditoria({
+        usuarioId: session.id,
+        accion: 'actualizar',
+        tablaAfectada: 'configuracion',
+        detalles: { claves: body.map((i: any) => i.clave) },
+        ipAddress,
+        userAgent,
+      });
+
       return NextResponse.json({
         success: true,
         message: `${body.length} configuraciones actualizadas exitosamente`,
@@ -178,6 +189,17 @@ export async function PATCH(request: NextRequest) {
     }
 
     invalidarCacheConfig();
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'configuracion',
+      registroId: Number(id),
+      detalles: { campos: Object.keys(camposPermitidos) },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,

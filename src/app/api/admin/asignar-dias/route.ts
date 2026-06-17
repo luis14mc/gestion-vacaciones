@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { usuarios, balances, anosLaborales } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
@@ -113,6 +114,16 @@ export async function POST(request: NextRequest) {
         asignados++;
       }
     }
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'balances',
+      detalles: { evento: 'asignar_dias_antiguedad', asignados, actualizados, omitidos },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,

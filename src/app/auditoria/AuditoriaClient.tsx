@@ -291,6 +291,7 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
                     <SelectItem value="actualizar">Actualizar</SelectItem>
                     <SelectItem value="eliminar">Eliminar</SelectItem>
                     <SelectItem value="login">Login</SelectItem>
+                    <SelectItem value="login_fallido">Login fallido</SelectItem>
                     <SelectItem value="logout">Logout</SelectItem>
                   </SelectContent>
                 </Select>

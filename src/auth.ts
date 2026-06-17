@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/services/rbac.service";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limiter";
 import { obtenerConfigs, asNumber } from "@/lib/config/service";
+import { registrarAuditoria, datosPeticion } from "@/services/auditoria.service";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -15,13 +16,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
         const email = credentials.email as string;
         const password = credentials.password as string;
+        const datos = request
+          ? datosPeticion(request as unknown as Request)
+          : { ipAddress: 'unknown', userAgent: 'unknown' };
 
         // 🛡️ Rate Limiting (Protección contra fuerza bruta)
         const rateLimitResult = await checkRateLimit(email.toLowerCase());
@@ -43,11 +47,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const passwordValida = await bcrypt.compare(password, usuario.passwordHash);
 
         if (!passwordValida) {
+          await registrarAuditoria({
+            usuarioId: usuario.id,
+            accion: 'login_fallido',
+            tablaAfectada: 'usuarios',
+            registroId: usuario.id,
+            detalles: { email: email.toLowerCase() },
+            ...datos,
+          });
           return null;
         }
 
         // ✅ Login exitoso: Resetear contador de intentos fallidos
         await resetRateLimit(email.toLowerCase());
+
+        await registrarAuditoria({
+          usuarioId: usuario.id,
+          accion: 'login',
+          tablaAfectada: 'usuarios',
+          registroId: usuario.id,
+          ...datos,
+        });
 
         // Actualizar último acceso
         await db
@@ -146,6 +166,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session;
     }
+  },
+  events: {
+    async signOut(message) {
+      const token = (message as any)?.token;
+      const id = token?.id ? Number(token.id) : null;
+      if (id && !Number.isNaN(id)) {
+        await registrarAuditoria({
+          usuarioId: id,
+          accion: 'logout',
+          tablaAfectada: 'usuarios',
+          registroId: id,
+        });
+      }
+    },
   },
   pages: {
     signIn: '/login',

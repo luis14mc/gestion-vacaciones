@@ -18,9 +18,11 @@
 
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
+import { obtenerConfigs, asNumber } from '@/lib/config/service';
 
-const MAX_ATTEMPTS = 5; // Intentos máximos por ventana
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutos de bloqueo
+// Defaults; el admin puede ajustarlos en Configuración → Seguridad.
+const DEFAULT_MAX_ATTEMPTS = 5;
+const DEFAULT_WINDOW_MINUTES = 15;
 
 function firstRow(result: unknown): any {
   if (Array.isArray(result)) return result[0];
@@ -31,7 +33,14 @@ function firstRow(result: unknown): any {
 export async function checkRateLimit(
   identifier: string
 ): Promise<{ allowed: boolean; remainingMs: number }> {
-  const windowSeconds = Math.floor(WINDOW_MS / 1000);
+  // Parámetros desde Configuración → Seguridad (con fallback a defaults)
+  const cfg = await obtenerConfigs([
+    'seguridad.intentos_login_max',
+    'seguridad.bloqueo_duracion_minutos',
+  ]);
+  const maxAttempts = asNumber(cfg['seguridad.intentos_login_max'], DEFAULT_MAX_ATTEMPTS);
+  const windowMinutes = asNumber(cfg['seguridad.bloqueo_duracion_minutos'], DEFAULT_WINDOW_MINUTES);
+  const windowSeconds = Math.floor(windowMinutes * 60);
 
   try {
     const result = await db.execute(sql`
@@ -50,7 +59,7 @@ export async function checkRateLimit(
     const count = Number(row?.count ?? 1);
     const remainingMs = Math.max(0, Math.round(Number(row?.remaining_ms ?? 0)));
 
-    if (count > MAX_ATTEMPTS) {
+    if (count > maxAttempts) {
       return { allowed: false, remainingMs };
     }
     return { allowed: true, remainingMs: 0 };

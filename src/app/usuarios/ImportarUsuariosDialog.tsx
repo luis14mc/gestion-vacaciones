@@ -95,6 +95,23 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
     }
   };
 
+  const descargarCredencialesCSV = (
+    credenciales: Array<{ email: string; nombre: string; password: string }>
+  ) => {
+    const encabezado = "email,nombre,password_temporal";
+    const filas = credenciales.map(
+      (c) => `${c.email},"${c.nombre.replace(/"/g, '""')}",${c.password}`
+    );
+    const csv = "﻿" + [encabezado, ...filas].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `credenciales_temporales_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImport = async () => {
     if (!file) return;
 
@@ -113,6 +130,12 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
 
       if (res.ok && data.success) {
         notify.success(data.message || "Usuarios importados con éxito");
+        if (Array.isArray(data.credenciales) && data.credenciales.length > 0) {
+          descargarCredencialesCSV(data.credenciales);
+          notify.success(
+            "Se descargó el archivo de credenciales temporales. Distribúyalas de forma segura; cada usuario deberá cambiar su contraseña al ingresar."
+          );
+        }
         onSuccess();
         handleOpenChange(false);
       } else {
@@ -133,7 +156,7 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
           <DialogTitle>Importación Masiva de Usuarios</DialogTitle>
           <DialogDescription>
             {step === "upload" 
-              ? "Sube un archivo Excel (.xlsx) con los datos de los empleados. La contraseña por defecto será '1234'."
+              ? "Sube un archivo Excel (.xlsx) con los datos de los empleados. Se generará una contraseña temporal única por usuario."
               : "Revisa los datos antes de importar."}
           </DialogDescription>
         </DialogHeader>
@@ -203,7 +226,8 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                 <li>La columna "Es Jefe" (opcional) acepta valores "Si" o "No".</li>
                 <li>La columna "Es Director" (opcional) acepta valores "Si" o "No".</li>
                 <li>El "Email Jefe Superior" puede referenciar un usuario existente o una fila del mismo Excel.</li>
-                <li>Todos los usuarios nuevos tendrán "1234" como contraseña.</li>
+                <li>Cada usuario recibirá una contraseña temporal única; al finalizar se descargará un CSV con las credenciales para distribuir.</li>
+                <li>Todos deberán cambiar su contraseña en el primer ingreso.</li>
               </ul>
             </div>
           </div>

@@ -42,6 +42,7 @@ export async function getSession(): Promise<SessionUser | null> {
     let esJefeDb = false;
     let departamentoIdDb: number | null | undefined;
     let cargoDb: string | null | undefined;
+    let debeCambiarPasswordDb = false;
 
     try {
       const [row] = await db
@@ -52,6 +53,7 @@ export async function getSession(): Promise<SessionUser | null> {
           esJefe: usuarios.esJefe,
           departamentoId: usuarios.departamentoId,
           cargo: usuarios.cargo,
+          metadata: usuarios.metadata,
         })
         .from(usuarios)
         .where(eq(usuarios.id, userId))
@@ -64,6 +66,7 @@ export async function getSession(): Promise<SessionUser | null> {
         esJefeDb = row.esJefe;
         departamentoIdDb = row.departamentoId;
         cargoDb = row.cargo;
+        debeCambiarPasswordDb = (row.metadata as any)?.debeCambiarPassword === true;
       }
     } catch (dbErr) {
       console.error('Error leyendo flags de BD, usando token:', dbErr);
@@ -103,6 +106,8 @@ export async function getSession(): Promise<SessionUser | null> {
       esRrhh: esRrhhDb || session.user.esRrhh || false,
       esDirector: esDirectorDb || session.user.esDirector || false,
       esJefe: esJefeDb || session.user.esJefe || false,
+
+      debeCambiarPassword: debeCambiarPasswordDb,
     };
 
     return sessionUser;

@@ -33,6 +33,8 @@ export interface CrearUsuarioParams {
   telefono?: string;
   direccion?: string;
   jefeSuperiorId?: number;
+  /** Marca al usuario para que deba cambiar su contraseña al primer ingreso */
+  debeCambiarPassword?: boolean;
 }
 
 export interface ActualizarUsuarioParams {
@@ -72,6 +74,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
     telefono,
     direccion,
     jefeSuperiorId,
+    debeCambiarPassword = false,
   } = params;
 
   return await db.transaction(async (tx) => {
@@ -106,7 +109,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         telefono,
         direccion,
         jefeSuperiorId,
-        metadata: {},
+        metadata: debeCambiarPassword ? { debeCambiarPassword: true } : {},
       })
       .returning();
 

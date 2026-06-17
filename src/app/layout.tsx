@@ -3,6 +3,7 @@ import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import QueryProvider from "@/providers/QueryProvider";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import PasswordChangeGate from "@/components/PasswordChangeGate";
 import { Toaster } from "sileo";
 
 export const metadata: Metadata = {
@@ -82,7 +83,9 @@ export default function RootLayout({
       <body className="antialiased" suppressHydrationWarning>
         <QueryProvider>
           <AuthProvider session={null}>
-            <MaintenanceGate>{children}</MaintenanceGate>
+            <MaintenanceGate>
+              <PasswordChangeGate>{children}</PasswordChangeGate>
+            </MaintenanceGate>
           </AuthProvider>
           <Toaster />
         </QueryProvider>

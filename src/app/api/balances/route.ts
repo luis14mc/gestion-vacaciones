@@ -147,15 +147,13 @@ export async function POST(request: NextRequest) {
 
     if (balanceExistente) {
       const cantidadInicialNum = Number.parseFloat(cantidadInicial.toString());
-      const disponibleAnterior = Number.parseFloat(balanceExistente.cantidadDisponible ?? '0');
-      const inicialAnterior = Number.parseFloat(balanceExistente.cantidadInicial ?? '0');
-      const nuevoDisponible = disponibleAnterior + (cantidadInicialNum - inicialAnterior);
 
+      // cantidad_disponible la recalcula el trigger de BD a partir de
+      // inicial + acumulada - usada - pendiente; no se setea a mano.
       await db
         .update(balances)
         .set({
           cantidadInicial: cantidadInicialNum.toFixed(2),
-          cantidadDisponible: Math.max(0, nuevoDisponible).toFixed(2),
           version: balanceExistente.version + 1,
           updatedAt: new Date().toISOString(),
         })
@@ -173,7 +171,6 @@ export async function POST(request: NextRequest) {
       tipoAusencia,
       anoLaboralId,
       cantidadInicial: cantidadInicialStr,
-      cantidadDisponible: cantidadInicialStr,
     });
 
     return NextResponse.json({

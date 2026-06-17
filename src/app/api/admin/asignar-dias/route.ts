@@ -83,23 +83,19 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (balanceExistente) {
-        // Actualizar balance
+        // cantidad_disponible la recalcula el trigger de BD a partir de
+        // inicial + acumulada - usada - pendiente.
         await db
           .update(balances)
           .set({
             cantidadInicial: diasAsignados.toString(),
-            cantidadDisponible: (
-              diasAsignados - 
-              Number(balanceExistente.cantidadUsada || 0) - 
-              Number(balanceExistente.cantidadPendiente || 0)
-            ).toString(),
             updatedAt: new Date().toISOString(),
             version: balanceExistente.version + 1
           })
           .where(eq(balances.id, balanceExistente.id));
         actualizados++;
       } else {
-        // Crear nuevo balance
+        // Crear nuevo balance (el trigger calcula cantidad_disponible)
         await db
           .insert(balances)
           .values({
@@ -109,7 +105,6 @@ export async function POST(request: NextRequest) {
             cantidadInicial: diasAsignados.toString(),
             cantidadUsada: '0',
             cantidadPendiente: '0',
-            cantidadDisponible: diasAsignados.toString()
           });
         asignados++;
       }

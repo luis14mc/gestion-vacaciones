@@ -53,8 +53,12 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
   
-  // ✅ Sesión válida - permitir acceso
-  return NextResponse.next();
+  // ✅ Sesión válida - permitir acceso.
+  // Propaga el pathname para que el layout (runtime node) pueda aplicar
+  // el modo mantenimiento sin que el middleware (edge) toque la BD.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-pathname', pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 /**

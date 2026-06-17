@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import QueryProvider from "@/providers/QueryProvider";
+import MaintenanceGate from "@/components/MaintenanceGate";
 import { Toaster } from "sileo";
 
 export const metadata: Metadata = {
@@ -80,7 +81,9 @@ export default function RootLayout({
     <html lang="es-HN">
       <body className="antialiased" suppressHydrationWarning>
         <QueryProvider>
-          <AuthProvider session={null}>{children}</AuthProvider>
+          <AuthProvider session={null}>
+            <MaintenanceGate>{children}</MaintenanceGate>
+          </AuthProvider>
           <Toaster />
         </QueryProvider>
       </body>

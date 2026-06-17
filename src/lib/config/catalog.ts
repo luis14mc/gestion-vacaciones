@@ -56,7 +56,6 @@ const BOOLEAN_KEYS = new Set([
   'notificaciones.notificar_empleado_rechazo',
   'notificaciones.notificar_rrhh_aprobacion_jefe',
   'departamentos.validar_conflictos',
-  'departamentos.jefe_puede_auto_aprobar',
   'departamentos.mostrar_calendario_equipo',
   'seguridad.password_requiere_mayuscula',
   'seguridad.password_requiere_numero',
@@ -95,6 +94,33 @@ function inferirTipoDato(clave: string): string {
 function inferirEsPublico(categoria: string): boolean {
   return categoria === 'general' || categoria === 'vacaciones';
 }
+
+/**
+ * Valores por defecto cuando la clave no existe en BD.
+ * Solo se listan las claves consumidas por la lógica de negocio.
+ */
+export const CONFIG_DEFAULT_VALUES: Record<string, string> = {
+  // Seguridad
+  'seguridad.intentos_login_max': '5',
+  'seguridad.bloqueo_duracion_minutos': '15',
+  'seguridad.sesion_duracion_horas': '24',
+  'seguridad.password_min_length': '8',
+  'seguridad.password_requiere_mayuscula': 'false',
+  'seguridad.password_requiere_numero': 'false',
+  'seguridad.password_requiere_especial': 'false',
+  // Vacaciones
+  'vacaciones.dias_minimos_solicitud': '1',
+  'vacaciones.dias_maximos_consecutivos': '30',
+  'vacaciones.dias_anticipacion': '0',
+  'vacaciones.permitir_medio_dia': 'false',
+  // Notificaciones (granulares)
+  'notificaciones.notificar_jefe_nueva_solicitud': 'true',
+  'notificaciones.notificar_empleado_aprobacion': 'true',
+  'notificaciones.notificar_empleado_rechazo': 'true',
+  'notificaciones.notificar_rrhh_aprobacion_jefe': 'true',
+  // General
+  'app.mantenimiento': 'false',
+};
 
 export interface ConfigMeta {
   categoria: string;

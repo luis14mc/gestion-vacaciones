@@ -18,6 +18,7 @@ import { db } from '@/lib/db';
 import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { getConfigMeta, validarConfig } from '@/lib/config/catalog';
+import { invalidarCacheConfig } from '@/lib/config/service';
 
 export const runtime = 'nodejs';
 
@@ -131,6 +132,8 @@ export async function PATCH(request: NextRequest) {
         }
       });
 
+      invalidarCacheConfig();
+
       return NextResponse.json({
         success: true,
         message: `${body.length} configuraciones actualizadas exitosamente`,
@@ -173,6 +176,8 @@ export async function PATCH(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    invalidarCacheConfig();
 
     return NextResponse.json({
       success: true,

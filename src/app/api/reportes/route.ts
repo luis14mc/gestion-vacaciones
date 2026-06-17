@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, tienePermiso } from '@/lib/auth';
+import { getSession, tienePermiso, alcanceDepartamento } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 
@@ -26,7 +26,9 @@ export async function GET(request: NextRequest) {
     const anio = parseInt(searchParams.get('anio') || String(new Date().getFullYear()));
     const fechaInicio = searchParams.get('fechaInicio') || `${anio}-01-01`;
     const fechaFin = searchParams.get('fechaFin') || `${anio}-12-31`;
-    const departamentoId = searchParams.get('departamentoId') ? parseInt(searchParams.get('departamentoId')!) : null;
+    const departamentoSolicitado = searchParams.get('departamentoId') ? parseInt(searchParams.get('departamentoId')!) : null;
+    // Alcance por rol: no-admin/RRHH queda limitado a su propio departamento
+    const departamentoId = alcanceDepartamento(session, departamentoSolicitado);
 
     let data;
 

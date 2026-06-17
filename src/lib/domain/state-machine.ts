@@ -28,6 +28,8 @@ export interface TransicionContexto {
   // Departamentos para validar alcance de aprobación (regla CNI: mismo depto)
   departamentoAprobador?: number | null;
   departamentoSolicitante?: number | null;
+  // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
+  solicitanteEsJefe?: boolean;
 }
 
 interface Efecto {
@@ -87,6 +89,12 @@ const guardJefe: Guard = (ctx) => {
     ctx.departamentoAprobador !== ctx.departamentoSolicitante
   ) {
     return 'Solo puede aprobar solicitudes de empleados de su mismo departamento';
+  }
+  // Jerarquía CNI (2 niveles): el Director está por encima de los Jefes.
+  // La solicitud de un Jefe SOLO puede aprobarla el Director del depto;
+  // un Jefe no puede aprobar a otro Jefe de su mismo nivel.
+  if (ctx.solicitanteEsJefe && !ctx.esDirector) {
+    return 'La solicitud de un Jefe solo puede ser aprobada por el Director del departamento';
   }
   return null;
 };

@@ -55,9 +55,9 @@ export async function obtenerAccionesParaSolicitud(
 
   if (!solicitud) return [];
 
-  // Departamento del solicitante para validar alcance de aprobación
+  // Departamento y nivel del solicitante para validar alcance y jerarquía
   const [solicitanteInfo] = await db
-    .select({ departamentoId: usuarios.departamentoId })
+    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
     .from(usuarios)
     .where(eq(usuarios.id, solicitud.usuarioId))
     .limit(1);
@@ -84,6 +84,7 @@ export async function obtenerAccionesParaSolicitud(
     esAdmin: usuario.esAdmin,
     departamentoAprobador: usuario.departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   };
 
   return acciones
@@ -110,9 +111,9 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     return { exito: false, error: 'Solicitud no encontrada' };
   }
 
-  // Departamento del solicitante para validar alcance de aprobación
+  // Departamento y nivel del solicitante para validar alcance y jerarquía
   const [solicitanteInfo] = await db
-    .select({ departamentoId: usuarios.departamentoId })
+    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
     .from(usuarios)
     .where(eq(usuarios.id, solicitud.usuarioId))
     .limit(1);
@@ -129,6 +130,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     esAdmin,
     departamentoAprobador: departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   }, dias);
 
   if (!resultado.exito || !resultado.estadoNuevo) {

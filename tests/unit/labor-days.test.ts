@@ -15,10 +15,6 @@ describe('contarDiasHabiles', () => {
     expect(contarDiasHabiles('2026-06-20', '2026-06-20')).toBe(0); // sábado
   });
 
-  it('incluye fines de semana cuando se solicita', () => {
-    expect(contarDiasHabiles('2026-06-15', '2026-06-21', true)).toBe(7);
-  });
-
   it('devuelve 0 si fin es anterior a inicio', () => {
     expect(contarDiasHabiles('2026-06-21', '2026-06-15')).toBe(0);
   });

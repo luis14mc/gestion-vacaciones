@@ -10,7 +10,7 @@
 import { db } from '@/lib/db';
 import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
-import { obtenerConfigs, asBool, asNumber } from '@/lib/config/service';
+import { obtenerConfigs, asNumber } from '@/lib/config/service';
 import { contarDiasHabiles } from '@/lib/domain/labor-days';
 
 // =====================================================
@@ -76,10 +76,8 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       if (!fechaInicio || !fechaFin) {
         throw new Error('Las vacaciones requieren fecha de inicio y fin');
       }
-      const incluirFinesSemana = asBool(
-        (await obtenerConfigs(['vacaciones.incluir_fines_semana']))['vacaciones.incluir_fines_semana']
-      );
-      diasParaSolicitud = contarDiasHabiles(fechaInicio, fechaFin, incluirFinesSemana);
+      // Días laborables: sábados y domingos no se descuentan.
+      diasParaSolicitud = contarDiasHabiles(fechaInicio, fechaFin);
     } else {
       diasParaSolicitud = Number(diasSolicitados || 0);
     }

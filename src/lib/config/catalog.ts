@@ -45,7 +45,6 @@ const BOOLEAN_KEYS = new Set([
   'app.mantenimiento',
   'vacaciones.permitir_medio_dia',
   'vacaciones.acumulacion_habilitada',
-  'vacaciones.incluir_fines_semana',
   'vacaciones.incluir_feriados',
   'notificaciones.email_habilitado',
   'notificaciones.smtp_secure',

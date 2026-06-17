@@ -1,20 +1,15 @@
 /**
- * Cálculo autoritativo de días hábiles para vacaciones.
+ * Cálculo autoritativo de días hábiles (laborables) para vacaciones.
  *
- * El servidor NO debe confiar en el número de días enviado por el cliente
- * (era manipulable: permitía descontar menos balance del real). Esta función
- * recalcula los días a partir del rango de fechas.
+ * Regla de negocio CNI: las vacaciones se cuentan en días LABORABLES, por
+ * lo que sábados y domingos NUNCA se descuentan. El servidor no confía en
+ * el número de días enviado por el cliente (era manipulable): siempre
+ * recalcula a partir del rango de fechas.
  *
- * Nota: los feriados nacionales aún no se modelan en el sistema (no hay
- * fuente de datos). Por ahora solo se excluyen fines de semana, salvo que
- * la configuración indique incluirlos. Cuando exista un catálogo de
- * feriados, debe restarse aquí.
+ * Nota: los feriados nacionales aún no se modelan (no hay fuente de datos).
+ * Cuando exista un catálogo de feriados, deben restarse aquí.
  */
-export function contarDiasHabiles(
-  fechaInicio: string,
-  fechaFin: string,
-  incluirFinesSemana = false
-): number {
+export function contarDiasHabiles(fechaInicio: string, fechaFin: string): number {
   const inicio = new Date(`${fechaInicio.slice(0, 10)}T00:00:00`);
   const fin = new Date(`${fechaFin.slice(0, 10)}T00:00:00`);
 
@@ -25,7 +20,7 @@ export function contarDiasHabiles(
   const actual = new Date(inicio);
   while (actual <= fin) {
     const diaSemana = actual.getDay(); // 0 = domingo, 6 = sábado
-    if (incluirFinesSemana || (diaSemana !== 0 && diaSemana !== 6)) {
+    if (diaSemana !== 0 && diaSemana !== 6) {
       dias++;
     }
     actual.setDate(actual.getDate() + 1);

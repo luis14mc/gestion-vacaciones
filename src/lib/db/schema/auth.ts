@@ -208,6 +208,24 @@ export const sessions = pgTable(
 );
 
 // ============================================================
+// TABLA: rate_limits (control de fuerza bruta, multi-instancia)
+// ============================================================
+export const rateLimits = pgTable(
+  'rate_limits',
+  {
+    identifier: varchar('identifier', { length: 255 }).primaryKey(),
+    count: integer('count').notNull().default(0),
+    resetTime: timestamp('reset_time', { withTimezone: true, mode: 'date' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    idxResetTime: index('idx_rate_limits_reset_time').on(table.resetTime),
+  })
+);
+
+// ============================================================
 // RELACIONES
 // ============================================================
 export const usuariosRelations = relations(usuarios, ({ many }) => ({

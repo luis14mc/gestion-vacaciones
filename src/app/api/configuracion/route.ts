@@ -17,58 +17,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
+import { getConfigMeta, validarConfig } from '@/lib/config/catalog';
+import { invalidarCacheConfig } from '@/lib/config/service';
 
 export const runtime = 'nodejs';
-
-const CONFIG_DEFAULTS: Record<string, {
-  descripcion: string;
-  categoria: string;
-  tipoDato: string;
-  esPublico: boolean;
-}> = {
-  'notificaciones.smtp_host': {
-    descripcion: 'Servidor SMTP para el envio de notificaciones',
-    categoria: 'notificaciones',
-    tipoDato: 'string',
-    esPublico: false,
-  },
-  'notificaciones.smtp_port': {
-    descripcion: 'Puerto del servidor SMTP',
-    categoria: 'notificaciones',
-    tipoDato: 'number',
-    esPublico: false,
-  },
-  'notificaciones.smtp_user': {
-    descripcion: 'Usuario o cuenta SMTP autenticada',
-    categoria: 'notificaciones',
-    tipoDato: 'string',
-    esPublico: false,
-  },
-  'notificaciones.smtp_password': {
-    descripcion: 'Contrasena de la cuenta SMTP',
-    categoria: 'notificaciones',
-    tipoDato: 'password',
-    esPublico: false,
-  },
-  'notificaciones.smtp_secure': {
-    descripcion: 'Usar SSL/TLS directo. Normalmente false para STARTTLS en puerto 587',
-    categoria: 'notificaciones',
-    tipoDato: 'boolean',
-    esPublico: false,
-  },
-  'notificaciones.smtp_require_tls': {
-    descripcion: 'Exigir STARTTLS cuando el servidor lo soporte',
-    categoria: 'notificaciones',
-    tipoDato: 'boolean',
-    esPublico: false,
-  },
-  'notificaciones.smtp_reject_unauthorized': {
-    descripcion: 'Validar el certificado TLS del servidor SMTP',
-    categoria: 'notificaciones',
-    tipoDato: 'boolean',
-    esPublico: false,
-  },
-};
 
 // ─── GET: Obtener configuraciones ─────────────────────
 export async function GET() {
@@ -133,11 +85,18 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      // Validar estructura de cada entrada
+      // Validar estructura + clave conocida + valor contra el catálogo
       for (const item of body) {
         if (!item.clave || item.valor === undefined || item.valor === null) {
           return NextResponse.json(
             { success: false, error: `Entrada inválida: clave y valor son requeridos (clave: ${item.clave ?? 'undefined'})` },
+            { status: 400 }
+          );
+        }
+        const errorValidacion = validarConfig(item.clave, String(item.valor));
+        if (errorValidacion) {
+          return NextResponse.json(
+            { success: false, error: errorValidacion },
             { status: 400 }
           );
         }
@@ -147,30 +106,33 @@ export async function PATCH(request: NextRequest) {
       await db.transaction(async (tx) => {
         const ahora = new Date().toISOString();
         for (const item of body) {
-          const defaults = CONFIG_DEFAULTS[item.clave] ?? {
-            descripcion: null,
-            categoria: 'general',
-            tipoDato: 'string',
-            esPublico: false,
-          };
+          const meta = getConfigMeta(item.clave);
 
           await tx
             .insert(configuracion)
             .values({
               clave: item.clave,
               valor: String(item.valor),
-              descripcion: defaults.descripcion,
-              categoria: defaults.categoria,
-              tipoDato: defaults.tipoDato,
-              esPublico: defaults.esPublico,
+              categoria: meta.categoria,
+              tipoDato: meta.tipoDato,
+              esPublico: meta.esPublico,
               updatedAt: ahora,
             })
             .onConflictDoUpdate({
               target: configuracion.clave,
-              set: { valor: String(item.valor), updatedAt: ahora },
+              // Re-sincroniza la metadata por si cambió el catálogo
+              set: {
+                valor: String(item.valor),
+                categoria: meta.categoria,
+                tipoDato: meta.tipoDato,
+                esPublico: meta.esPublico,
+                updatedAt: ahora,
+              },
             });
         }
       });
+
+      invalidarCacheConfig();
 
       return NextResponse.json({
         success: true,
@@ -214,6 +176,8 @@ export async function PATCH(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    invalidarCacheConfig();
 
     return NextResponse.json({
       success: true,

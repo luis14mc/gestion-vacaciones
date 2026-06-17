@@ -89,7 +89,6 @@ export const departamentosConfigSchema = z.object({
     "Debe ser un porcentaje entre 1 y 100"
   ),
   "departamentos.validar_conflictos": z.string().regex(/^(true|false)$/),
-  "departamentos.jefe_puede_auto_aprobar": z.string().regex(/^(true|false)$/),
   "departamentos.mostrar_calendario_equipo": z.string().regex(/^(true|false)$/),
 });
 

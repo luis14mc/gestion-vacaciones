@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { validarPasswordPolitica } from "@/lib/config/password-policy";
 import bcrypt from "bcryptjs";
 
 // PATCH: Cambiar contraseña del usuario autenticado
@@ -30,9 +31,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (newPassword.length < 6) {
+    const errorPolitica = await validarPasswordPolitica(newPassword);
+    if (errorPolitica) {
       return NextResponse.json(
-        { success: false, error: "La contraseña debe tener al menos 6 caracteres" },
+        { success: false, error: errorPolitica },
         { status: 400 }
       );
     }

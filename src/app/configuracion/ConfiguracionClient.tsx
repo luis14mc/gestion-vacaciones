@@ -121,7 +121,6 @@ const LABELS: Record<string, string> = {
   "departamentos.max_ausencias_simultaneas": "Máximo Ausencias Simultáneas",
   "departamentos.porcentaje_max_ausentes": "Porcentaje Máximo de Ausentes (%)",
   "departamentos.validar_conflictos": "Validar Conflictos de Fechas",
-  "departamentos.jefe_puede_auto_aprobar": "Jefe Puede Auto-Aprobar",
   "departamentos.mostrar_calendario_equipo": "Mostrar Calendario del Equipo",
 
   "seguridad.sesion_duracion_horas": "Duración de Sesión (horas)",
@@ -242,7 +241,6 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
       icon: Building2,
       claves: [
         "departamentos.validar_conflictos",
-        "departamentos.jefe_puede_auto_aprobar",
         "departamentos.mostrar_calendario_equipo",
       ],
     },

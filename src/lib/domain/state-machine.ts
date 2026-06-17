@@ -25,6 +25,13 @@ export interface TransicionContexto {
   esRrhh: boolean;
   esAdmin: boolean;
   tipo?: string;
+  // Departamentos para validar alcance de aprobación (regla CNI: mismo depto)
+  departamentoAprobador?: number | null;
+  departamentoSolicitante?: number | null;
+  // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
+  solicitanteEsJefe?: boolean;
+  // Acción ejecutada por el sistema (cron/jobs), no por un usuario
+  esSistema?: boolean;
 }
 
 interface Efecto {
@@ -52,7 +59,7 @@ export const ESTADOS_CONFIG: Record<EstadoSolicitud, EstadoConfig> = {
   pendiente_jefe:        { label: 'Pendiente Jefe',        bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', esFinal: false },
   aprobada_jefe:         { label: 'Aprobada Jefe',         bgColor: 'bg-blue-100',   textColor: 'text-blue-800',   esFinal: false },
   rechazada_jefe:        { label: 'Rechazada Jefe',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
-  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: true  },
+  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: false },
   rechazada_rrhh:        { label: 'Rechazada RRHH',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
   cancelada:             { label: 'Cancelada',             bgColor: 'bg-gray-100',   textColor: 'text-gray-600',   esFinal: true  },
   finalizada:            { label: 'Finalizada',            bgColor: 'bg-emerald-100',textColor: 'text-emerald-800',esFinal: true  },
@@ -75,6 +82,22 @@ const guardJefe: Guard = (ctx) => {
   if (ctx.esAdmin) return null;
   if (!ctx.esJefe && !ctx.esDirector) return 'Solo un Jefe o Director puede realizar esta acción';
   if (ctx.usuarioId === ctx.solicitanteId) return 'No puede aprobar/rechazar su propia solicitud';
+  // Regla CNI: el jefe/director solo aprueba a empleados de su MISMO departamento.
+  // Cierra la escalada horizontal (un jefe del depto A aprobando al depto B).
+  // Default seguro: si falta el dato de departamento, se deniega.
+  if (
+    ctx.departamentoAprobador == null ||
+    ctx.departamentoSolicitante == null ||
+    ctx.departamentoAprobador !== ctx.departamentoSolicitante
+  ) {
+    return 'Solo puede aprobar solicitudes de empleados de su mismo departamento';
+  }
+  // Jerarquía CNI (2 niveles): el Director está por encima de los Jefes.
+  // La solicitud de un Jefe SOLO puede aprobarla el Director del depto;
+  // un Jefe no puede aprobar a otro Jefe de su mismo nivel.
+  if (ctx.solicitanteEsJefe && !ctx.esDirector) {
+    return 'La solicitud de un Jefe solo puede ser aprobada por el Director del departamento';
+  }
   return null;
 };
 
@@ -86,6 +109,12 @@ const guardRrhh: Guard = (ctx) => {
 const guardCancelar: Guard = (ctx) => {
   if (ctx.esAdmin || ctx.esRrhh || ctx.usuarioId === ctx.solicitanteId) return null;
   return 'No tiene permisos para cancelar esta solicitud';
+};
+
+// Finalizar es una acción del sistema (al vencer la fecha de fin) o de un admin.
+const guardSistema: Guard = (ctx) => {
+  if (ctx.esSistema || ctx.esAdmin) return null;
+  return 'Solo el sistema o un administrador puede finalizar una solicitud';
 };
 
 const sinEfectos = () => [] as Efecto[];
@@ -135,6 +164,13 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
       destino: 'cancelada',
       guard: guardCancelar,
       efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+  },
+  aprobada_rrhh: {
+    finalizar: {
+      destino: 'finalizada',
+      guard: guardSistema,
+      efectos: sinEfectos,
     },
   },
 };

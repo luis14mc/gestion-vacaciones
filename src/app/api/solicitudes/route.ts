@@ -3,13 +3,9 @@ import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
-import { 
-  crearSolicitud, 
-  aprobarSolicitudJefe, 
-  aprobarSolicitudRRHH, 
-  rechazarSolicitud 
-} from '@/services/solicitudes.service';
+import { crearSolicitud } from '@/services/solicitudes.service';
 import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
+import { obtenerConfigs, asBool } from '@/lib/config/service';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -313,8 +309,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
   });
 
-  // Enviar notificación por correo al jefe
-  if (solicitudCompleta?.usuario?.jefeSuperiorId) {
+  // Enviar notificación por correo al jefe (si el toggle está activo)
+  const notificarJefe = asBool(
+    (await obtenerConfigs(['notificaciones.notificar_jefe_nueva_solicitud']))[
+      'notificaciones.notificar_jefe_nueva_solicitud'
+    ]
+  );
+  if (notificarJefe && solicitudCompleta?.usuario?.jefeSuperiorId) {
     // Fire and forget, no usamos await para no bloquear la respuesta
     db.select({ email: usuarios.email, nombre: usuarios.nombre, apellido: usuarios.apellido })
       .from(usuarios)

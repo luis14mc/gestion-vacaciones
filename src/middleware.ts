@@ -30,9 +30,11 @@ export default auth((req) => {
     return NextResponse.next();
   }
   
-  // 3️⃣ Verificar si hay sesión activa
-  const isLoggedIn = !!req.auth;
-  
+  // 3️⃣ Verificar si hay sesión activa (y no expirada por política)
+  const absExp = (req.auth as any)?.absExp as number | null | undefined;
+  const sesionExpirada = !!absExp && Date.now() > absExp;
+  const isLoggedIn = !!req.auth && !sesionExpirada;
+
   if (!isLoggedIn) {
     // No hay sesión - redirigir a login
     const loginUrl = new URL('/login', req.url);
@@ -53,8 +55,12 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
   
-  // ✅ Sesión válida - permitir acceso
-  return NextResponse.next();
+  // ✅ Sesión válida - permitir acceso.
+  // Propaga el pathname para que el layout (runtime node) pueda aplicar
+  // el modo mantenimiento sin que el middleware (edge) toque la BD.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-pathname', pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 /**

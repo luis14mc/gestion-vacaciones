@@ -39,6 +39,9 @@ const director: TransicionContexto = {
   esRrhh: false,
   esAdmin: false,
   tipo: 'vacaciones',
+  // Mismo departamento que el solicitante (regla CNI de alcance)
+  departamentoAprobador: 1,
+  departamentoSolicitante: 1,
 };
 
 const jefe: TransicionContexto = {
@@ -49,6 +52,9 @@ const jefe: TransicionContexto = {
   esRrhh: false,
   esAdmin: false,
   tipo: 'vacaciones',
+  // Mismo departamento que el solicitante (regla CNI de alcance)
+  departamentoAprobador: 1,
+  departamentoSolicitante: 1,
 };
 
 const rrhh: TransicionContexto = {
@@ -189,6 +195,95 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.error).toContain('propia solicitud');
     });
 
+    it('jefe NO puede aprobar solicitud de OTRO departamento (escalada horizontal)', () => {
+      const jefeOtroDepto: TransicionContexto = {
+        usuarioId: 21,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+        departamentoAprobador: 2,
+        departamentoSolicitante: 1,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeOtroDepto, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('mismo departamento');
+    });
+
+    it('jefe SIN dato de departamento es denegado (default seguro)', () => {
+      const jefeSinDepto: TransicionContexto = {
+        usuarioId: 22,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeSinDepto, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('mismo departamento');
+    });
+
+    it('un Jefe NO puede aprobar la solicitud de otro Jefe del mismo depto', () => {
+      const jefeAprobador: TransicionContexto = {
+        usuarioId: 20,
+        solicitanteId: 25,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+        departamentoAprobador: 1,
+        departamentoSolicitante: 1,
+        solicitanteEsJefe: true,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeAprobador, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('Director');
+    });
+
+    it('el Director SI puede aprobar la solicitud de un Jefe del mismo depto', () => {
+      const directorAprobador: TransicionContexto = {
+        usuarioId: 15,
+        solicitanteId: 25,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        departamentoAprobador: 1,
+        departamentoSolicitante: 1,
+        solicitanteEsJefe: true,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorAprobador, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('aprobada_jefe');
+    });
+
+    it('un Jefe SI puede aprobar a un empleado normal del mismo depto', () => {
+      const jefeAprobador: TransicionContexto = {
+        usuarioId: 20,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: false,
+        esAdmin: false,
+        departamentoAprobador: 1,
+        departamentoSolicitante: 1,
+        solicitanteEsJefe: false,
+      };
+      const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeAprobador, 5);
+      expect(resultado.exito).toBe(true);
+    });
+
+    it('admin aprueba aunque difieran los departamentos (bypass)', () => {
+      const adminOtroDepto: TransicionContexto = {
+        ...admin,
+        departamentoAprobador: 99,
+        departamentoSolicitante: 1,
+      };
+      expect(transicionar('pendiente_jefe', 'aprobar_jefe', adminOtroDepto, 5).exito).toBe(true);
+    });
+
     it('admin puede hacer cualquier acción', () => {
       expect(transicionar('pendiente_jefe', 'aprobar_jefe', admin, 5).exito).toBe(true);
       expect(transicionar('aprobada_jefe', 'aprobar_rrhh', admin, 5).exito).toBe(true);
@@ -254,13 +349,34 @@ describe('State Machine - Solicitudes', () => {
   // ─── Cron (transiciones automáticas) ───
 
   describe('Transiciones automáticas (cron)', () => {
-    it('aprobada_rrhh es estado final (no transiciona)', () => {
+    it('el sistema puede finalizar una solicitud aprobada_rrhh', () => {
+      const sistema: TransicionContexto = {
+        usuarioId: 0,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSistema: true,
+      };
+      const resultado = transicionar('aprobada_rrhh', 'finalizar', sistema, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('finalizada');
+    });
+
+    it('un admin también puede finalizar manualmente', () => {
+      const resultado = transicionar('aprobada_rrhh', 'finalizar', admin, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('finalizada');
+    });
+
+    it('RRHH (sin ser sistema/admin) NO puede finalizar', () => {
       const resultado = transicionar('aprobada_rrhh', 'finalizar', rrhh, 5);
       expect(resultado.exito).toBe(false);
     });
 
-    it('aprobada_rrhh bloquea transiciones incluso para admin', () => {
-      const resultado = transicionar('aprobada_rrhh', 'finalizar', admin, 5);
+    it('finalizada es estado final (no transiciona)', () => {
+      const resultado = transicionar('finalizada', 'finalizar', admin, 5);
       expect(resultado.exito).toBe(false);
     });
   });

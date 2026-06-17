@@ -1,7 +1,8 @@
 import { db } from '@/lib/db';
-import { solicitudes, balances, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
+import { solicitudes, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
 import { eq, and, sql, isNull } from 'drizzle-orm';
 import { notificarAprobacionJefeARRHH, notificarResolucionAEmpleado } from './email.service';
+import { obtenerConfigs, asBool } from '@/lib/config/service';
 import {
   type AccionSolicitud,
   type EstadoSolicitud,
@@ -19,6 +20,7 @@ interface UsuarioAccion {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  departamentoId?: number | null;
 }
 
 interface EjecutarAccionParams {
@@ -29,6 +31,7 @@ interface EjecutarAccionParams {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  departamentoId?: number | null;
   comentario?: string;
   motivoRechazo?: string;
   motivoCancelacion?: string;
@@ -53,6 +56,13 @@ export async function obtenerAccionesParaSolicitud(
 
   if (!solicitud) return [];
 
+  // Departamento y nivel del solicitante para validar alcance y jerarquía
+  const [solicitanteInfo] = await db
+    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
+    .from(usuarios)
+    .where(eq(usuarios.id, solicitud.usuarioId))
+    .limit(1);
+
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const acciones = obtenerAccionesDisponibles(estadoActual);
 
@@ -73,6 +83,9 @@ export async function obtenerAccionesParaSolicitud(
     esJefe: usuario.esJefe,
     esRrhh: usuario.esRrhh,
     esAdmin: usuario.esAdmin,
+    departamentoAprobador: usuario.departamentoId ?? null,
+    departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   };
 
   return acciones
@@ -87,7 +100,7 @@ export async function obtenerAccionesParaSolicitud(
 }
 
 export async function ejecutarAccion(params: EjecutarAccionParams): Promise<ResultadoAccion> {
-  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, comentario, motivoRechazo, motivoCancelacion } = params;
+  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, departamentoId, comentario, motivoRechazo, motivoCancelacion } = params;
 
   const [solicitud] = await db
     .select()
@@ -99,6 +112,13 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     return { exito: false, error: 'Solicitud no encontrada' };
   }
 
+  // Departamento y nivel del solicitante para validar alcance y jerarquía
+  const [solicitanteInfo] = await db
+    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
+    .from(usuarios)
+    .where(eq(usuarios.id, solicitud.usuarioId))
+    .limit(1);
+
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const dias = Number(solicitud.diasSolicitados ?? 0);
 
@@ -109,6 +129,9 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     esJefe,
     esRrhh,
     esAdmin,
+    departamentoAprobador: departamentoId ?? null,
+    departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   }, dias);
 
   if (!resultado.exito || !resultado.estadoNuevo) {
@@ -155,42 +178,67 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     updateData.motivoRechazo = motivoCancelacion || comentario || 'Cancelada por el usuario';
   }
 
-  const updateResult = await db
-    .update(solicitudes)
-    .set(updateData)
-    .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
-    .returning({ id: solicitudes.id });
+  // Persistir el cambio de estado y APLICAR los efectos de balance de la
+  // máquina de estados de forma ATÓMICA (misma transacción). Antes el
+  // balance se ajustaba fuera de transacción y los efectos declarados
+  // (RESERVAR/CONFIRMAR/LIBERAR) nunca se ejecutaban: el paso a usada en
+  // aprobar_rrhh no ocurría. Ahora la máquina de estados es la autoridad.
+  let conflicto = false;
+  await db.transaction(async (tx) => {
+    const updateResult = await tx
+      .update(solicitudes)
+      .set(updateData)
+      .where(and(eq(solicitudes.id, solicitudId), eq(solicitudes.version, solicitud.version)))
+      .returning({ id: solicitudes.id });
 
-  if (updateResult.length === 0) {
+    if (updateResult.length === 0) {
+      conflicto = true;
+      return;
+    }
+
+    await aplicarEfectos(tx, resultado.efectos, solicitud, estadoActual);
+  });
+
+  if (conflicto) {
     return { exito: false, error: 'Conflicto de versión: la solicitud fue modificada por otro usuario' };
-  }
-
-  if (['rechazada_jefe', 'rechazada_rrhh', 'cancelada'].includes(nuevoEstado) && solicitudConsumeBalance(solicitud)) {
-    await devolverDiasBalance({ ...solicitud, estadoAnterior: estadoActual });
   }
 
   const [updated] = await db.select().from(solicitudes).where(eq(solicitudes.id, solicitudId)).limit(1);
 
-  // NOTIFICACIONES POR CORREO
+  // NOTIFICACIONES POR CORREO (respetan los toggles de Configuración)
   try {
     const [solicitante] = await db.select().from(usuarios).where(eq(usuarios.id, solicitud.usuarioId)).limit(1);
-    
+
     if (solicitante && solicitante.email) {
+      const flags = await obtenerConfigs([
+        'notificaciones.notificar_rrhh_aprobacion_jefe',
+        'notificaciones.notificar_empleado_aprobacion',
+        'notificaciones.notificar_empleado_rechazo',
+      ]);
+
       if (accion === 'aprobar_jefe') {
-        // Buscar correos de RRHH
-        const rrhhUsers = await db.select({ email: usuarios.email })
-          .from(usuarios)
-          .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
-          .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
-          .where(and(eq(roles.codigo, 'RRHH'), eq(usuarios.activo, true)));
-          
-        for (const rrhh of rrhhUsers) {
-          if (rrhh.email) {
-            notificarAprobacionJefeARRHH(rrhh.email, `${solicitante.nombre} ${solicitante.apellido}`, solicitud.tipo, dias).catch(e => console.error('Error email RRHH', e));
+        if (asBool(flags['notificaciones.notificar_rrhh_aprobacion_jefe'])) {
+          // Buscar correos de RRHH
+          const rrhhUsers = await db.select({ email: usuarios.email })
+            .from(usuarios)
+            .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
+            .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
+            .where(and(eq(roles.codigo, 'RRHH'), eq(usuarios.activo, true)));
+
+          for (const rrhh of rrhhUsers) {
+            if (rrhh.email) {
+              notificarAprobacionJefeARRHH(rrhh.email, `${solicitante.nombre} ${solicitante.apellido}`, solicitud.tipo, dias).catch(e => console.error('Error email RRHH', e));
+            }
           }
         }
-      } else if (accion === 'aprobar_rrhh' || accion.startsWith('rechazar')) {
-        notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
+      } else if (accion === 'aprobar_rrhh') {
+        if (asBool(flags['notificaciones.notificar_empleado_aprobacion'])) {
+          notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
+        }
+      } else if (accion.startsWith('rechazar')) {
+        if (asBool(flags['notificaciones.notificar_empleado_rechazo'])) {
+          notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
+        }
       }
     }
   } catch (error) {
@@ -204,44 +252,64 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   };
 }
 
-async function devolverDiasBalance(solicitud: any) {
-  if (!solicitud.diasSolicitados || Number(solicitud.diasSolicitados) <= 0) return;
+/**
+ * Aplica los efectos de balance declarados por la máquina de estados,
+ * dentro de la transacción recibida. Es la ÚNICA autoridad sobre los
+ * movimientos de balance del workflow, eliminando la lógica duplicada.
+ *
+ * Convención de columnas:
+ * - RESERVAR_BALANCE  (al enviar): disponible → pendiente
+ * - CONFIRMAR_BALANCE (aprobar_rrhh): pendiente → usada
+ * - LIBERAR_BALANCE   (rechazar/cancelar): devuelve a disponible desde
+ *   usada (si ya estaba confirmada) o desde pendiente (si seguía en curso)
+ */
+async function aplicarEfectos(
+  tx: any,
+  efectos: { tipo: string; dias?: number }[],
+  solicitud: any,
+  estadoOrigen: string
+) {
   if (!solicitudConsumeBalance(solicitud)) return;
 
-  const dias = Number(solicitud.diasSolicitados);
-  const estadoOrigen = solicitud.estadoAnterior || solicitud.estado;
-
-  const [balance] = await db
-    .select()
-    .from(balances)
-    .where(
-      and(
-        eq(balances.usuarioId, solicitud.usuarioId),
-        eq(balances.anoLaboralId, solicitud.anoLaboralId),
-        eq(balances.tipoAusencia, 'vacaciones')
-      )
-    )
-    .limit(1);
-
-  if (!balance) return;
-
-  const updateData: Record<string, any> = {
-    cantidadDisponible: (Number(balance.cantidadDisponible ?? 0) + dias).toFixed(2),
-    version: balance.version + 1,
-    updatedAt: new Date().toISOString(),
-  };
-
   const estadosConUsada = ['aprobada_rrhh', 'finalizada'];
-  if (estadosConUsada.includes(estadoOrigen)) {
-    updateData.cantidadUsada = Math.max(0, Number(balance.cantidadUsada ?? 0) - dias).toFixed(2);
-  } else {
-    updateData.cantidadPendiente = Math.max(0, Number(balance.cantidadPendiente ?? 0) - dias).toFixed(2);
-  }
+  const filtro = sql`usuario_id = ${solicitud.usuarioId} AND ano_laboral_id = ${solicitud.anoLaboralId} AND tipo_ausencia = 'vacaciones'`;
 
-  await db
-    .update(balances)
-    .set(updateData)
-    .where(eq(balances.id, balance.id));
+  for (const efecto of efectos) {
+    const dias = Number(efecto.dias ?? 0);
+    if (dias <= 0) continue;
+
+    if (efecto.tipo === 'RESERVAR_BALANCE') {
+      await tx.execute(sql`
+        UPDATE balances SET
+          cantidad_pendiente = cantidad_pendiente + ${dias},
+          cantidad_disponible = GREATEST(0, cantidad_disponible - ${dias}),
+          updated_at = NOW()
+        WHERE ${filtro}`);
+    } else if (efecto.tipo === 'CONFIRMAR_BALANCE') {
+      await tx.execute(sql`
+        UPDATE balances SET
+          cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
+          cantidad_usada = cantidad_usada + ${dias},
+          updated_at = NOW()
+        WHERE ${filtro}`);
+    } else if (efecto.tipo === 'LIBERAR_BALANCE') {
+      if (estadosConUsada.includes(estadoOrigen)) {
+        await tx.execute(sql`
+          UPDATE balances SET
+            cantidad_usada = GREATEST(0, cantidad_usada - ${dias}),
+            cantidad_disponible = cantidad_disponible + ${dias},
+            updated_at = NOW()
+          WHERE ${filtro}`);
+      } else {
+        await tx.execute(sql`
+          UPDATE balances SET
+            cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
+            cantidad_disponible = cantidad_disponible + ${dias},
+            updated_at = NOW()
+          WHERE ${filtro}`);
+      }
+    }
+  }
 }
 
 export async function procesarTransicionesAutomaticas(): Promise<{
@@ -266,10 +334,31 @@ export async function procesarTransicionesAutomaticas(): Promise<{
 
     for (const sol of paraFinalizar) {
       try {
+        // Validar la transición vía la máquina de estados (no UPDATE crudo)
+        const resultado = transicionar(
+          sol.estado as EstadoSolicitud,
+          'finalizar',
+          {
+            usuarioId: 0,
+            solicitanteId: sol.usuarioId,
+            esDirector: false,
+            esJefe: false,
+            esRrhh: false,
+            esAdmin: false,
+            esSistema: true,
+          },
+          Number(sol.diasSolicitados ?? 0)
+        );
+
+        if (!resultado.exito || !resultado.estadoNuevo) {
+          errores++;
+          continue;
+        }
+
         await db
           .update(solicitudes)
           .set({
-            estado: 'finalizada',
+            estado: resultado.estadoNuevo,
             estadoAnterior: sol.estado,
             version: sol.version + 1,
             updatedAt: new Date().toISOString(),

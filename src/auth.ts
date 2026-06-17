@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/services/rbac.service";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limiter";
+import { obtenerConfigs, asNumber } from "@/lib/config/service";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -23,7 +24,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = credentials.password as string;
 
         // 🛡️ Rate Limiting (Protección contra fuerza bruta)
-        const rateLimitResult = checkRateLimit(email.toLowerCase());
+        const rateLimitResult = await checkRateLimit(email.toLowerCase());
         if (!rateLimitResult.allowed) {
           const waitMinutes = Math.ceil(rateLimitResult.remainingMs / 60000);
           throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${waitMinutes} minutos.`);
@@ -46,7 +47,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         // ✅ Login exitoso: Resetear contador de intentos fallidos
-        resetRateLimit(email.toLowerCase());
+        await resetRateLimit(email.toLowerCase());
 
         // Actualizar último acceso
         await db
@@ -96,6 +97,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        // Expiración absoluta de sesión según Configuración → Seguridad.
+        // Se fija solo al iniciar sesión (no en cada request).
+        const horas = asNumber(
+          (await obtenerConfigs(['seguridad.sesion_duracion_horas']))['seguridad.sesion_duracion_horas'],
+          24
+        );
+        (token as any).absExp = Date.now() + horas * 60 * 60 * 1000;
         // Agregar datos personalizados al token incluyendo RBAC
         token.id = user.id;
         token.nombre = (user as any).nombre;
@@ -115,6 +123,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       if (token) {
+        // Exponer la expiración absoluta para que middleware y getSession
+        // puedan invalidar la sesión cuando se supere la duración configurada.
+        (session as any).absExp = (token as any).absExp ?? null;
         // Agregar datos del token a la sesión incluyendo RBAC
         session.user = {
           ...session.user,
@@ -142,6 +153,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 24 * 60 * 60 // 24 horas
+    // Tope del cookie (30 días). La duración efectiva la gobierna absExp,
+    // derivado de seguridad.sesion_duracion_horas en cada login.
+    maxAge: 30 * 24 * 60 * 60
   }
 });

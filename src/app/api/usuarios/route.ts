@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { usuarios, departamentos, usuariosRoles, roles, balances, anosLaborales } from '@/lib/db/schema';
-import { eq, and, like, or, isNull, inArray, asc } from 'drizzle-orm';
+import { eq, and, like, or, isNull, inArray, asc, sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
+import { syncUserRoles } from '@/services/rbac.service';
+import { validarPasswordPolitica } from '@/lib/config/password-policy';
 import { withErrorHandler } from '@/lib/api-handler';
 import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
@@ -189,6 +191,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
+  const errorPolitica = await validarPasswordPolitica(validatedData.password);
+  if (errorPolitica) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error de validación de datos',
+        detalles: [{ campo: 'password', mensaje: errorPolitica }],
+      },
+      { status: 400 }
+    );
+  }
+
   const usuarioExistente = await db.query.usuarios.findFirst({
     where: eq(usuarios.email, validatedData.email.toLowerCase()),
   });
@@ -290,6 +304,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (validatedData.direccion !== undefined) camposPermitidos.direccion = validatedData.direccion;
   
   if (validatedData.password && validatedData.password.trim().length > 0) {
+    const errorPolitica = await validarPasswordPolitica(validatedData.password);
+    if (errorPolitica) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Error de validación de datos',
+          detalles: [{ campo: 'password', mensaje: errorPolitica }],
+        },
+        { status: 400 }
+      );
+    }
     camposPermitidos.passwordHash = await bcrypt.hash(validatedData.password, 10);
   }
 
@@ -335,6 +360,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
           .where(eq(departamentos.id, usuarioActualizado.departamentoId));
       }
     }
+
+    // Mantener usuarios_roles sincronizado con los flags (solo admin pudo cambiarlos).
+    // Fuente única de verdad: evita que un flag activo quede sin su rol RBAC.
+    if (session.esAdmin) {
+      await syncUserRoles(usuarioActualizado.id, {
+        esAdmin: usuarioActualizado.esAdmin,
+        esRrhh: usuarioActualizado.esRrhh,
+        esDirector: usuarioActualizado.esDirector,
+        esJefe: usuarioActualizado.esJefe,
+      });
+    }
   }
 
   return NextResponse.json({
@@ -364,6 +400,41 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
   }
 
   const usuarioId = Number.parseInt(id);
+
+  if (Number.isNaN(usuarioId)) {
+    return NextResponse.json({ success: false, error: 'ID de usuario inválido' }, { status: 400 });
+  }
+
+  // No permitir auto-desactivación (un admin no puede eliminarse a sí mismo)
+  if (usuarioId === session.id) {
+    return NextResponse.json(
+      { success: false, error: 'No puede desactivar su propia cuenta' },
+      { status: 400 }
+    );
+  }
+
+  // No permitir desactivar al último administrador activo
+  const objetivo = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, usuarioId),
+  });
+
+  if (!objetivo) {
+    return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
+  }
+
+  if (objetivo.esAdmin) {
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(usuarios)
+      .where(and(eq(usuarios.esAdmin, true), eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
+
+    if (Number(total) <= 1) {
+      return NextResponse.json(
+        { success: false, error: 'No se puede desactivar al último administrador activo' },
+        { status: 400 }
+      );
+    }
+  }
 
   const [usuarioDesactivado] = await db
     .update(usuarios)

@@ -100,7 +100,6 @@ const LABELS: Record<string, string> = {
   "vacaciones.permitir_medio_dia": "Permitir Medio Día",
   "vacaciones.acumulacion_habilitada": "Acumulación Habilitada",
   "vacaciones.max_acumulacion": "Máximo de Días Acumulables",
-  "vacaciones.incluir_fines_semana": "Incluir Fines de Semana",
   "vacaciones.incluir_feriados": "Incluir Feriados",
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
@@ -183,7 +182,6 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
         "vacaciones.permitir_medio_dia",
         "vacaciones.acumulacion_habilitada",
         "vacaciones.max_acumulacion",
-        "vacaciones.incluir_fines_semana",
         "vacaciones.incluir_feriados",
       ],
     },

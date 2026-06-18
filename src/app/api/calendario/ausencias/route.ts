@@ -4,7 +4,7 @@
  * Query: mes (1-12), anio (YYYY)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, alcanceDepartamento } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 
@@ -19,11 +19,18 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const mes = parseInt(searchParams.get('mes') || String(now.getMonth() + 1));
     const anio = parseInt(searchParams.get('anio') || String(now.getFullYear()));
-    const departamentoId = searchParams.get('departamentoId');
+    const departamentoSolicitado = searchParams.get('departamentoId')
+      ? parseInt(searchParams.get('departamentoId')!)
+      : null;
 
     if (mes < 1 || mes > 12 || anio < 2020 || anio > 2100) {
       return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 });
     }
+
+    // Alcance por rol: Admin/RRHH ven toda la organización (o filtran);
+    // el resto queda limitado a su propio departamento. Evita exponer
+    // ausencias de toda la empresa (incl. licencias médicas) a cualquiera.
+    const departamentoId = alcanceDepartamento(session, departamentoSolicitado);
 
     // Primer y último día del mes
     const primerDia = `${anio}-${String(mes).padStart(2, '0')}-01`;
@@ -50,7 +57,7 @@ export async function GET(req: NextRequest) {
         AND s.fecha_fin IS NOT NULL
         AND s.fecha_inicio <= ${ultimoDia}
         AND s.fecha_fin >= ${primerDia}
-        ${departamentoId ? sql`AND u.departamento_id = ${parseInt(departamentoId)}` : sql``}
+        ${departamentoId != null ? sql`AND u.departamento_id = ${departamentoId}` : sql``}
       ORDER BY s.fecha_inicio
     `;
 

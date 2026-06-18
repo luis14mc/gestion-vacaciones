@@ -64,11 +64,16 @@ export async function PATCH(request: NextRequest) {
     // Hash de la nueva contraseña
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Actualizar contraseña
+    // Actualizar contraseña y limpiar la marca de "debe cambiar password"
+    const metadataActual = (usuario.metadata as Record<string, unknown>) || {};
+    const { debeCambiarPassword: _omit, ...metadataLimpia } = metadataActual;
+
     await db
       .update(usuarios)
       .set({
         passwordHash: hashedPassword,
+        metadata: metadataLimpia,
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(usuarios.id, userId));
 

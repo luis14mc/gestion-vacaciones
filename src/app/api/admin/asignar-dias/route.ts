@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { usuarios, balances, anosLaborales } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { eq, and, isNull } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
@@ -56,63 +57,71 @@ export async function POST(request: NextRequest) {
     let actualizados = 0;
     let omitidos = 0;
 
-    for (const user of usuariosActivos) {
-      if (!user.fechaIngreso) {
-        omitidos++;
-        continue;
-      }
+    // Atomico: si falla cualquier fila, no queda asignacion parcial.
+    await db.transaction(async (tx) => {
+      for (const user of usuariosActivos) {
+        if (!user.fechaIngreso) {
+          omitidos++;
+          continue;
+        }
 
-      const diasAsignados = calcularDiasSegunAntiguedad(user.fechaIngreso);
-      if (diasAsignados === 0) {
-        omitidos++;
-        continue;
-      }
+        const diasAsignados = calcularDiasSegunAntiguedad(user.fechaIngreso);
+        if (diasAsignados === 0) {
+          omitidos++;
+          continue;
+        }
 
-      // Buscar si ya tiene balance
-      const [balanceExistente] = await db
-        .select()
-        .from(balances)
-        .where(
-          and(
-            eq(balances.usuarioId, user.id),
-            eq(balances.anoLaboralId, anoLaboral.id),
-            eq(balances.tipoAusencia, 'vacaciones')
+        // Buscar si ya tiene balance
+        const [balanceExistente] = await tx
+          .select()
+          .from(balances)
+          .where(
+            and(
+              eq(balances.usuarioId, user.id),
+              eq(balances.anoLaboralId, anoLaboral.id),
+              eq(balances.tipoAusencia, 'vacaciones')
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
 
-      if (balanceExistente) {
-        // Actualizar balance
-        await db
-          .update(balances)
-          .set({
-            cantidadInicial: diasAsignados.toString(),
-            cantidadDisponible: (
-              diasAsignados - 
-              Number(balanceExistente.cantidadUsada || 0) - 
-              Number(balanceExistente.cantidadPendiente || 0)
-            ).toString(),
-            updatedAt: new Date().toISOString(),
-            version: balanceExistente.version + 1
-          })
-          .where(eq(balances.id, balanceExistente.id));
-        actualizados++;
-      } else {
-        // Crear nuevo balance
-        await db
-          .insert(balances)
-          .values({
-            usuarioId: user.id,
-            anoLaboralId: anoLaboral.id,
-            tipoAusencia: 'vacaciones',
-            cantidadInicial: diasAsignados.toString(),
-            cantidadUsada: '0',
-            cantidadPendiente: '0',
-            cantidadDisponible: diasAsignados.toString()
-          });
-        asignados++;
+        if (balanceExistente) {
+          // cantidad_disponible la recalcula el trigger de BD a partir de
+          // inicial + acumulada - usada - pendiente.
+          await tx
+            .update(balances)
+            .set({
+              cantidadInicial: diasAsignados.toString(),
+              updatedAt: new Date().toISOString(),
+              version: balanceExistente.version + 1
+            })
+            .where(eq(balances.id, balanceExistente.id));
+          actualizados++;
+        } else {
+          // Crear nuevo balance (el trigger calcula cantidad_disponible)
+          await tx
+            .insert(balances)
+            .values({
+              usuarioId: user.id,
+              anoLaboralId: anoLaboral.id,
+              tipoAusencia: 'vacaciones',
+              cantidadInicial: diasAsignados.toString(),
+              cantidadUsada: '0',
+              cantidadPendiente: '0',
+            });
+          asignados++;
+        }
       }
-    }
+    });
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'balances',
+      detalles: { evento: 'asignar_dias_antiguedad', asignados, actualizados, omitidos },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,

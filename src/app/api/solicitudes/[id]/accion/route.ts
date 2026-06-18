@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { ejecutarAccion, obtenerAccionesParaSolicitud } from '@/services/workflow.service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import type { AccionSolicitud } from '@/lib/domain/state-machine';
 
 export async function GET(
@@ -84,6 +85,21 @@ export async function POST(
         { status: 422 }
       );
     }
+
+    const { ipAddress, userAgent } = datosPeticion(req);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'solicitudes',
+      registroId: solicitudId,
+      detalles: {
+        evento: accion,
+        estadoAnterior: resultado.transicion?.estadoAnterior,
+        estadoNuevo: resultado.transicion?.estadoNuevo,
+      },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,

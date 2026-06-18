@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { crearUsuario } from '@/services/usuarios.service';
 import { syncUserRoles } from '@/services/rbac.service';
 import { validarPasswordPolitica } from '@/lib/config/password-policy';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { withErrorHandler } from '@/lib/api-handler';
 import { usuarioApiSchema } from '@/lib/schemas/usuario.schema';
 
@@ -256,6 +257,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
   }
 
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: session.id,
+    accion: 'crear',
+    tablaAfectada: 'usuarios',
+    registroId: usuarioCreado?.id ?? null,
+    detalles: {
+      email: validatedData.email,
+      roles: {
+        esAdmin: validatedData.esAdmin,
+        esRrhh: validatedData.esRrhh,
+        esDirector: validatedData.esDirector,
+        esJefe: validatedData.esJefe,
+      },
+    },
+    ipAddress,
+    userAgent,
+  });
+
   return NextResponse.json({
     success: true,
     data: usuarioCreado,
@@ -373,6 +393,17 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
     }
   }
 
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: session.id,
+    accion: 'actualizar',
+    tablaAfectada: 'usuarios',
+    registroId: Number(id),
+    detalles: { camposModificados: Object.keys(camposPermitidos) },
+    ipAddress,
+    userAgent,
+  });
+
   return NextResponse.json({
     success: true,
     data: usuarioActualizado,
@@ -444,6 +475,17 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
     })
     .where(eq(usuarios.id, usuarioId))
     .returning();
+
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: session.id,
+    accion: 'eliminar',
+    tablaAfectada: 'usuarios',
+    registroId: usuarioId,
+    detalles: { email: objetivo.email },
+    ipAddress,
+    userAgent,
+  });
 
   return NextResponse.json({
     success: true,

@@ -144,6 +144,9 @@ export interface SessionUser {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+
+  /** El usuario debe cambiar su contraseña antes de usar el sistema */
+  debeCambiarPassword?: boolean;
 }
 
 export interface LoginRequest {

@@ -50,7 +50,6 @@ export const vacacionesConfigSchema = z.object({
     (v) => { const n = Number(v); return !isNaN(n) && n >= 0 && n <= 365; },
     "Debe ser un número entre 0 y 365"
   ),
-  "vacaciones.incluir_fines_semana": z.string().regex(/^(true|false)$/),
   "vacaciones.incluir_feriados": z.string().regex(/^(true|false)$/),
 });
 

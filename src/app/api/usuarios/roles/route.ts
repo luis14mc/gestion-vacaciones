@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { asignarRol } from '@/services/usuarios.service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { db } from '@/lib/db';
 import { roles, usuariosRoles } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -54,6 +55,17 @@ export async function POST(request: NextRequest) {
 
     // 6. Asignar rol usando servicio
     await asignarRol(Number(usuarioId), rol.id);
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'usuarios',
+      registroId: Number(usuarioId),
+      detalles: { evento: 'asignar_rol', rol: rolCodigo },
+      ipAddress,
+      userAgent,
+    });
 
     // 7. Respuesta exitosa
     return NextResponse.json({
@@ -130,6 +142,17 @@ export async function DELETE(request: NextRequest) {
           eq(usuariosRoles.rolId, rol.id)
         )
       );
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'usuarios',
+      registroId: Number(usuarioId),
+      detalles: { evento: 'remover_rol', rol: rolCodigo },
+      ipAddress,
+      userAgent,
+    });
 
     // 7. Respuesta exitosa
     return NextResponse.json({

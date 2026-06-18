@@ -42,6 +42,7 @@ export async function getSession(): Promise<SessionUser | null> {
     let esJefeDb = false;
     let departamentoIdDb: number | null | undefined;
     let cargoDb: string | null | undefined;
+    let debeCambiarPasswordDb = false;
 
     try {
       const [row] = await db
@@ -52,6 +53,7 @@ export async function getSession(): Promise<SessionUser | null> {
           esJefe: usuarios.esJefe,
           departamentoId: usuarios.departamentoId,
           cargo: usuarios.cargo,
+          metadata: usuarios.metadata,
         })
         .from(usuarios)
         .where(eq(usuarios.id, userId))
@@ -64,6 +66,7 @@ export async function getSession(): Promise<SessionUser | null> {
         esJefeDb = row.esJefe;
         departamentoIdDb = row.departamentoId;
         cargoDb = row.cargo;
+        debeCambiarPasswordDb = (row.metadata as any)?.debeCambiarPassword === true;
       }
     } catch (dbErr) {
       console.error('Error leyendo flags de BD, usando token:', dbErr);
@@ -103,6 +106,8 @@ export async function getSession(): Promise<SessionUser | null> {
       esRrhh: esRrhhDb || session.user.esRrhh || false,
       esDirector: esDirectorDb || session.user.esDirector || false,
       esJefe: esJefeDb || session.user.esJefe || false,
+
+      debeCambiarPassword: debeCambiarPasswordDb,
     };
 
     return sessionUser;
@@ -152,6 +157,23 @@ export function obtenerRoles(user: SessionUser | null): string[] {
 
 export function estaAutenticado(user: SessionUser | null): boolean {
   return user !== null && user.id > 0;
+}
+
+/**
+ * Resuelve el departamento al que un usuario puede acotar un reporte.
+ * - Admin y RRHH: alcance organizacional (respeta el filtro solicitado, o todos).
+ * - Resto (Jefe/Director con permiso): forzado a SU propio departamento,
+ *   ignorando el departamentoId pedido por el cliente. Evita la fuga de
+ *   datos de otros departamentos vía parámetros manipulables.
+ * Devuelve -1 si el usuario no tiene departamento (resultado vacío seguro).
+ */
+export function alcanceDepartamento(
+  user: SessionUser | null,
+  departamentoSolicitado: number | null
+): number | null {
+  if (!user) return -1;
+  if (user.esAdmin || user.esRrhh) return departamentoSolicitado;
+  return user.departamentoId ?? -1;
 }
 
 export function mensajePermisoDenegado(permiso: string): string {

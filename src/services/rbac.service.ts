@@ -397,6 +397,22 @@ export async function syncUserRoles(
 }
 
 /**
+ * Sincroniza los roles de un usuario leyendo sus flags actuales desde BD.
+ * Útil cuando un flag (p.ej. esDirector) se modifica fuera del flujo de
+ * /api/usuarios (como al asignar jefe de departamento), para no reintroducir
+ * la divergencia flag↔RBAC.
+ */
+export async function syncUserRolesDesdeBD(usuarioId: number, tx: any = db): Promise<void> {
+  const u = await tx.query.usuarios.findFirst({ where: eq(usuarios.id, usuarioId) });
+  if (!u) return;
+  await syncUserRoles(
+    usuarioId,
+    { esAdmin: u.esAdmin, esRrhh: u.esRrhh, esDirector: u.esDirector, esJefe: u.esJefe },
+    tx
+  );
+}
+
+/**
  * Verificar si usuario es administrador
  */
 export async function esAdministrador(usuarioId: number): Promise<boolean> {

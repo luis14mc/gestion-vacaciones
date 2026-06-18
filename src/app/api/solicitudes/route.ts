@@ -6,6 +6,7 @@ import { getSession, tienePermiso } from '@/lib/auth';
 import { crearSolicitud } from '@/services/solicitudes.service';
 import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
 import { obtenerConfigs, asBool } from '@/lib/config/service';
+import { validarAdjuntos } from '@/lib/security/adjuntos';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -279,6 +280,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         { status: 400 }
       );
     }
+  }
+
+  // Validación de seguridad de adjuntos (tipo real, tamaño y cantidad)
+  const errorAdjuntos = validarAdjuntos(documentosAdjuntos);
+  if (errorAdjuntos) {
+    return NextResponse.json({ success: false, error: errorAdjuntos }, { status: 400 });
   }
 
   // 4. USAR SERVICIO PARA CREAR SOLICITUD

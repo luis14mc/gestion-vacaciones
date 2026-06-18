@@ -22,7 +22,7 @@ import {
   crearBalanceTest,
   crearSolicitudTest,
 } from '../helpers/test-data'
-import '../setup-integration'
+import './setup'
 
 describe('Solicitudes Service - Integration Tests', () => {
   let datosBase: Awaited<ReturnType<typeof crearDatosBaseTest>>

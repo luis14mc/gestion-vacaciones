@@ -5,6 +5,9 @@ import { departamentos, usuarios } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { crearUsuario } from '@/services/usuarios.service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
+import { generarPasswordTemporal } from '@/lib/security/password';
+import { obtenerConfigs, asNumber } from '@/lib/config/service';
 
 export const runtime = 'nodejs';
 
@@ -268,17 +271,25 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Longitud mínima de contraseña según política, para generar temporales válidas
+      const minLen = asNumber(
+        (await obtenerConfigs(['seguridad.password_min_length']))['seguridad.password_min_length'],
+        8
+      );
+
       let creados = 0;
       const usuariosCreados: UsuarioCreado[] = [];
+      const credenciales: Array<{ email: string; nombre: string; password: string }> = [];
       const erroresImportacion: Array<{ fila: number; email: string; error: string }> = [];
 
       for (const userData of rowsParsed) {
         try {
+          const passwordTemporal = generarPasswordTemporal(minLen);
           const nuevoUsuario = await crearUsuario({
             nombre: userData.nombre,
             apellido: userData.apellido,
             email: userData.email,
-            password: '1234',
+            password: passwordTemporal,
             departamentoId: userData.departamentoId!,
             cargo: userData.cargo,
             fechaIngreso: userData.fechaIngreso,
@@ -289,10 +300,16 @@ export async function POST(request: NextRequest) {
             numeroEmpleado: userData.numeroEmpleado || undefined,
             telefono: undefined,
             direccion: undefined,
+            debeCambiarPassword: true,
           });
 
           if (nuevoUsuario?.id) {
             creados++;
+            credenciales.push({
+              email: userData.email,
+              nombre: `${userData.nombre} ${userData.apellido}`,
+              password: passwordTemporal,
+            });
             usuariosCreados.push({
               id: nuevoUsuario.id,
               email: userData.email,
@@ -387,9 +404,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const { ipAddress, userAgent } = datosPeticion(request);
+      await registrarAuditoria({
+        usuarioId: session.id,
+        accion: 'crear',
+        tablaAfectada: 'usuarios',
+        detalles: {
+          evento: 'importacion_masiva',
+          creados,
+          totalFilas: rowsParsed.length,
+          departamentosActualizados,
+          jefesAsignados,
+          jefesAsignadosPorDepto,
+        },
+        ipAddress,
+        userAgent,
+      });
+
       return NextResponse.json({
         success: true,
         message: `Importacion exitosa. Se crearon ${creados} usuarios de ${rowsParsed.length} filas. Departamentos/direcciones actualizados con jefe: ${departamentosActualizados}. Jefes asignados: ${jefesAsignados} por email, ${jefesAsignadosPorDepto} por departamento.`,
+        // Credenciales temporales para distribucion (cada usuario debe
+        // cambiar su contrasena en el primer ingreso).
+        credenciales,
       });
     }
 

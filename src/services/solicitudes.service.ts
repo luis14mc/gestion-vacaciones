@@ -10,7 +10,8 @@
 import { db } from '@/lib/db';
 import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
-import { obtenerConfigs, asBool, asNumber } from '@/lib/config/service';
+import { obtenerConfigs, asNumber } from '@/lib/config/service';
+import { contarDiasHabiles } from '@/lib/domain/labor-days';
 
 // =====================================================
 // TIPOS
@@ -62,15 +63,29 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
   } = params;
 
   return await db.transaction(async (tx) => {
-    const diasParaBalance = tipo === 'permiso_salida' && duracionPermiso === 'dia_completo'
-      ? 1
-      : Number(diasSolicitados || 0);
     const descuentaBalance = tipo === 'vacaciones' || (tipo === 'permiso_salida' && duracionPermiso === 'dia_completo');
-    const diasParaSolicitud = tipo === 'permiso_salida' ? diasParaBalance : Number(diasSolicitados || 0);
+
+    // Días AUTORITATIVOS (no se confía en el valor del cliente):
+    // - permiso de salida día completo: 1
+    // - vacaciones: se recalculan desde el rango de fechas en el servidor
+    // - otros: lo informado (no descuentan balance)
+    let diasParaSolicitud: number;
+    if (tipo === 'permiso_salida') {
+      diasParaSolicitud = duracionPermiso === 'dia_completo' ? 1 : Number(diasSolicitados || 0);
+    } else if (tipo === 'vacaciones') {
+      if (!fechaInicio || !fechaFin) {
+        throw new Error('Las vacaciones requieren fecha de inicio y fin');
+      }
+      // Días laborables: sábados y domingos no se descuentan.
+      diasParaSolicitud = contarDiasHabiles(fechaInicio, fechaFin);
+    } else {
+      diasParaSolicitud = Number(diasSolicitados || 0);
+    }
+    const diasParaBalance = diasParaSolicitud;
 
     // 1. Validar días solicitados
     if (tipo === 'vacaciones' && diasParaSolicitud <= 0) {
-      throw new Error('La cantidad de días solicitados debe ser mayor a 0');
+      throw new Error('El rango de fechas no contiene días hábiles para descontar');
     }
 
     // 1b. Reglas de vacaciones configurables (Configuración → Vacaciones)
@@ -79,21 +94,16 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         'vacaciones.dias_minimos_solicitud',
         'vacaciones.dias_maximos_consecutivos',
         'vacaciones.dias_anticipacion',
-        'vacaciones.permitir_medio_dia',
       ]);
       const minDias = asNumber(reglas['vacaciones.dias_minimos_solicitud'], 1);
       const maxDias = asNumber(reglas['vacaciones.dias_maximos_consecutivos'], 365);
       const anticipacion = asNumber(reglas['vacaciones.dias_anticipacion'], 0);
-      const permitirMedioDia = asBool(reglas['vacaciones.permitir_medio_dia']);
 
       if (diasParaSolicitud < minDias) {
-        throw new Error(`La solicitud debe ser de al menos ${minDias} día(s).`);
+        throw new Error(`La solicitud debe ser de al menos ${minDias} día(s) hábil(es).`);
       }
       if (diasParaSolicitud > maxDias) {
         throw new Error(`No puede solicitar más de ${maxDias} días consecutivos.`);
-      }
-      if (!permitirMedioDia && !Number.isInteger(diasParaSolicitud)) {
-        throw new Error('No está permitido solicitar medios días.');
       }
       if (anticipacion > 0 && fechaInicio) {
         const hoy = new Date();

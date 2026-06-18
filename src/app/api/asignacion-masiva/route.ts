@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { registrarAuditoria, datosPeticion } from "@/services/auditoria.service";
 import { db } from "@/lib/db";
 import { balances, usuarios, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -64,11 +65,11 @@ export async function POST(request: NextRequest) {
 
     let usuariosCreados = 0;
     let usuariosActualizados = 0;
-    const errores: string[] = [];
 
-    for (const usuario of usuariosDepartamento) {
-      try {
-        const balanceExistente = await db.query.balances.findFirst({
+    // Atomico: todo el departamento se asigna o nada (sin estado parcial).
+    await db.transaction(async (tx) => {
+      for (const usuario of usuariosDepartamento) {
+        const balanceExistente = await tx.query.balances.findFirst({
           where: and(
             eq(balances.usuarioId, usuario.id),
             eq(balances.tipoAusencia, tipoAusencia as any),
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
 
         if (balanceExistente) {
           const balanceActual = balanceExistente;
-          
+
           if (operacion === "sumar") {
             cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) + cantidadFinal;
           } else if (operacion === "restar") {
@@ -88,15 +89,11 @@ export async function POST(request: NextRequest) {
             if (cantidadFinal < 0) cantidadFinal = 0;
           }
 
-          const disponibleAnterior = Number.parseFloat(balanceActual.cantidadDisponible ?? '0');
-          const inicialAnterior = Number.parseFloat(balanceActual.cantidadInicial ?? '0');
-          const nuevoDisponible = disponibleAnterior + (cantidadFinal - inicialAnterior);
-
-          await db
+          // cantidad_disponible la recalcula el trigger de BD (incluye acumulada).
+          await tx
             .update(balances)
             .set({
               cantidadInicial: cantidadFinal.toFixed(2),
-              cantidadDisponible: Math.max(0, nuevoDisponible).toFixed(2),
               version: balanceActual.version + 1,
               updatedAt: new Date().toISOString()
             })
@@ -108,22 +105,36 @@ export async function POST(request: NextRequest) {
           }
 
           const cantidadStr = cantidadFinal.toFixed(2);
-          await db.insert(balances).values({
+          await tx.insert(balances).values({
             usuarioId: usuario.id,
             tipoAusencia: tipoAusencia as any,
             anoLaboralId,
             cantidadInicial: cantidadStr,
-            cantidadDisponible: cantidadStr,
           });
           usuariosCreados++;
         }
-      } catch (error) {
-        console.error(`Error procesando usuario ${usuario.id}:`, error);
-        errores.push(`${usuario.nombre} ${usuario.apellido}`);
       }
-    }
+    });
 
     const totalProcesados = usuariosCreados + usuariosActualizados;
+
+    const { ipAddress, userAgent } = datosPeticion(request);
+    await registrarAuditoria({
+      usuarioId: session.id,
+      accion: 'actualizar',
+      tablaAfectada: 'balances',
+      detalles: {
+        evento: 'asignacion_masiva',
+        departamentoId,
+        tipoAusencia,
+        cantidadAsignada,
+        operacion,
+        usuariosCreados,
+        usuariosActualizados,
+      },
+      ipAddress,
+      userAgent,
+    });
 
     return NextResponse.json({
       success: true,
@@ -131,7 +142,6 @@ export async function POST(request: NextRequest) {
       usuariosAfectados: totalProcesados,
       usuariosCreados,
       usuariosActualizados,
-      errores: errores.length > 0 ? errores : undefined,
     });
   } catch (error) {
     console.error("Error en POST /api/asignacion-masiva:", error);

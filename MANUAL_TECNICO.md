@@ -1,9 +1,9 @@
 # Manual Técnico — Sistema de Gestión de Vacaciones CNI Honduras
 
-**Versión:** 5.0  
+**Versión:** 6.0  
 **Organización:** Consejo Nacional de Inversiones (CNI) Honduras  
-**Stack:** Next.js 15 + Drizzle ORM + PostgreSQL + NextAuth.js  
-**Última actualización:** Mayo 2026
+**Stack:** Next.js 16 + React 19 + Drizzle ORM + PostgreSQL 16 + NextAuth.js v5  
+**Última actualización:** Junio 2026
 
 ---
 
@@ -20,8 +20,12 @@
 9. [Notificaciones por Correo](#9-notificaciones-por-correo)
 10. [Configuración del Sistema](#10-configuración-del-sistema)
 11. [Variables de Entorno](#11-variables-de-entorno)
-23. [Guía de Despliegue (AWS EC2)](#12-guía-de-despliegue-aws-ec2)
-24. [Seguridad y Hardening](#13-seguridad-y-hardening)
+12. [Guía de Despliegue (AWS EC2)](#12-guía-de-despliegue-aws-ec2)
+13. [Seguridad y Hardening](#13-seguridad-y-hardening)
+14. [Pruebas](#14-pruebas)
+15. [Deuda Técnica Conocida](#15-deuda-técnica-conocida)
+
+Documentación complementaria: [Manual de Usuario](./docs/MANUAL_USUARIO.md) · [Estado de Producción](./docs/ESTADO_PRODUCCION.md)
 
 ---
 
@@ -30,7 +34,7 @@
 ```mermaid
 graph TB
     subgraph Frontend["Frontend (Next.js App Router)"]
-        Pages["Páginas SSR"]
+        Pages["Páginas SSR/RSC"]
         Components["Componentes React"]
         Hooks["Custom Hooks"]
     end
@@ -50,20 +54,23 @@ graph TB
         EmailSvc["Email Service"]
         RBACSvc["RBAC Service"]
         ExcelSvc["Excel Service"]
+        AuditSvc["Auditoría Service"]
     end
     
     subgraph Domain["Capa de Dominio"]
         SM["State Machine"]
-        Types["Types & Schemas"]
+        LaborDays["Días Laborables"]
+        Schemas["Zod Schemas"]
     end
     
     subgraph Data["Capa de Datos"]
         Drizzle["Drizzle ORM"]
-        PG["PostgreSQL"]
+        PG["PostgreSQL 16"]
     end
     
     subgraph External["Externos"]
-        SMTP["SMTP Office365"]
+        SMTP["SMTP"]
+        S3["AWS S3 Backups"]
     end
     
     Pages --> API
@@ -76,10 +83,12 @@ graph TB
 ```
 
 ### Principios de Diseño
+
 - **Arquitectura por capas:** Páginas → API Routes → Servicios → Dominio → Datos
-- **State Machine centralizada:** Toda transición de estado pasa por `state-machine.ts`
-- **RBAC (Role-Based Access Control):** Permisos verificados en middleware y APIs
-- **Optimistic Locking:** Campo `version` en todas las tablas críticas
+- **State Machine centralizada:** Toda transición de estado pasa por `state-machine.ts`; el API en vivo usa `workflow.service.ejecutarAccion()`
+- **RBAC:** Permisos verificados en cada API con `tienePermiso()`; sesión refresca permisos desde BD
+- **Optimistic Locking:** Campo `version` en tablas críticas (`solicitudes`, `balances`)
+- **Sin Server Actions:** Todas las mutaciones vía REST API Routes
 
 ---
 
@@ -88,243 +97,150 @@ graph TB
 ```
 src/
 ├── app/                          # Next.js App Router
-│   ├── api/                      # API Routes (servidor)
-│   │   ├── admin/asignar-dias/   # Asignación automatizada de días
-│   │   ├── asignacion-masiva/    # Asignación masiva por departamento
-│   │   ├── auditoria/            # Placeholder para auditoría futura
-│   │   ├── auth/                 # NextAuth endpoints
-│   │   ├── balances/             # CRUD de balances
-│   │   ├── calendario/ausencias/ # Ausencias para vista de calendario
-│   │   ├── configuracion/        # CRUD configuraciones del sistema
-│   │   ├── cron/transiciones/    # Job automático de transiciones
-│   │   ├── dashboard/            # Métricas del dashboard (mi-balance, rrhh)
-│   │   ├── departamentos/        # CRUD departamentos
-│   │   ├── exportar/             # Exportación CSV/JSON
-│   │   ├── reportes/             # Generación de reportes
-│   │   │   └── exportar/         # Exportación CSV de reportes
-│   │   ├── solicitudes/          # CRUD + workflow de solicitudes
-│   │   ├── tipos-ausencia/       # Catálogo de tipos de ausencia
-│   │   └── usuarios/             # CRUD usuarios
-│   ├── aprobar-solicitudes/      # UI: Bandeja de aprobación
-│   ├── asignacion-dias/          # UI: Asignación de días
-│   ├── auditoria/                # UI: Vista de auditoría
-│   ├── calendario/               # UI: Calendario de ausencias
-│   ├── configuracion/            # UI: Configuración del sistema
-│   ├── dashboard/                # UI: Dashboard principal
-│   ├── departamentos/            # UI: Gestión de departamentos
-│   ├── exportar/                 # UI: Exportación de datos
-│   ├── login/                    # UI: Página de login
-│   ├── mi-perfil/                # UI: Perfil del empleado
-│   ├── reportes/                 # UI: Reportes avanzados
-│   ├── solicitudes/              # UI: Listado de solicitudes
-│   └── usuarios/                 # UI: Gestión de usuarios
-├── components/                   # Componentes compartidos
-│   ├── FormularioSolicitud.tsx   # Formulario principal de solicitudes
-│   ├── AuthProvider.tsx          # Provider de autenticación
-│   ├── calendario/               # Componentes de calendario
-│   ├── dashboard/                # Componentes de dashboard
-│   ├── layout/                   # Sidebar, Header, Footer
-│   ├── providers/                # QueryProvider (React Query)
-│   ├── solicitudes/              # Subcomponentes de solicitudes
-│   └── ui/                       # shadcn/ui primitives
-├── hooks/                        # Custom hooks
-│   ├── useBalances.ts            # Balance del usuario
-│   ├── useLaborDays.ts           # Cálculo de días laborables
-│   └── useTiposAusencia.ts       # Catálogo de tipos
-├── lib/                          # Utilidades y configuración
-│   ├── auth.ts                   # Helper de sesión + RBAC
-│   ├── db/                       # Drizzle ORM
-│   │   ├── index.ts              # Conexión a PostgreSQL
-│   │   └── schema/               # Esquemas de base de datos
-│   │       ├── index.ts          # Barrel export
-│   │       ├── auth.ts           # usuarios, roles, permisos, sessions
-│   │       ├── solicitudes.ts    # solicitudes, años laborales
-│   │       ├── balances.ts       # balances, historial
-│   │       └── organizacion.ts   # departamentos, configuracion
-│   ├── domain/
-│   │   └── state-machine.ts      # Máquina de estados del workflow
-│   ├── schemas/                  # Zod schemas (formularios)
-│   ├── validations/              # Zod validations (solicitudes)
-│   ├── pdfExport.ts              # Generación de PDFs (jsPDF)
-│   ├── swal.ts                   # Notificaciones UI (SweetAlert2)
-│   └── utils.ts                  # cn() helper
-├── services/                     # Capa de servicios (negocio)
-│   ├── email.service.ts          # Envío de correos con nodemailer
-│   ├── excel.service.ts          # Exportación Excel con ExcelJS
-│   ├── rbac.service.ts           # Control de acceso por roles
-│   ├── solicitudes.service.ts    # CRUD transaccional de solicitudes
-│   ├── usuarios.service.ts       # CRUD de usuarios
-│   ├── workflow.service.ts       # Motor de ejecución del workflow
-│   └── index.ts                  # Barrel export
-├── types/
-│   └── index.ts                  # Tipos TypeScript globales
-├── providers/
-│   └── QueryProvider.tsx         # React Query provider
-├── auth.ts                       # Configuración NextAuth.js
-└── middleware.ts                  # Middleware de protección de rutas
+│   ├── api/                      # 29 Route Handlers
+│   │   ├── admin/asignar-dias/
+│   │   ├── asignacion-masiva/
+│   │   ├── auditoria/
+│   │   ├── auth/[...nextauth]/
+│   │   ├── balances/
+│   │   ├── calendario/ausencias/
+│   │   ├── configuracion/
+│   │   ├── cron/transiciones/
+│   │   ├── dashboard/            # admin, rrhh, jefe, mi-balance, calendario, actividad
+│   │   ├── departamentos/
+│   │   ├── exportar/
+│   │   ├── reportes/             # + departamento, exportar, exportar/excel
+│   │   ├── solicitudes/          # + [id]/accion
+│   │   ├── tipos-ausencia/
+│   │   └── usuarios/             # + me, me/password, roles, importar, importar/plantilla
+│   ├── aprobar-solicitudes/
+│   ├── asignacion-dias/
+│   ├── auditoria/
+│   ├── cambiar-password/
+│   ├── configuracion/
+│   ├── dashboard/
+│   ├── departamentos/
+│   ├── exportar/
+│   ├── login/
+│   ├── mi-equipo/
+│   ├── mi-perfil/
+│   ├── reportes/
+│   ├── reportes-departamento/
+│   ├── solicitudes/              # + nueva/
+│   └── usuarios/
+├── components/                   # UI (shadcn, layout, formularios, gates)
+├── hooks/                        # useBalances, useLaborDays, useTiposAusencia
+├── lib/
+│   ├── auth.ts                   # getSession, tienePermiso
+│   ├── db/schema/                # auth, solicitudes, balances, organizacion, auditoria
+│   ├── domain/state-machine.ts   # Máquina de estados pura
+│   ├── config/                   # Catálogo de configuración validado
+│   └── validations/              # Zod para solicitudes, adjuntos
+├── services/                     # Capa de negocio
+│   ├── workflow.service.ts       # Motor de workflow (API en vivo)
+│   ├── solicitudes.service.ts    # CRUD + funciones legacy
+│   ├── usuarios.service.ts
+│   ├── rbac.service.ts
+│   ├── auditoria.service.ts
+│   ├── email.service.ts
+│   └── excel.service.ts
+├── auth.ts                       # Configuración NextAuth v5
+└── middleware.ts                 # Protección de rutas + expiración de sesión
+
+drizzle/                          # Migraciones 0000–0005
+scripts/                          # seed, deploy, backup, migrate
+tests/                            # unit + integration (Vitest)
+docs/                             # Manuales y estado de producción
 ```
 
 ---
 
 ## 3. Base de Datos
 
-### Diagrama Entidad-Relación
+### Diagrama Entidad-Relación (simplificado)
 
 ```mermaid
 erDiagram
-    USUARIOS ||--o{ SOLICITUDES : "crea"
-    USUARIOS ||--o{ BALANCES : "tiene"
-    USUARIOS ||--o{ USUARIOS_ROLES : "tiene"
-    ROLES ||--o{ USUARIOS_ROLES : "asignado a"
-    ROLES ||--o{ ROLES_PERMISOS : "tiene"
-    PERMISOS ||--o{ ROLES_PERMISOS : "asignado a"
-    ANOS_LABORALES ||--o{ SOLICITUDES : "pertenece a"
-    ANOS_LABORALES ||--o{ BALANCES : "pertenece a"
-    DEPARTAMENTOS ||--o{ USUARIOS : "agrupa"
-    BALANCES ||--o{ HISTORIAL_BALANCES : "registra"
-
-    USUARIOS {
-        bigserial id PK
-        varchar email UK
-        varchar nombre
-        varchar apellido
-        varchar password_hash
-        bigint departamento_id FK
-        varchar cargo
-        boolean es_director
-        boolean es_jefe
-        boolean es_rrhh
-        boolean es_admin
-        bigint jefe_superior_id FK
-        boolean activo
-        timestamp fecha_ingreso
-    }
-
-    SOLICITUDES {
-        bigserial id PK
-        varchar codigo UK
-        bigint usuario_id FK
-        bigint ano_laboral_id FK
-        enum tipo
-        date fecha_inicio
-        date fecha_fin
-        decimal dias_solicitados
-        enum estado
-        bigint aprobada_jefe_por FK
-        bigint aprobada_rrhh_por FK
-        integer version
-    }
-
-    BALANCES {
-        bigserial id PK
-        bigint usuario_id FK
-        bigint ano_laboral_id FK
-        enum tipo_ausencia
-        decimal cantidad_inicial
-        decimal cantidad_usada
-        decimal cantidad_pendiente
-        decimal cantidad_disponible
-        integer version
-    }
-
-    CONFIGURACION {
-        bigserial id PK
-        varchar clave UK
-        text valor
-        varchar categoria
-        varchar tipo_dato
-        boolean es_publico
-    }
+    USUARIOS ||--o{ SOLICITUDES : crea
+    USUARIOS ||--o{ BALANCES : tiene
+    USUARIOS ||--o{ USUARIOS_ROLES : tiene
+    ROLES ||--o{ USUARIOS_ROLES : asignado
+    ROLES ||--o{ ROLES_PERMISOS : tiene
+    PERMISOS ||--o{ ROLES_PERMISOS : asignado
+    ANOS_LABORALES ||--o{ SOLICITUDES : pertenece
+    ANOS_LABORALES ||--o{ BALANCES : pertenece
+    DEPARTAMENTOS ||--o{ USUARIOS : agrupa
+    BALANCES ||--o{ HISTORIAL_BALANCES : registra
+    USUARIOS ||--o{ REGISTROS_AUDITORIA : genera
 ```
 
-### Tablas Principales
+### Tablas principales
 
-| Tabla | Descripción | Registros clave |
-|-------|-------------|-----------------|
-| `usuarios` | Empleados del CNI | email, roles, jefe_superior_id |
-| `roles` | ADMIN, RRHH, JEFE, EMPLEADO | codigo, nivel |
-| `solicitudes` | Solicitudes de vacaciones/permisos | estado, tipo, version |
-| `balances` | Saldo de días por empleado/año | cantidad_inicial, disponible |
-| `anos_laborales` | Periodos laborales (2025, 2026…) | activo, fecha_inicio/fin |
-| `departamentos` | Estructura organizacional | nombre, codigo |
-| `configuracion` | Parámetros dinámicos del sistema | SMTP, notificaciones |
-| `historial_balances` | Auditoría de movimientos de días | tipo_movimiento, cantidad |
+| Tabla | Descripción |
+|-------|-------------|
+| `usuarios` | Empleados con flags de rol y jerarquía (`jefe_superior_id`) |
+| `roles`, `permisos`, `usuarios_roles`, `roles_permisos` | RBAC |
+| `solicitudes` | Solicitudes con estado, aprobaciones jefe/RRHH, `version` |
+| `balances` | Saldo por usuario/año/tipo de ausencia |
+| `historial_balances` | Movimientos de días |
+| `anos_laborales` | Periodos laborales |
+| `departamentos` | Estructura organizacional |
+| `configuracion` | Parámetros dinámicos del sistema |
+| `registros_auditoria` | Log de acciones |
+| `rate_limits` | Protección brute-force en login |
+| `sessions` | Sesiones NextAuth |
 
-### Fórmula de Balance
+### Fórmula de balance
+
 ```
 disponible = (inicial + acumulada) - (usada + pendiente)
 ```
+
+Un trigger SQL (`drizzle/0005_balance_trigger.sql`) recalcula `cantidad_disponible` automáticamente.
+
+### Enum `estado_solicitud` (runtime)
+
+`borrador` · `pendiente_jefe` · `aprobada_jefe` · `rechazada_jefe` · `aprobada_rrhh` · `rechazada_rrhh` · `cancelada` · `finalizada`
+
+> **Nota:** La migración inicial `0000` incluía estados de aprobación ejecutiva que ya no se usan en el código TypeScript actual.
 
 ---
 
 ## 4. Módulos del Sistema
 
-### 4.1 Dashboard
-- **Ruta:** `/dashboard`
-- **APIs:** `/api/dashboard/mi-balance`, `/api/dashboard/rrhh/metricas`
-- **Funcionalidad:** Muestra balance personal, solicitudes pendientes, métricas RRHH.
+| Módulo | Ruta UI | APIs principales |
+|--------|---------|------------------|
+| Dashboard | `/dashboard` | `/api/dashboard/*` |
+| Solicitudes | `/solicitudes`, `/solicitudes/nueva` | `/api/solicitudes` |
+| Aprobaciones | `/aprobar-solicitudes` | `/api/solicitudes/[id]/accion` |
+| Mi equipo | `/mi-equipo` | Dashboard jefe |
+| Reportes dept. | `/reportes-departamento` | `/api/reportes/departamento` |
+| Usuarios | `/usuarios` | `/api/usuarios`, importar |
+| Departamentos | `/departamentos` | `/api/departamentos` |
+| Asignación días | `/asignacion-dias` | `/api/admin/asignar-dias`, `/api/asignacion-masiva` |
+| Reportes | `/reportes` | `/api/reportes`, exportar |
+| Exportar | `/exportar` | `/api/exportar` |
+| Configuración | `/configuracion` | `/api/configuracion` |
+| Auditoría | `/auditoria` | `/api/auditoria` |
+| Mi perfil | `/mi-perfil` | `/api/usuarios/me` |
+| Cambiar password | `/cambiar-password` | `/api/usuarios/me/password` |
 
-### 4.2 Solicitudes
-- **Ruta:** `/solicitudes`
-- **APIs:** `/api/solicitudes` (GET/POST)
-- **Funcionalidad:** Crear, listar y filtrar solicitudes propias.
-- **Validaciones:**
-  - Directores deben adjuntar VoBo del Ministro
-  - Licencia médica requiere constancia
-  - Balance suficiente (vacaciones)
+### Gates de UI
 
-### 4.3 Aprobaciones
-- **Ruta:** `/aprobar-solicitudes`
-- **APIs:** `/api/solicitudes/[id]/accion` (vía workflow)
-- **Funcionalidad:** Bandeja de aprobación para Jefes y RRHH.
-
-### 4.4 Reportes
-- **Ruta:** `/reportes`
-- **APIs:** `/api/reportes`, `/api/reportes/exportar`
-- **Tipos:** Balances, Solicitudes, Departamentos, Proyecciones, Ausentismo
-- **Exportación:** PDF (frontend jsPDF) y CSV (backend)
-
-### 4.5 Asignación de Días
-- **Ruta:** `/asignacion-dias`
-- **APIs:** `/api/admin/asignar-dias`, `/api/asignacion-masiva`
-- **Automatizado:** Tabla de antigüedad de Honduras
-  - 1 año: 10 días
-  - 2 años: 12 días
-  - 3 años: 15 días
-  - 4+ años: 20 días
-- **Masivo:** Por departamento con operación sumar/restar/reemplazar
-
-### 4.6 Configuración
-- **Ruta:** `/configuracion`
-- **APIs:** `/api/configuracion` (GET/POST/PATCH/DELETE)
-- **Funcionalidad:** Parámetros dinámicos del sistema, incluyendo SMTP.
-
-### 4.7 Calendario
-- **Ruta:** `/calendario`
-- **APIs:** `/api/calendario/ausencias`
-- **Funcionalidad:** Vista mensual de ausencias aprobadas.
-
-### 4.8 Exportación
-- **Ruta:** `/exportar`
-- **APIs:** `/api/exportar`
-- **Funcionalidad:** Exportar usuarios, solicitudes, balances a CSV/JSON.
-
-### 4.9 Usuarios y Departamentos
-- **Rutas:** `/usuarios`, `/departamentos`
-- **APIs:** `/api/usuarios`, `/api/departamentos`
-- **Funcionalidad:** CRUD completo con soft-delete.
+- `PasswordChangeGate` — fuerza cambio de contraseña tras importación
+- `MaintenanceGate` — bloquea UI en modo mantenimiento (admin exento)
 
 ---
 
 ## 5. Flujo de Aprobación (State Machine)
 
-### Diagrama de Estados
+### Diagrama de estados (implementación actual — 2 niveles)
 
 ```mermaid
 stateDiagram-v2
     [*] --> borrador
-    borrador --> pendiente_jefe : enviar (Empleado/Jefe)
-    borrador --> aprobada_jefe : enviar (Director con VoBo)
+    borrador --> pendiente_jefe : enviar (empleado/jefe)
+    borrador --> aprobada_jefe : enviar (director con VoBo)
     borrador --> cancelada : cancelar
     
     pendiente_jefe --> aprobada_jefe : aprobar_jefe
@@ -335,7 +251,7 @@ stateDiagram-v2
     aprobada_jefe --> rechazada_rrhh : rechazar_rrhh
     aprobada_jefe --> cancelada : cancelar
     
-    aprobada_rrhh --> finalizada : finalizar (automático/cron)
+    aprobada_rrhh --> finalizada : finalizar (cron)
     
     rechazada_jefe --> [*]
     rechazada_rrhh --> [*]
@@ -343,83 +259,90 @@ stateDiagram-v2
     finalizada --> [*]
 ```
 
-### Reglas de Negocio
+> **No hay tercer nivel ejecutivo en runtime.** El permiso `solicitudes.aprobar_ejecutiva` existe en seed pero no se usa en la state machine.
+
+### Reglas de negocio
 
 | Regla | Descripción |
 |-------|-------------|
-| **Auto-aprobación** | Un jefe NO puede aprobar su propia solicitud |
-| **Director + VoBo** | Un Director adjunta VoBo del Ministro → salta `pendiente_jefe` → va directo a `aprobada_jefe` |
-| **Guards por rol** | Solo `esJefe/esDirector` puede ejecutar `aprobar_jefe`; solo `esRrhh` puede ejecutar `aprobar_rrhh` |
-| **Admin override** | `esAdmin` puede ejecutar cualquier acción |
-| **Optimistic Locking** | Toda transición verifica `version` para prevenir conflictos |
+| Auto-aprobación | Un jefe no puede aprobar su propia solicitud |
+| Alcance departamento | Jefe solo aprueba solicitudes de su departamento |
+| Jefe solicitante | Si el solicitante es jefe, solo un director puede aprobar |
+| Director + VoBo | Director con adjunto VoBo salta `pendiente_jefe` → `aprobada_jefe` |
+| Admin override | `esAdmin` puede ejecutar cualquier acción |
+| Optimistic locking | Verifica `version` en cada transición |
 
-### Efectos por Transición
+### Efectos en balance
 
-| Transición | Efecto en Balance |
-|------------|------------------|
-| `enviar` | `pendiente += dias`, `disponible -= dias` |
-| `aprobar_rrhh` | `pendiente -= dias`, `usada += dias` |
-| `rechazar_*` | `pendiente -= dias`, `disponible += dias` |
-| `cancelar` | `pendiente -= dias`, `disponible += dias` |
+| Evento | Efecto |
+|--------|--------|
+| `enviar` | `pendiente += días`, `disponible -= días` |
+| `aprobar_rrhh` | `pendiente -= días`, `usada += días` |
+| `rechazar_*` / `cancelar` | `pendiente -= días`, `disponible += días` |
 
 ---
 
 ## 6. Servicios Backend
 
-### 6.1 `workflow.service.ts`
-Motor central del flujo de aprobación. Ejecuta transiciones de estado usando la state machine.
-- `ejecutarAccion()` — Procesa cualquier acción (aprobar, rechazar, cancelar)
-- `obtenerAccionesParaSolicitud()` — Lista acciones disponibles para un usuario
-- `procesarTransicionesAutomaticas()` — Job cron: `aprobada_rrhh` → `finalizada` si `fecha_fin < hoy`
+### `workflow.service.ts` (ruta en vivo del API)
 
-### 6.2 `solicitudes.service.ts`
-CRUD transaccional de solicitudes con validaciones de negocio.
-- `crearSolicitud()` — Crea solicitud en transacción (valida balance, genera código)
-- `aprobarSolicitudJefe()` / `aprobarSolicitudRRHH()` — Aprobaciones con balance
-- `rechazarSolicitud()` — Rechazo con devolución de días
-- `cancelarSolicitud()` — Cancelación con devolución
+- `ejecutarAccion()` — procesa transiciones vía state machine + persistencia
+- `obtenerAccionesParaSolicitud()` — acciones disponibles por usuario/estado
+- `procesarTransicionesAutomaticas()` — cron: `aprobada_rrhh` → `finalizada` si `fecha_fin < hoy`
 
-### 6.3 `email.service.ts`
-Notificaciones automáticas vía SMTP Office 365.
-- `notificarNuevaSolicitudAJefe()` — Al crear solicitud
-- `notificarAprobacionJefeARRHH()` — Cuando jefe aprueba
-- `notificarResolucionAEmpleado()` — Resultado final (aprobada/rechazada)
+### `solicitudes.service.ts`
 
-### 6.4 `excel.service.ts`
-Exportación de reportes en formato Excel (ExcelJS) con estilos CNI.
+- `crearSolicitud()` — transacción con validación de balance y código
+- Funciones legacy (`aprobarSolicitudJefe`, etc.) — usadas por tests de integración; deprecadas para API
 
-### 6.5 `rbac.service.ts`
-Control de acceso basado en roles con verificación de permisos granulares.
+### `email.service.ts`
+
+Notificaciones SMTP: nueva solicitud → jefe; aprobación jefe → RRHH; resolución → empleado.
+
+### `rbac.service.ts`
+
+Sincroniza flags (`esAdmin`, `esJefe`, …) con tabla `usuarios_roles`.
+
+### `auditoria.service.ts`
+
+Registra login, logout, acciones de workflow y cambios administrativos.
 
 ---
 
 ## 7. API REST
 
-### Endpoints Principales
+### Endpoints (29 handlers)
 
-| Método | Ruta | Descripción | Auth |
-|--------|------|-------------|------|
-| `GET` | `/api/solicitudes` | Listar solicitudes (con RBAC) | ✅ |
-| `POST` | `/api/solicitudes` | Crear solicitud | ✅ |
-| `GET` | `/api/balances` | Obtener balances del usuario | ✅ |
-| `GET` | `/api/reportes?tipo=balances` | Generar reporte | RRHH |
-| `GET` | `/api/reportes/exportar?tipo=balances` | Exportar CSV | RRHH |
-| `POST` | `/api/admin/asignar-dias` | Asignación automatizada | RRHH |
-| `POST` | `/api/asignacion-masiva` | Asignación por departamento | RRHH |
-| `GET/POST/PATCH/DELETE` | `/api/configuracion` | CRUD configuración | Admin |
-| `GET` | `/api/calendario/ausencias` | Ausencias del mes | ✅ |
-| `POST` | `/api/cron/transiciones` | Job automático | Bearer |
-| `GET` | `/api/exportar?tipo=usuarios` | Exportar datos | RRHH |
-| `GET` | `/api/dashboard/mi-balance` | Balance personal | ✅ |
-| `GET` | `/api/dashboard/rrhh/metricas` | Métricas RRHH | RRHH |
-| `GET/POST/PATCH/DELETE` | `/api/usuarios` | CRUD usuarios | Admin |
-| `GET/POST/PATCH/DELETE` | `/api/departamentos` | CRUD departamentos | Admin |
+| Método | Ruta | Descripción | Permiso |
+|--------|------|-------------|---------|
+| GET/POST | `/api/solicitudes` | Listar/crear | Auth + RBAC |
+| GET/POST | `/api/solicitudes/[id]/accion` | Acciones workflow | Según rol |
+| GET/POST | `/api/balances` | Consultar/ajustar | Auth |
+| GET | `/api/reportes` | Reportes RRHH | RRHH |
+| GET | `/api/reportes/departamento` | Reporte jefe | Jefe |
+| GET | `/api/reportes/exportar` | CSV | RRHH |
+| GET | `/api/reportes/exportar/excel` | Excel | RRHH |
+| GET | `/api/exportar` | Exportación completa | RRHH |
+| POST | `/api/admin/asignar-dias` | Asignación automatizada | RRHH |
+| POST | `/api/asignacion-masiva` | Asignación por depto | RRHH |
+| GET/PATCH | `/api/configuracion` | Config del sistema | Admin |
+| GET/POST/PATCH/DELETE | `/api/usuarios` | CRUD usuarios | Admin |
+| GET/PATCH | `/api/usuarios/me` | Perfil propio | Auth |
+| PATCH | `/api/usuarios/me/password` | Cambiar contraseña | Auth |
+| POST | `/api/usuarios/importar` | Import Excel | Admin |
+| GET/POST/PATCH/DELETE | `/api/departamentos` | CRUD deptos | Admin |
+| GET/POST | `/api/auditoria` | Log auditoría | Admin |
+| GET/POST | `/api/cron/transiciones` | Job automático | Bearer `CRON_SECRET` |
+| GET | `/api/dashboard/*` | Métricas por rol | Según rol |
+| GET | `/api/calendario/ausencias` | Calendario | Auth |
+| GET | `/api/tipos-ausencia` | Catálogo | Auth |
 
-### Formato de Respuesta Estándar
+### Formato de respuesta
+
 ```json
 {
   "success": true,
-  "data": { ... },
+  "data": {},
   "message": "Operación exitosa",
   "total": 42,
   "page": 1,
@@ -427,142 +350,179 @@ Control de acceso basado en roles con verificación de permisos granulares.
 }
 ```
 
+Errores manejados por `withErrorHandler` — nunca exponen stack traces.
+
 ---
 
 ## 8. Sistema RBAC
 
-### Roles del Sistema
+### Roles en seed
 
-| Código | Nivel | Permisos clave |
-|--------|-------|----------------|
-| `ADMIN` | 100 | Acceso total, CRUD usuarios, override en workflow |
-| `RRHH` | 50 | Aprobar solicitudes (nivel 2), reportes, asignación de días |
-| `JEFE` | 30 | Aprobar solicitudes de subordinados (nivel 1) |
-| `DIRECTOR` | 40 | Jefe con VoBo directo del Ministro |
-| `EMPLEADO` | 10 | Crear/ver/cancelar propias solicitudes |
+| Código | Nivel | Descripción |
+|--------|-------|-------------|
+| `ADMIN` | 10 | Acceso total |
+| `RRHH` | 8 | Aprobación final, reportes, asignación |
+| `JEFE` | 5 | Aprobación nivel 1 |
+| `EMPLEADO` | 1 | Solicitudes propias |
 
-### Flags de Usuario
-Los campos `es_director`, `es_jefe`, `es_rrhh`, `es_admin` en la tabla `usuarios` son atajos para queries rápidas sin necesidad de hacer JOINs a la tabla de roles.
+> **Gap conocido:** El flag `esDirector` y lógica de director existen en código, pero el rol `DIRECTOR` no está en `ROLES_DATA` del seed. Ver [Estado de Producción](./docs/ESTADO_PRODUCCION.md).
+
+### Verificación
+
+```typescript
+const session = await getSession();
+if (!tienePermiso(session, 'solicitudes.aprobar_jefe')) { ... }
+```
+
+Permisos se refrescan desde BD en cada `getSession()`.
 
 ---
 
 ## 9. Notificaciones por Correo
 
-### Configuración SMTP (tabla `configuracion`)
+Configurables en tabla `configuracion` y/o variables `SMTP_*`.
 
-| Clave | Valor | Descripción |
-|-------|-------|-------------|
-| `SMTP_HOST` | `smtp.office365.com` | Servidor SMTP |
-| `SMTP_PORT` | `587` | Puerto (TLS) |
-| `SMTP_USER` | `info@cni.hn` | Usuario de autenticación |
-| `SMTP_PASSWORD` | `***` | Contraseña |
-| `SMTP_SECURE` | `false` | false = STARTTLS en 587 |
-| `EMAIL_FROM` | `"Servicios Online" <notificaciones@cni.hn>` | Remitente |
-| `NOTIFICACIONES_EMAIL_HABILITADAS` | `true/false` | Interruptor principal |
+| Evento | Destinatario |
+|--------|-------------|
+| Solicitud creada | Jefe inmediato |
+| Jefe aprueba | Usuarios RRHH |
+| RRHH resuelve | Empleado solicitante |
 
-### Eventos que Disparan Correos
-
-| Evento | Destinatario | Plantilla |
-|--------|-------------|-----------|
-| Solicitud creada | Jefe inmediato | `notificarNuevaSolicitudAJefe` |
-| Jefe aprueba | Todos los usuarios RRHH | `notificarAprobacionJefeARRHH` |
-| RRHH aprueba/rechaza | Empleado solicitante | `notificarResolucionAEmpleado` |
+Por defecto `notificaciones.email_habilitado = false` en seed — **habilitar antes de producción**.
 
 ---
 
 ## 10. Configuración del Sistema
 
-El módulo de configuración (`/configuracion`) permite gestionar parámetros dinámicos sin reiniciar el servidor.
+Catálogo validado con Zod en `src/lib/config/`. Categorías:
 
-### Categorías
-- **notificaciones** — Configuración SMTP y habilitación de correos
-- **sistema** — Parámetros generales del sistema
-- *Extensible* — Se pueden agregar nuevas categorías
+- `general` — organización, mantenimiento
+- `vacaciones` — días, antigüedad, feriados
+- `notificaciones` — email, plantillas
+- `seguridad` — sesión, contraseñas, rate limit
+- `departamentos` — reglas organizacionales
 
-### Gestión desde la UI
-Los administradores pueden:
-1. Ver todas las configuraciones agrupadas por categoría
-2. Crear nuevas claves
-3. Editar valores existentes
-4. Eliminar configuraciones no-sistema
+Editable desde `/configuracion` (admin) sin reiniciar el servidor.
 
 ---
 
 ## 11. Variables de Entorno
 
+### Desarrollo (`.env.local` desde `.env.example`)
+
 | Variable | Requerida | Descripción |
 |----------|-----------|-------------|
-| `DATABASE_URL` | ✅ | URL de conexión PostgreSQL |
-| `NEXTAUTH_SECRET` | ✅ | Secret para JWT de NextAuth |
-| `NEXTAUTH_URL` | ✅ | URL base de la aplicación |
-| `CRON_SECRET` | ⚠️ | Token para proteger endpoint cron |
+| `DATABASE_URL` | ✅ | PostgreSQL |
+| `DATABASE_SSL` | | `true`/`false` |
+| `AUTH_SECRET` | ✅ | Secret JWT NextAuth |
+| `NEXTAUTH_URL` / `AUTH_URL` | ✅ | URL base |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Setup | Admin inicial |
+| `CRON_SECRET` | | Token cron |
+| `SMTP_*` | | Email (opcional) |
+| `NEXT_PUBLIC_SITE_URL` | | SEO/metadata |
 
-> **Nota:** La configuración SMTP está en la base de datos (tabla `configuracion`), no en variables de entorno.
+### Producción (`.env.production` desde `.env.production.example`)
+
+Además incluye `POSTGRES_*`, `NODE_ENV=production`, `NODE_OPTIONS=--max-old-space-size=768`.
 
 ---
 
 ## 12. Guía de Despliegue (AWS EC2)
 
-La aplicación está optimizada para ejecutarse en una instancia **AWS EC2 t3.medium** (2 vCPU, 4GB RAM) utilizando Docker y Nginx como proxy inverso.
+### Arquitectura
 
-### Arquitectura de Producción
-- **Modo Standalone:** Next.js compila en modo `standalone`, reduciendo el peso de la imagen de ~800MB a ~150MB.
-- **Docker Compose:** Orquesta el contenedor de la aplicación y la base de datos PostgreSQL (con recursos limitados para evitar colapsos).
-- **Nginx:** Actúa como reverse proxy, manejando caché de estáticos (`/_next/static`) y Rate Limiting.
+- **EC2 t3.medium** (2 vCPU, 4 GB RAM)
+- **Docker Compose:** `postgres` + `vacaciones-app` + `nginx`
+- **Next.js standalone** (~150 MB imagen)
+- **Nginx:** reverse proxy, SSL, rate limiting, caché estáticos
 
-### Requisitos en la EC2
-- SO: Ubuntu 22.04 LTS o superior
-- Docker y Docker Compose instalados
-- SWAP configurado (recomendado 2GB) para evitar OOM (Out Of Memory) durante builds pesados.
+### Pasos
 
-### Pasos de Despliegue
+```bash
+git clone <repo> /opt/apps/vacaciones-cni
+cd /opt/apps/vacaciones-cni
+cp .env.production.example .env.production
+# Completar secrets
 
-1. **Clonar e Inicializar:**
-   ```bash
-   git clone <repo-url> /opt/apps/vacaciones-cni
-   cd /opt/apps/vacaciones-cni
-   ```
+sudo chmod +x scripts/setup-ec2.sh scripts/deploy-ec2.sh
+sudo ./scripts/setup-ec2.sh    # Primera vez
+./scripts/deploy-ec2.sh        # Cada actualización
+```
 
-2. **Configurar Entorno:**
-   ```bash
-   cp .env.production.example .env.production
-   nano .env.production # Completar contraseñas y secrets
-   ```
+`deploy-ec2.sh` hace backup de BD, build Docker y restart sin downtime de Nginx.
 
-3. **Ejecutar Script Automatizado:**
-   ```bash
-   sudo chmod +x scripts/setup-ec2.sh scripts/deploy-ec2.sh
-   sudo ./scripts/setup-ec2.sh   # Solo la primera vez
-   ./scripts/deploy-ec2.sh       # Para cada actualización
-   ```
+### Cron
 
-El script de despliegue (`deploy-ec2.sh`) automáticamente:
-- Genera un backup de la BD actual.
-- Construye la nueva imagen Docker multi-stage.
-- Reinicia los contenedores sin afectar Nginx.
+- **Vercel:** `vercel.json` — diario a `/api/cron/transiciones`
+- **EC2:** crontab con `Authorization: Bearer $CRON_SECRET`
+
+### Backups
+
+```bash
+./scripts/backup-s3.sh   # pg_dump → S3 (requiere IAM role)
+```
 
 ---
 
 ## 13. Seguridad y Hardening
 
-El sistema cumple con los estándares **OWASP Top 10 (2026)** y está preparado para auditorías ISO/IEC 27001.
-
-### 13.1 Protección contra Fuerza Bruta (Rate Limiting)
-- Se implementó un algoritmo Token Bucket (`rate-limiter.ts`) en la capa de autenticación (`/api/auth`).
-- Bloquea accesos tras 5 intentos fallidos por IP durante 15 minutos.
-- Nginx proporciona una capa secundaria de Rate Limiting (10 req/s para API, 5 req/s para Login).
-
-### 13.2 Validación y Tipado Estricto
-- Todos los formularios del Frontend utilizan `react-hook-form` acoplados fuertemente a esquemas de **Zod**.
-- Los endpoints REST validan el body y los query params con Zod, rechazando cualquier payload malformado.
-
-### 13.3 Manejo Seguro de Errores (Information Leakage)
-- Wrapper centralizado `withErrorHandler` (`api-handler.ts`) envuelve todos los Route Handlers.
-- Garantiza que excepciones no controladas de la Base de Datos o Stack Traces jamás se filtren al frontend.
-
-### 13.4 Backups a S3
-- Se incluye un script automatizado `scripts/backup-s3.sh` que realiza dumps de PostgreSQL y los sincroniza de manera segura con AWS S3 usando perfiles de IAM.
+| Control | Implementación |
+|---------|----------------|
+| Autenticación | NextAuth Credentials + bcrypt |
+| Autorización | RBAC por permiso en cada API |
+| Rate limiting | Tabla `rate_limits` + Nginx |
+| Sesión | Expiración absoluta (`absExp`) configurable |
+| Validación | Zod en body/query de APIs |
+| Adjuntos | Magic bytes PDF/PNG/JPG |
+| Headers HTTP | HSTS, X-Frame-Options, CSP parcial (`next.config.mjs`) |
+| Errores | `withErrorHandler` — sin leakage |
+| Auditoría | IP, user-agent, acciones críticas |
+| Mantenimiento | Gate UI; login accesible |
 
 ---
 
-*Documento generado automáticamente — Sistema de Gestión de Vacaciones CNI Honduras v5.0*
+## 14. Pruebas
+
+### Configuración
+
+- **Unit:** `vitest.config.ts` → `tests/unit/**/*.test.ts`
+- **Integración:** `vitest.config.integration.ts` → PostgreSQL real
+
+### Cobertura por área
+
+| Archivo | Casos | Tipo |
+|---------|-------|------|
+| `state-machine.test.ts` | ~44 | Unit — workflow completo |
+| `labor-days.test.ts` | 6 | Unit |
+| `adjuntos.test.ts` | 8 | Unit |
+| `config-catalog.test.ts` | 11 | Unit |
+| `password-generator.test.ts` | 5 | Unit |
+| `solicitudes.service.integration.test.ts` | ~20 | Integración |
+| `usuarios/solicitudes.service.test.ts` | ~73 | Estructural |
+
+```bash
+pnpm test:run                 # Unitarios
+pnpm test:integration:run     # Integración (requiere DATABASE_URL)
+pnpm test:all                 # Ambos
+```
+
+**No cubierto:** API Routes HTTP, componentes UI, E2E browser.
+
+---
+
+## 15. Deuda Técnica Conocida
+
+| Ítem | Estado |
+|------|--------|
+| Rol DIRECTOR ausente en seed | Pendiente |
+| Permiso `aprobar_ejecutiva` sin uso | Pendiente limpieza |
+| `/api/health` referenciado en middleware pero no implementado | Pendiente |
+| Código solicitud: `SOL-YYYY-XXXXX` (servicio) vs `CNI-SOL-…` (SQL legacy) | Pendiente unificación |
+| Tests integración usan API legacy de solicitudes | Pendiente migración a workflow |
+| NextAuth v5 beta | Monitorear estabilidad |
+
+Detalle y checklist de go-live: [docs/ESTADO_PRODUCCION.md](./docs/ESTADO_PRODUCCION.md)
+
+---
+
+*Manual técnico v6.0 — Sistema de Gestión de Vacaciones CNI Honduras*

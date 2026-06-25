@@ -473,8 +473,9 @@ Además incluye `POSTGRES_*`, `NODE_ENV=production`, `NODE_OPTIONS=--max-old-spa
 ### Pasos
 
 ```bash
-git clone <repo> /opt/apps/vacaciones-cni
-cd /opt/apps/vacaciones-cni
+git clone <repo> /opt/vacaciones/app/gestion-vacaciones
+cd /opt/vacaciones/app/gestion-vacaciones
+# Opcional: export APP_DIR=/ruta/custom antes de deploy
 cp .env.production.example .env.production
 # Completar secrets
 

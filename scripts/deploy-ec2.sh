@@ -16,7 +16,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-APP_DIR="/opt/apps/vacaciones-cni"
+APP_DIR="${APP_DIR:-/opt/vacaciones/app/gestion-vacaciones}"
 BACKUP_DIR="/opt/backups"
 
 log() { echo -e "${CYAN}[$(date +'%H:%M:%S')]${NC} $1"; }

@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+APP_DIR="${APP_DIR:-/opt/vacaciones/app/gestion-vacaciones}"
+BACKUP_DIR="/opt/backups"
+
 echo "═══════════════════════════════════════════════════════"
 echo "  CONFIGURACIÓN INICIAL - EC2 Ubuntu para CNI"
 echo "═══════════════════════════════════════════════════════"
@@ -97,11 +100,11 @@ sysctl -p
 # 6. CREAR ESTRUCTURA DE DIRECTORIOS
 # ─────────────────────────────────────────────────────────
 echo "[6/8] Creando estructura de directorios..."
-mkdir -p /opt/apps/vacaciones-cni
+mkdir -p "$APP_DIR"
 mkdir -p /opt/apps/web-nueva
-mkdir -p /opt/backups
-mkdir -p /opt/apps/vacaciones-cni/nginx/ssl
-chown -R ubuntu:ubuntu /opt/apps /opt/backups
+mkdir -p "$BACKUP_DIR"
+mkdir -p "$APP_DIR/nginx/ssl"
+chown -R ubuntu:ubuntu /opt/vacaciones /opt/apps /opt/backups
 
 # ─────────────────────────────────────────────────────────
 # 7. CONFIGURAR CRON PARA BACKUPS A S3 Y TRANSICIONES
@@ -109,10 +112,10 @@ chown -R ubuntu:ubuntu /opt/apps /opt/backups
 echo "[7/8] Configurando cron jobs..."
 (crontab -l 2>/dev/null; echo "
 # Backup diario de PostgreSQL a S3 a las 2:00 AM
-0 2 * * * /opt/apps/vacaciones-cni/scripts/backup-s3.sh >> /var/log/backup-s3.log 2>&1
+0 2 * * * ${APP_DIR}/scripts/backup-s3.sh >> /var/log/backup-s3.log 2>&1
 
 # Transiciones automáticas de solicitudes a medianoche
-0 0 * * * curl -s -X POST http://localhost:3000/api/cron/transiciones -H 'Authorization: Bearer \$(grep CRON_SECRET /opt/apps/vacaciones-cni/.env.production | cut -d= -f2)' > /dev/null 2>&1
+0 0 * * * curl -s -X POST http://localhost:3000/api/cron/transiciones -H 'Authorization: Bearer \$(grep CRON_SECRET ${APP_DIR}/.env.production | cut -d= -f2)' > /dev/null 2>&1
 
 # Limpiar logs de Docker semanalmente
 0 4 * * 0 docker system prune -f > /dev/null 2>&1
@@ -123,7 +126,7 @@ echo "[7/8] Configurando cron jobs..."
 # ─────────────────────────────────────────────────────────
 echo "[8/8] Preparando CloudWatch..."
 # Si tienes un archivo config.json en el repo, descomenta esto para aplicarlo:
-# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/apps/vacaciones-cni/scripts/cloudwatch-config.json
+# /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:${APP_DIR}/scripts/cloudwatch-config.json
 
 
 echo ""
@@ -137,7 +140,7 @@ echo "  1. Cerrar sesión y volver a entrar (para grupo Docker):"
 echo "     exit && ssh -i tu-key.pem ubuntu@tu-ip"
 echo ""
 echo "  2. Clonar el repositorio:"
-echo "     cd /opt/apps/vacaciones-cni"
+echo "     mkdir -p $APP_DIR && cd $APP_DIR"
 echo "     git clone TU_REPO_URL ."
 echo ""
 echo "  3. Configurar variables de entorno:"

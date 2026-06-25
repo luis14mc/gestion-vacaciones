@@ -152,13 +152,6 @@ CREATE TRIGGER trg_actualizar_updated_at_anos_laborales
     FOR EACH ROW
     EXECUTE FUNCTION actualizar_updated_at();
 
--- Tipos Ausencia Config
-DROP TRIGGER IF EXISTS trg_actualizar_updated_at_tipos_ausencia_config ON tipos_ausencia_config;
-CREATE TRIGGER trg_actualizar_updated_at_tipos_ausencia_config
-    BEFORE UPDATE ON tipos_ausencia_config
-    FOR EACH ROW
-    EXECUTE FUNCTION actualizar_updated_at();
-
 -- =====================================================
 -- VERIFICACIÓN: Queries de validación
 -- =====================================================
@@ -170,7 +163,7 @@ SELECT
     action_statement
 FROM information_schema.triggers
 WHERE trigger_schema = 'public'
-AND event_object_table IN ('balances', 'solicitudes', 'usuarios', 'roles', 'departamentos', 'anos_laborales', 'tipos_ausencia_config')
+AND event_object_table IN ('balances', 'solicitudes', 'usuarios', 'roles', 'departamentos', 'anos_laborales')
 ORDER BY event_object_table, trigger_name;
 
 -- Verificar funciones creadas

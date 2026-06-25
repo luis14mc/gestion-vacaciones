@@ -42,6 +42,21 @@ Documentación completa: [docs/ARCHIVOS_NO_VERSIONADOS.md](./docs/ARCHIVOS_NO_VE
 | 12 | XSS en emails | **Resuelto** — `escapeHtml` |
 | 13 | Config decorativa departamentos/seguridad | **Resuelto** — conflictos de fechas + expiración password |
 | 14 | Botón probar SMTP | **Resuelto** — `/api/configuracion/verificar-smtp` |
+| 15 | SQL legacy `tipos_ausencia_config` en deploy | **Resuelto** — retirado de `09_cni_business_logic.sql` jun 2026 |
+| 16 | Ruta EC2 en `deploy-ec2.sh` | **Resuelto** — `APP_DIR` configurable, default `/opt/vacaciones/app/gestion-vacaciones` |
+
+---
+
+## Legacy retirado del runtime (jun 2026)
+
+| Elemento | Estado |
+|----------|--------|
+| Tabla `tipos_ausencia_config` | **Legacy** — no existe en schema Drizzle; triggers SQL eliminados |
+| Tabla `auditoria_operaciones` | **Renombrada** → `registros_auditoria` |
+| Campos `autorizada_ejecutiva_*` en solicitudes | **Legacy** — pueden existir en BD antigua (`drizzle/0000`); runtime usa flujo jefe → RRHH |
+| Permiso `aprobar_ejecutiva` | **Retirado** del seed |
+| Código `CNI-SOL-YYYY-XXXX` | **Activo** — generado en `solicitudes.service.ts` |
+| Ruta deploy `/opt/apps/vacaciones-cni` | **Reemplazada** por `APP_DIR` (ver `scripts/deploy-ec2.sh`) |
 
 ---
 

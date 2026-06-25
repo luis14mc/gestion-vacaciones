@@ -96,14 +96,15 @@ La aplicación estará en `http://localhost:3000`.
 
 ## Despliegue en producción
 
-El despliegue principal es **Docker en AWS EC2**:
+El despliegue principal es **Docker en AWS EC2** (ruta por defecto: `/opt/vacaciones/app/gestion-vacaciones`; configurable con `APP_DIR`):
 
 ```bash
+cd /opt/vacaciones/app/gestion-vacaciones
 cp .env.production.example .env.production
 # Completar secrets y contraseñas
 
 sudo ./scripts/setup-ec2.sh   # Primera vez
-./scripts/deploy-ec2.sh       # Actualizaciones
+./scripts/deploy-ec2.sh       # Actualizaciones (git pull + deploy)
 ```
 
 Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-aws-ec2) y [Estado de Producción](./docs/ESTADO_PRODUCCION.md).

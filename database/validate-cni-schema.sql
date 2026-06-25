@@ -9,7 +9,7 @@
 -- =====================================================
 
 \echo '═══════════════════════════════════════════════════════════'
-\echo '🔍 VALIDACIÓN DE SCHEMA CNI 4.0'
+\echo '🔍 VALIDACIÓN DE SCHEMA CNI 5.0 (Drizzle)'
 \echo '═══════════════════════════════════════════════════════════'
 \echo ''
 
@@ -29,7 +29,7 @@ WHERE schemaname = 'public'
 ORDER BY tablename;
 
 \echo ''
-\echo 'Esperado: 14 tablas'
+\echo 'Esperado: 15 tablas (schema Drizzle actual)'
 \echo ''
 
 -- =====================================================
@@ -46,11 +46,10 @@ SELECT
 FROM pg_indexes
 WHERE schemaname = 'public'
 AND tablename IN (
-    'usuarios', 'roles', 'permisos', 'roles_permisos', 'usuarios_roles', 'sessions',
-    'departamentos', 'usuarios_departamentos',
-    'anos_laborales', 'tipos_ausencia_config',
-    'solicitudes', 'balances',
-    'historial_balances', 'auditoria_operaciones'
+    'usuarios', 'roles', 'permisos', 'roles_permisos', 'usuarios_roles', 'sessions', 'rate_limits',
+    'departamentos', 'usuarios_departamentos', 'configuracion',
+    'anos_laborales', 'solicitudes', 'balances',
+    'historial_balances', 'registros_auditoria'
 )
 ORDER BY tablename, indexname;
 
@@ -96,9 +95,9 @@ WHERE trigger_schema = 'public'
 ORDER BY event_object_table, trigger_name;
 
 \echo ''
-\echo 'Esperado: 8+ triggers'
+\echo 'Esperado: 6+ triggers'
 \echo '  - trg_actualizar_cantidad_disponible (balances)'
-\echo '  - trg_actualizar_updated_at_* (7 tablas)'
+\echo '  - trg_actualizar_updated_at_* (usuarios, solicitudes, roles, departamentos, anos_laborales)'
 \echo ''
 
 -- =====================================================
@@ -148,14 +147,14 @@ AND column_name IN (
     'codigo',
     'hora_salida',
     'hora_regreso',
-    'autorizada_ejecutiva_por',
-    'autorizada_ejecutiva_fecha',
-    'comentario_ejecutiva'
+    'aprobada_jefe_por',
+    'aprobada_rrhh_por',
+    'version'
 )
 ORDER BY column_name;
 
 \echo ''
-\echo 'Esperado: 6 campos CNI específicos'
+\echo 'Esperado: 6 campos activos (código CNI, permisos hora, flujo 2 niveles, locking)'
 \echo ''
 
 -- =====================================================
@@ -276,7 +275,7 @@ WHERE n.nspname = 'public';
 \echo '═══════════════════════════════════════════════════════════'
 \echo ''
 \echo 'Si todos los valores coinciden con lo esperado:'
-\echo '  ✅ Schema CNI 4.0 desplegado correctamente'
+\echo '  ✅ Schema CNI 5.0 desplegado correctamente'
 \echo '  ✅ Listo para desarrollo'
 \echo ''
 \echo 'Si hay diferencias:'

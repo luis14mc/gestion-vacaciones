@@ -47,7 +47,7 @@ interface RegistroAuditoria {
 }
 
 type TipoAccion = "todas" | "crear" | "actualizar" | "eliminar" | "login" | "logout";
-type TablaAfectada = "todas" | "usuarios" | "solicitudes" | "balances" | "departamentos" | "tipos_ausencia";
+type TablaAfectada = "todas" | "usuarios" | "solicitudes" | "balances" | "departamentos" | "configuracion";
 
 export default function AuditoriaClient({ session }: AuditoriaClientProps) {
   const router = useRouter();
@@ -313,7 +313,7 @@ export default function AuditoriaClient({ session }: AuditoriaClientProps) {
                     <SelectItem value="solicitudes">Solicitudes</SelectItem>
                     <SelectItem value="balances">Balances</SelectItem>
                     <SelectItem value="departamentos">Departamentos</SelectItem>
-                    <SelectItem value="tipos_ausencia">Tipos de Ausencia</SelectItem>
+                    <SelectItem value="configuracion">Configuración</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

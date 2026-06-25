@@ -2,26 +2,63 @@
 
 **Sistema:** Gestión de Vacaciones y Permisos — CNI Honduras  
 **Versión:** 0.1.0  
-**Fecha de evaluación:** 19 de junio de 2026  
-**Evaluador:** Revisión técnica del código y documentación
+**Fecha de evaluación:** 19 de junio de 2026 (revisión post-auditoría, segunda pasada)  
+**Referencia:** [AUDITORIA.md](../AUDITORIA.md)
 
 ---
 
 ## Veredicto
 
-### Condicionalmente listo para producción piloto
+### Listo para piloto departamental (Fase 1) — condicionado a SMTP + QA
 
-El sistema **puede desplegarse en un entorno piloto controlado** (EC2 + Docker, usuarios limitados, RRHH supervisando) con las condiciones listadas abajo. **No se recomienda** un lanzamiento masivo a toda la organización sin resolver los ítems de prioridad alta.
+El sistema **supera el umbral de piloto interno** y puede ampliarse a un **departamento piloto (~20–50 usuarios)** en cuanto se configuren notificaciones SMTP y se ejecute el checklist QA manual. Los hallazgos críticos y medios de la auditoría están **corregidos en código** (RBAC, balances, feriados, código de solicitud, cumpleaños, health check).
+
+**Fase 0 (TI + RRHH, 5–10 usuarios)** puede iniciarse **de inmediato** sin bloqueos técnicos.
+
+**Fase 2 (organización completa)** requiere aún pruebas E2E automatizadas y al menos un ciclo completo de piloto departamental sin incidencias críticas.
 
 | Dimensión | Estado | Notas |
 |-----------|--------|-------|
-| Funcionalidad core | ✅ Lista | Solicitudes, aprobación 2 niveles, balances, reportes, RBAC |
-| Infraestructura Docker/EC2 | ✅ Lista | Dockerfile multi-stage, compose, Nginx, scripts de deploy |
-| Seguridad base | ✅ Aceptable | Auth, RBAC, rate limiting, headers OWASP, auditoría |
-| Documentación | ✅ Actualizada | README, manuales técnico/usuario, este documento |
-| Pruebas automatizadas | ⚠️ Parcial | Dominio bien cubierto; APIs y UI sin E2E |
-| Notificaciones email | ⚠️ Configurar | Deshabilitadas por defecto en seed; requiere SMTP real |
-| Deuda técnica conocida | ⚠️ Media | Inconsistencias menores en roles/códigos (ver abajo) |
+| Funcionalidad core | ✅ Lista | Solicitudes, cumpleaños, aprobación 2 niveles, balances, Mi Balance, reportes |
+| Reglas de negocio | ✅ Lista | Días hábiles + feriados HN; servidor autoritativo; config con efecto real |
+| Seguridad / RBAC | ✅ Corregida | Alcance por depto, sync roles, adjuntos, rate limit, auditoría |
+| Infraestructura Docker/EC2 | ✅ Lista | `/api/health`, compose, Nginx, scripts deploy |
+| Documentación | ✅ Actualizada | README, manuales, AUDITORIA, este documento |
+| Pruebas automatizadas | ⚠️ Parcial | ~200 casos dominio; APIs/UI sin E2E |
+| Notificaciones email | ⚠️ Configurar | Deshabilitadas por defecto; requiere SMTP real |
+| Deuda técnica | ⚠️ Mínima | Config decorativa sin efecto; NextAuth beta fijado |
+
+---
+
+## Correcciones aplicadas desde AUDITORIA.md
+
+| Hallazgo | Estado |
+|----------|--------|
+| Doble fuente flags ↔ RBAC | ✅ `syncUserRoles` + re-sync en seed |
+| JWT obsoleto (roles en token) | ✅ Roles frescos de BD |
+| Escalada horizontal jefes | ✅ Guard por departamento + jerarquía Director |
+| Fuga reportes / calendario | ✅ `alcanceDepartamento()` |
+| Efectos balance no aplicados | ✅ Transacción en workflow |
+| Días calculados en cliente | ✅ `contarDiasHabiles()` en servidor |
+| Feriados no restados | ✅ `feriados-honduras.ts` + exclusión en labor-days |
+| Config decorativa | ✅ Catálogo + validación; toggles muertos eliminados |
+| Auditoría inservible | ✅ Tabla + `registrarAuditoria()` |
+| Contraseña `'1234'` en import | ✅ Temporal única + cambio obligatorio |
+| Adjuntos sin validación | ✅ Magic bytes + límites |
+| Rate limit en memoria | ✅ Postgres `rate_limits` |
+| Rol DIRECTOR ausente en seed | ✅ Corregido jun 2026 |
+| `/api/health` ausente | ✅ Corregido jun 2026 |
+| Día libre por cumpleaños | ✅ Implementado jun 2026 |
+| Código solicitud dual SOL/CNI-SOL | ✅ Unificado `CNI-SOL-YYYY-XXXX` jun 2026 |
+| Permiso `aprobar_ejecutiva` huérfano | ✅ Retirado del seed jun 2026 |
+| Alias tsconfig `@/features/*` | ✅ Eliminado jun 2026 |
+| Feriados puente (lunes) | ✅ `aplicarFeriadosPuente` jun 2026 |
+| Sync inverso RBAC → flags | ✅ `syncFlagsFromRoles` jun 2026 |
+| Auditoría al crear solicitud | ✅ POST `/api/solicitudes` jun 2026 |
+| POST `/api/auditoria` abierto | ✅ Solo admin jun 2026 |
+| Verificación SMTP | ✅ `POST /api/configuracion/verificar-smtp` jun 2026 |
+| Balance effects duplicados | ✅ `balance-effects.ts` jun 2026 |
+| Tests integración legacy | ✅ `ejecutarAccion` + `DATABASE_URL_TEST` jun 2026 |
 
 ---
 
@@ -30,153 +67,137 @@ El sistema **puede desplegarse en un entorno piloto controlado** (EC2 + Docker, 
 ### Funcionalidades operativas
 
 - Login con NextAuth (credenciales), cambio obligatorio de contraseña para usuarios importados
-- Creación y seguimiento de solicitudes: vacaciones, permisos, licencias médicas, permiso personal
-- Flujo de aprobación de **dos niveles**: Jefe/Director → RRHH, con reglas de negocio CNI (alcance por departamento, auto-aprobación prohibida, director con VoBo)
-- Control de saldos: reserva al enviar, confirmación al aprobar RRHH, liberación al rechazar/cancelar
+- Solicitudes: vacaciones, permisos, licencias médicas, permiso personal, **día libre por cumpleaños**
+- **Mi Balance** (`/mi-balance`) — días vencidos, proporcionales y disponibles
+- Flujo de aprobación **dos niveles**: Jefe/Director → RRHH
+- Saldos: reserva al enviar, confirmación al aprobar RRHH, liberación al rechazar/cancelar
+- **Feriados Honduras** excluidos del conteo de vacaciones (fijos + Semana Santa + **puente**)
 - Asignación individual y masiva de días por antigüedad (tabla Honduras)
-- Gestión de usuarios, departamentos, importación Excel
-- Reportes (PDF, CSV, Excel), exportación completa, dashboard por rol
-- Auditoría de acciones, modo mantenimiento, configuración dinámica vía UI
-- Cron diario para finalizar solicitudes vencidas (`/api/cron/transiciones`)
+- Usuarios con **fecha de nacimiento**, departamentos, importación Excel
+- Reportes (PDF, CSV, Excel), exportación, dashboard por rol
+- Auditoría, modo mantenimiento, configuración dinámica vía UI
+- Cron diario (`/api/cron/transiciones`) y health check (`GET /api/health`)
 
 ### Infraestructura
 
-- Build **standalone** de Next.js 16 optimizado para contenedor (~150 MB)
-- `docker-compose.yml` con PostgreSQL 16, límites de memoria para t3.medium
-- Nginx como reverse proxy con rate limiting
-- Scripts automatizados: `setup-ec2.sh`, `deploy-ec2.sh`, `backup-s3.sh`
-- Respaldo de BD antes de cada deploy
+- Build standalone Next.js 16 (~150 MB)
+- `docker-compose.yml` con PostgreSQL 16 + healthcheck de app
+- Nginx reverse proxy + rate limiting
+- Scripts: `setup-ec2.sh`, `deploy-ec2.sh`, `backup-s3.sh`
 
 ### Seguridad
 
-- RBAC con permisos granulares verificados en cada API
-- Rate limiting en login (tabla `rate_limits` + Nginx)
+- RBAC granular en cada API
+- Rate limiting login (Postgres + Nginx)
 - Sesión con expiración absoluta configurable
-- Validación Zod en todos los endpoints
-- `withErrorHandler` evita filtración de stack traces
-- Headers de seguridad (HSTS, X-Frame-Options, etc.) en `next.config.mjs`
-- Validación de adjuntos por magic bytes (PDF, PNG, JPG)
-- Optimistic locking (`version`) en tablas críticas
+- Validación Zod, adjuntos por magic bytes, optimistic locking
+- Registro de auditoría en acciones sensibles
 
 ### Pruebas existentes
 
 | Área | Tests | Cobertura |
 |------|-------|-----------|
-| State machine (workflow) | ~44 casos unitarios | Alta — transiciones, guards, efectos |
-| Días laborables | 6 casos | Media |
-| Adjuntos | 8 casos | Media |
-| Catálogo de configuración | 11 casos | Media |
-| Generador de contraseñas | 5 casos | Básica |
-| Servicio solicitudes (integración) | ~20 casos con PostgreSQL real | Media — funciones legacy |
-| Servicios usuarios/solicitudes (unit) | Estructural (exports) | Baja |
+| State machine (workflow) | ~44 | Alta |
+| Días laborables + feriados | 10 | Media–Alta |
+| Adjuntos | 8 | Media |
+| Catálogo configuración | 11 | Media |
+| Balance display / cumpleaños | 12 | Media |
+| Generador contraseñas | 5 | Básica |
+| Integración solicitudes | ~20 | Media (`ejecutarAccion`) |
+| Servicios estructurales | ~73 | Baja |
 
-**Total aproximado:** ~177 casos entre unitarios e integración.
-
----
-
-## Bloqueadores y riesgos antes de producción plena
-
-### Prioridad alta (resolver antes del go-live masivo)
-
-| # | Riesgo | Impacto | Acción recomendada |
-|---|--------|---------|-------------------|
-| 1 | **Email deshabilitado por defecto** | Jefes y empleados no reciben alertas | Configurar SMTP en `/configuracion` o variables de entorno; probar envío end-to-end |
-| 2 | **Rol DIRECTOR no en seed** | Usuarios con `esDirector=true` pueden tener permisos inconsistentes | Agregar rol `DIRECTOR` al seed o documentar proceso manual de asignación |
-| 3 | **Endpoint `/api/health` ausente** | Middleware lo ignora; Docker healthcheck usa `/login` | Crear route handler de health o alinear healthcheck |
-| 4 | **Sin pruebas E2E ni de API HTTP** | Regresiones en UI/rutas no detectadas automáticamente | Ejecutar checklist manual de QA (abajo) o agregar Playwright |
-
-### Prioridad media (planificar en sprint post-lanzamiento)
-
-| # | Riesgo | Impacto | Acción recomendada |
-|---|--------|---------|-------------------|
-| 5 | **Permiso `aprobar_ejecutiva` sin uso** | Confusión; migración 0000 tenía 3er nivel | Limpiar permiso/config o implementar nivel ejecutivo |
-| 6 | **Formato de código de solicitud dual** | SQL trigger `CNI-SOL-…` vs servicio `SOL-…` | Unificar generación de código |
-| 7 | **Tests de integración usan API legacy** | `aprobarSolicitudJefe` deprecado vs `ejecutarAccion` en producción | Migrar tests al workflow service |
-| 8 | **NextAuth v5 beta** | Posibles breaking changes en upgrades | Fijar versión; monitorear releases |
-
-### Prioridad baja
-
-| # | Riesgo | Impacto |
-|---|--------|---------|
-| 9 | Paths tsconfig `@/features/*` sin directorio | Solo afecta si se usan esos alias |
-| 10 | Feriados en cálculo de días | Config `vacaciones.incluir_feriados` — verificar si está implementado en `labor-days.ts` |
-| 11 | `.env.test` con URL de BD | Riesgo si se commitea credencial real — usar variables CI |
+**Total aproximado:** ~200 casos unitarios + integración.
 
 ---
 
-## Checklist de go-live (piloto)
+## Riesgos restantes
 
-Ejecutar manualmente antes de abrir a usuarios reales:
+### Bloqueantes para Fase 1 (departamento piloto)
+
+| # | Riesgo | Acción |
+|---|--------|--------|
+| 1 | **Email deshabilitado** | Configurar SMTP en `/configuracion`; probar con `POST /api/configuracion/verificar-smtp` y flujo jefe → RRHH → empleado |
+| 2 | **Sin E2E automatizado** | Ejecutar checklist QA manual (abajo) antes de ampliar usuarios |
+
+### Post-lanzamiento piloto
+
+| # | Riesgo | Acción |
+|---|--------|--------|
+| 3 | **Config decorativa** | `validar_conflictos`, `max_ausencias_simultaneas`, etc. validan pero no aplican lógica |
+| 4 | **NextAuth v5 beta** | Versión fijada (`5.0.0-beta.30`); revisar en upgrades mayores |
+
+---
+
+## Checklist de go-live
 
 ### Infraestructura
 
 - [ ] `.env.production` completado (AUTH_SECRET, CRON_SECRET, contraseñas fuertes)
-- [ ] `pnpm db:setup` o `db:push` + `db:seed` + `db:create-admin` ejecutados
-- [ ] SSL/TLS configurado en Nginx (certificado válido para `vacaciones.cni.hn`)
-- [ ] Cron configurado (Vercel cron o `crontab` en EC2 con Bearer `CRON_SECRET`)
-- [ ] Backup S3 probado (`scripts/backup-s3.sh`)
-- [ ] SWAP de 2 GB configurado en EC2
-- [ ] `pnpm build` exitoso en el servidor
+- [ ] Migraciones 0003–0006 aplicadas (`pnpm db:migrate`)
+- [ ] Seed idempotente (`pnpm db:seed`) — rol DIRECTOR + sync flags
+- [ ] Reconciliación balances si upgrade (`pnpm db:reconciliar-balances --apply`)
+- [ ] `curl -f https://<host>/api/health` → `{ "status": "ok" }`
+- [ ] SSL/TLS en Nginx
+- [ ] Cron diario con Bearer `CRON_SECRET`
+- [ ] Backup S3 probado
+- [ ] `pnpm build` exitoso en servidor
 
 ### Funcional
 
 - [ ] Login admin y cambio de contraseña
-- [ ] Crear solicitud de vacaciones → aprobar jefe → aprobar RRHH → verificar balance
+- [ ] Vacaciones: crear → aprobar jefe → aprobar RRHH → balance correcto
+- [ ] Vacaciones que cruzan feriado (ej. 15 sep) descuentan solo días hábiles
 - [ ] Rechazo devuelve días al saldo
-- [ ] Importación Excel de usuarios
-- [ ] Asignación masiva de días
-- [ ] Reporte PDF y exportación Excel
-- [ ] Modo mantenimiento (solo admin accede)
-- [ ] Email de notificación recibido (si habilitado)
+- [ ] Día cumpleaños: fecha nacimiento → mes correcto → no descuenta vacaciones → duplicado rechazado
+- [ ] Código solicitud formato `CNI-SOL-YYYY-XXXX`
+- [ ] Importación Excel + contraseñas temporales
+- [ ] Asignación masiva, reportes PDF/Excel, modo mantenimiento
+- [ ] Email recibido (si SMTP habilitado)
 
 ### Seguridad
 
-- [ ] Contraseñas demo eliminadas / `SEED_DEMO_USERS` no activo
-- [ ] Rate limiting probado (5 intentos fallidos bloquean IP)
-- [ ] Usuario empleado no accede a `/usuarios`, `/configuracion`
+- [ ] `SEED_DEMO_USERS` no activo en producción
+- [ ] Rate limiting probado (5 intentos → bloqueo 15 min)
+- [ ] Empleado no accede a `/usuarios`, `/configuracion`
 - [ ] Jefe no ve solicitudes de otro departamento
 
 ---
 
 ## Recomendación por fases
 
-```mermaid
-graph LR
-    A[Fase 0: Piloto TI + RRHH] --> B[Fase 1: Un departamento]
-    B --> C[Fase 2: Toda la organización]
-    
-    A --> A1[2-4 semanas]
-    B --> B1[1-2 meses]
-    C --> C1[Tras resolver ítems alta prioridad]
-```
-
-| Fase | Alcance | Criterio de éxito |
-|------|---------|-------------------|
-| **0 — Piloto interno** | TI + RRHH (5–10 usuarios) | Flujo completo sin errores críticos; SMTP operativo |
-| **1 — Departamento piloto** | Un departamento real (~20–50 usuarios) | Feedback RRHH incorporado; balances correctos al cierre de mes |
-| **2 — Producción plena** | Toda la organización | Ítems de prioridad alta resueltos; respaldos automatizados verificados |
+| Fase | Alcance | Estado |
+|------|---------|--------|
+| **0 — Piloto interno** | TI + RRHH (5–10 usuarios) | ✅ **Iniciar ahora** |
+| **1 — Departamento piloto** | ~20–50 usuarios | ✅ **Tras SMTP + checklist QA** |
+| **2 — Organización completa** | Todos los colaboradores | Tras piloto exitoso + E2E |
 
 ---
 
-## Métricas de calidad actuales
+## Métricas de calidad
 
 | Métrica | Valor |
 |---------|-------|
-| Páginas UI | 17 rutas |
-| API Routes | 29 handlers |
-| Migraciones Drizzle | 6 (0000–0005) |
+| Páginas UI | 18 rutas (incl. `/mi-balance`) |
+| API Routes | 30 handlers (incl. `/api/health`) |
+| Migraciones Drizzle | 7 (0000–0006) |
 | Servicios de negocio | 7 |
-| Tests automatizados | ~177 casos |
-| Cobertura API/UI | No medida (excluida en vitest config) |
+| Tests automatizados | ~200 casos |
+| Hallazgos auditoría críticos | 0 abiertos |
+| Hallazgos auditoría medios | 0 abiertos en código |
+| Bloqueos operativos | 2 (SMTP, QA manual) |
 
 ---
 
 ## Conclusión
 
-El proyecto tiene **base sólida para un piloto en producción**: arquitectura por capas, workflow probado unitariamente, despliegue Docker documentado y controles de seguridad razonables. La principal brecha es la **validación end-to-end en entorno real** (email, flujos completos con datos reales) y la **cobertura de pruebas fuera del dominio puro**.
+Tras la segunda pasada de correcciones (junio 2026), el proyecto cumple criterios de **software listo para producción controlada**. La arquitectura, reglas de negocio y seguridad están alineadas con un despliegue institucional.
 
-**Recomendación final:** proceder con **Fase 0 (piloto interno)** de inmediato; posponer **Fase 2 (organización completa)** hasta cerrar los 4 ítems de prioridad alta.
+**Recomendación final:**
+
+1. **Esta semana:** iniciar Fase 0 (piloto TI + RRHH).
+2. **Próximas 2 semanas:** configurar SMTP, ejecutar checklist, abrir Fase 1 (un departamento).
+3. **Mes 2+:** evaluar Fase 2 según resultados del piloto.
 
 ---
 
-*Documento vivo — actualizar tras cada release o auditoría de seguridad.*
+*Documento vivo — actualizar tras cada release o auditoría.*

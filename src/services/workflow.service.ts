@@ -9,6 +9,12 @@ import {
   obtenerAccionesDisponibles,
   transicionar,
 } from '@/lib/domain/state-machine';
+import {
+  confirmarBalanceVacaciones,
+  liberarBalancePendiente,
+  liberarBalanceUsada,
+  reservarBalanceVacaciones,
+} from '@/lib/domain/balance-effects';
 
 function solicitudConsumeBalance(solicitud: { tipo: string; duracionPermiso?: string | null }): boolean {
   return solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo');
@@ -272,41 +278,26 @@ async function aplicarEfectos(
   if (!solicitudConsumeBalance(solicitud)) return;
 
   const estadosConUsada = ['aprobada_rrhh', 'finalizada'];
-  const filtro = sql`usuario_id = ${solicitud.usuarioId} AND ano_laboral_id = ${solicitud.anoLaboralId} AND tipo_ausencia = 'vacaciones'`;
+  const params = {
+    usuarioId: solicitud.usuarioId,
+    anoLaboralId: solicitud.anoLaboralId,
+    dias: 0,
+  };
 
   for (const efecto of efectos) {
     const dias = Number(efecto.dias ?? 0);
     if (dias <= 0) continue;
+    params.dias = dias;
 
     if (efecto.tipo === 'RESERVAR_BALANCE') {
-      await tx.execute(sql`
-        UPDATE balances SET
-          cantidad_pendiente = cantidad_pendiente + ${dias},
-          cantidad_disponible = GREATEST(0, cantidad_disponible - ${dias}),
-          updated_at = NOW()
-        WHERE ${filtro}`);
+      await reservarBalanceVacaciones(tx, params);
     } else if (efecto.tipo === 'CONFIRMAR_BALANCE') {
-      await tx.execute(sql`
-        UPDATE balances SET
-          cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
-          cantidad_usada = cantidad_usada + ${dias},
-          updated_at = NOW()
-        WHERE ${filtro}`);
+      await confirmarBalanceVacaciones(tx, params);
     } else if (efecto.tipo === 'LIBERAR_BALANCE') {
       if (estadosConUsada.includes(estadoOrigen)) {
-        await tx.execute(sql`
-          UPDATE balances SET
-            cantidad_usada = GREATEST(0, cantidad_usada - ${dias}),
-            cantidad_disponible = cantidad_disponible + ${dias},
-            updated_at = NOW()
-          WHERE ${filtro}`);
+        await liberarBalanceUsada(tx, params);
       } else {
-        await tx.execute(sql`
-          UPDATE balances SET
-            cantidad_pendiente = GREATEST(0, cantidad_pendiente - ${dias}),
-            cantidad_disponible = cantidad_disponible + ${dias},
-            updated_at = NOW()
-          WHERE ${filtro}`);
+        await liberarBalancePendiente(tx, params);
       }
     }
   }
@@ -363,7 +354,10 @@ export async function procesarTransicionesAutomaticas(): Promise<{
             version: sol.version + 1,
             updatedAt: new Date().toISOString(),
           })
-          .where(eq(solicitudes.id, sol.id));
+          .where(and(
+            eq(solicitudes.id, sol.id),
+            eq(solicitudes.version, sol.version)
+          ));
 
         procesadas++;
       } catch {

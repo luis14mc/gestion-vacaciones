@@ -76,6 +76,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       telefono: usuarios.telefono,
       direccion: usuarios.direccion,
       fechaIngreso: usuarios.fechaIngreso,
+      fechaNacimiento: usuarios.fechaNacimiento,
       jefeSuperiorId: usuarios.jefeSuperiorId,
       createdAt: usuarios.createdAt,
       updatedAt: usuarios.updatedAt
@@ -232,6 +233,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     departamentoId: Number(validatedData.departamentoId),
     cargo: validatedData.cargo || undefined,
     fechaIngreso: validatedData.fechaIngreso ? new Date(validatedData.fechaIngreso).toISOString() : new Date().toISOString(),
+    fechaNacimiento: validatedData.fechaNacimiento?.slice(0, 10),
     esAdmin: validatedData.esAdmin,
     esRrhh: validatedData.esRrhh,
     esDirector: validatedData.esDirector,
@@ -314,6 +316,11 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (validatedData.departamentoId !== undefined) camposPermitidos.departamentoId = Number(validatedData.departamentoId);
   if (validatedData.activo !== undefined) camposPermitidos.activo = validatedData.activo;
   if (validatedData.fechaIngreso !== undefined) camposPermitidos.fechaIngreso = validatedData.fechaIngreso;
+  if (validatedData.fechaNacimiento !== undefined) {
+    camposPermitidos.fechaNacimiento = validatedData.fechaNacimiento
+      ? validatedData.fechaNacimiento.slice(0, 10)
+      : null;
+  }
   if (shouldUpdateJefeSuperior) {
     camposPermitidos.jefeSuperiorId = validatedData.jefeSuperiorId
       ? Number(validatedData.jefeSuperiorId)

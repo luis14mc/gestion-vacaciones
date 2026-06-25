@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const baseUrl = "https://vacaciones.cni.hn";
+const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vacaciones.cni.hn";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -23,6 +23,7 @@ export default function robots(): MetadataRoute.Robots {
           "/mi-perfil",
           "/solicitudes",
           "/aprobar-solicitudes",
+          "/cambiar-password",
         ],
       },
     ],

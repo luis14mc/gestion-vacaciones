@@ -413,6 +413,37 @@ export async function syncUserRolesDesdeBD(usuarioId: number, tx: any = db): Pro
 }
 
 /**
+ * Sincroniza flags booleanos de `usuarios` a partir de roles RBAC asignados.
+ * Complemento inverso de syncUserRoles: cuando se asigna/quita un rol vía
+ * /api/usuarios/roles, los flags deben reflejar la misma verdad.
+ */
+export async function syncFlagsFromRoles(usuarioId: number, tx: any = db): Promise<void> {
+  const actuales = await tx.query.usuariosRoles.findMany({
+    where: eq(usuariosRoles.usuarioId, usuarioId),
+    with: { rol: true },
+  });
+
+  const codigos = new Set(actuales.map((a: { rol: { codigo: string } }) => a.rol.codigo));
+  const flags: FlagsRol = {
+    esAdmin: codigos.has('ADMIN'),
+    esRrhh: codigos.has('RRHH'),
+    esDirector: codigos.has('DIRECTOR'),
+    esJefe: codigos.has('JEFE'),
+  };
+
+  await tx
+    .update(usuarios)
+    .set({
+      esAdmin: flags.esAdmin ?? false,
+      esRrhh: flags.esRrhh ?? false,
+      esDirector: flags.esDirector ?? false,
+      esJefe: flags.esJefe ?? false,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(usuarios.id, usuarioId));
+}
+
+/**
  * Verificar si usuario es administrador
  */
 export async function esAdministrador(usuarioId: number): Promise<boolean> {

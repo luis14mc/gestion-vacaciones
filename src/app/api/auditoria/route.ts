@@ -109,6 +109,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
+    if (!session.esAdmin) {
+      return NextResponse.json(
+        { success: false, error: 'Solo administradores pueden registrar eventos manualmente' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { accion, tablaAfectada, registroId, detalles } = body;
 

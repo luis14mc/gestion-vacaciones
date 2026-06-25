@@ -11,6 +11,8 @@ import { db } from '@/lib/db';
 import { usuarios } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { obtenerRolesYPermisos } from '@/services/rbac.service';
+import { obtenerConfig, asNumber } from '@/lib/config/service';
+import { passwordExpirada } from '@/lib/config/password-expiry';
 
 export async function getSession(): Promise<SessionUser | null> {
   try {
@@ -66,7 +68,15 @@ export async function getSession(): Promise<SessionUser | null> {
         esJefeDb = row.esJefe;
         departamentoIdDb = row.departamentoId;
         cargoDb = row.cargo;
-        debeCambiarPasswordDb = (row.metadata as any)?.debeCambiarPassword === true;
+        const metadata = (row.metadata as Record<string, unknown>) || {};
+        debeCambiarPasswordDb = metadata.debeCambiarPassword === true;
+        if (!debeCambiarPasswordDb) {
+          const diasForzar = asNumber(
+            await obtenerConfig('seguridad.forzar_cambio_password_dias'),
+            0
+          );
+          debeCambiarPasswordDb = passwordExpirada(metadata, diasForzar);
+        }
       }
     } catch (dbErr) {
       console.error('Error leyendo flags de BD, usando token:', dbErr);

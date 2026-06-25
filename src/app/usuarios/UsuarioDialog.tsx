@@ -40,6 +40,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
             departamentoId: "",
             cargo: "",
             fechaIngreso: "",
+            fechaNacimiento: "",
             esAdmin: false,
             esRrhh: false,
             esDirector: false,
@@ -58,6 +59,8 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
             if (usuario) {
                 const fechaRaw = usuario.fechaIngreso || "";
                 const fechaFormato = fechaRaw ? fechaRaw.substring(0, 10) : "";
+                const nacimientoRaw = usuario.fechaNacimiento || "";
+                const nacimientoFormato = nacimientoRaw ? nacimientoRaw.substring(0, 10) : "";
                 form.reset({
                     email: usuario.email,
                     password: "",
@@ -66,6 +69,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                     departamentoId: usuario.departamentoId?.toString() || "",
                     cargo: usuario.cargo || "",
                     fechaIngreso: fechaFormato,
+                    fechaNacimiento: nacimientoFormato,
                     esAdmin: usuario.esAdmin,
                     esRrhh: usuario.esRrhh,
                     esDirector: usuario.esDirector || false,
@@ -85,6 +89,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                     departamentoId: "",
                     cargo: "",
                     fechaIngreso: "",
+                    fechaNacimiento: "",
                     esAdmin: false,
                     esRrhh: false,
                     esDirector: false,
@@ -159,6 +164,7 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
             if (values.cargo) body.cargo = values.cargo;
             if (values.fechaIngreso) body.fechaIngreso = new Date(values.fechaIngreso).toISOString();
+            if (values.fechaNacimiento) body.fechaNacimiento = values.fechaNacimiento.slice(0, 10);
             if (values.password) body.password = values.password;
             if (isEditing) body.id = usuario.id;
 
@@ -373,6 +379,18 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                     <FormItem>
                                         <FormLabel>Fecha de Ingreso</FormLabel>
                                         <FormControl><Input type="date" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="fechaNacimiento"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Fecha de Nacimiento</FormLabel>
+                                        <FormControl><Input type="date" {...field} value={field.value || ""} /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}

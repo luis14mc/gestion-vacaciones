@@ -53,6 +53,7 @@ export const tipoSolicitudEnum = pgEnum('tipo_solicitud', [
   'permiso_personal',      // Personal sin goce
   'licencia_paternidad',   // Paternidad/maternidad
   'compensacion',          // Horas extras compensadas
+  'dia_cumpleanos',        // 1 día libre en el mes de cumpleaños
 ]);
 
 export const duracionPermisoEnum = pgEnum('duracion_permiso', [
@@ -113,7 +114,7 @@ export const solicitudes = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     
-    // Código único CNI-SOL-YYYY-XXXX (auto-generado por trigger/función)
+    // Código único CNI-SOL-YYYY-XXXX (generado en solicitudes.service.ts)
     codigo: varchar('codigo', { length: 50 }).notNull(),
     
     // Referencias

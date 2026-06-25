@@ -7,10 +7,12 @@ import PasswordChangeGate from "@/components/PasswordChangeGate";
 import { Toaster } from "sileo";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://vacaciones.cni.hn"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://vacaciones.cni.hn"
+  ),
   applicationName: "Vacaciones CNI",
   title: {
-    default: "Vacaciones CNI Honduras",
+    default: "Vacaciones CNI Honduras | Gestion de Vacaciones",
     template: "%s | Vacaciones CNI",
   },
   description:
@@ -28,13 +30,16 @@ export const metadata: Metadata = {
   publisher: "CNI Honduras",
   alternates: {
     canonical: "/login",
+    languages: {
+      "es-HN": "/login",
+    },
   },
   openGraph: {
     type: "website",
     locale: "es_HN",
     url: "/login",
     siteName: "Vacaciones CNI",
-    title: "Vacaciones CNI Honduras",
+    title: "Vacaciones CNI Honduras | Gestion de Vacaciones",
     description:
       "Portal interno para gestionar vacaciones, permisos y licencias de colaboradores de CNI Honduras.",
     images: [
@@ -48,7 +53,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Vacaciones CNI Honduras",
+    title: "Vacaciones CNI Honduras | Gestion de Vacaciones",
     description:
       "Portal interno para gestionar vacaciones, permisos y licencias de CNI Honduras.",
     images: ["/assets/logo/logo.png"],
@@ -63,12 +68,15 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.webmanifest",
   robots: {
-    index: false,
-    follow: false,
+    index: true,
+    follow: true,
+    "max-image-preview": "large",
+    "max-snippet": 160,
     googleBot: {
-      index: false,
-      follow: false,
-      noimageindex: true,
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": 160,
     },
   },
 };
@@ -81,6 +89,12 @@ export default function RootLayout({
   return (
     <html lang="es-HN">
       <body className="antialiased" suppressHydrationWarning>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground"
+        >
+          Saltar al contenido principal
+        </a>
         <QueryProvider>
           <AuthProvider session={null}>
             <MaintenanceGate>

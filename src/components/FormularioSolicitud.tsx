@@ -14,7 +14,9 @@ import { useLaborDays } from '@/hooks/useLaborDays';
 
 import { VacacionesSection } from './solicitudes/VacacionesSection';
 import { PermisoHorasSection } from './solicitudes/PermisoHorasSection';
+import { CumpleanosSection } from './solicitudes/CumpleanosSection';
 import { BalanceViewer } from './solicitudes/BalanceViewer';
+import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,6 +36,7 @@ interface FormularioSolicitudProps {
 export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onSuccess, onCancel }: FormularioSolicitudProps) {
   const [submitting, setSubmitting] = useState(false);
   const [archivoBase64, setArchivoBase64] = useState<string | null>(null);
+  const [elegibilidadCumpleanos, setElegibilidadCumpleanos] = useState<ElegibilidadCumpleanos | null>(null);
 
   // Initializing React Query Hooks
   const { data: tiposAusencia = [], isLoading: loadingTipos } = useTiposAusencia();
@@ -66,10 +69,11 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   const esPermiso = tipoSeleccionado?.permiteHoras === true;
   const esVacaciones = tipoSeleccionado?.tipo === 'vacaciones';
   const esLicenciaMedica = tipoSeleccionado?.tipo === 'licencia_medica';
-  const necesitaFechas = !!tipoSeleccionado && !esPermiso;
-  const requiereAdjunto = esDirector || esLicenciaMedica;
+  const esCumpleanos = tipoSeleccionado?.tipo === 'dia_cumpleanos';
+  const necesitaFechas = !!tipoSeleccionado && !esPermiso && !esCumpleanos;
+  const requiereAdjunto = (esDirector && !esCumpleanos) || esLicenciaMedica;
 
-  const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica'];
+  const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica', 'dia_cumpleanos'];
   const tiposFiltrados = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
 
   // Balance & Days Calculators
@@ -93,14 +97,34 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   useEffect(() => {
     if (tipoSeleccionado) {
       form.setValue('unidad', tipoSeleccionado.permiteHoras ? 'horas' : 'dias');
-      
+
       const esVacacionesTemp = tipoSeleccionado.tipo === 'vacaciones';
       const esPermisoTemp = tipoSeleccionado.permiteHoras;
-      form.setValue('requiereMotivo', esPermisoTemp || !esVacacionesTemp);
+      const esCumpleanosTemp = tipoSeleccionado.tipo === 'dia_cumpleanos';
+      form.setValue('requiereMotivo', (esPermisoTemp || (!esVacacionesTemp && !esCumpleanosTemp)));
     }
   }, [tipoSeleccionado, form]);
 
+  useEffect(() => {
+    fetch('/api/solicitudes/cumpleanos-elegibilidad', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) {
+          setElegibilidadCumpleanos(json.data);
+        }
+      })
+      .catch(() => setElegibilidadCumpleanos(null));
+  }, []);
+
   const onSubmit = async (data: SolicitudFormData) => {
+    if (esCumpleanos && !elegibilidadCumpleanos?.puedeSolicitar) {
+      sileo.error({
+        title: 'No disponible',
+        description: elegibilidadCumpleanos?.mensaje || 'No puede solicitar el día de cumpleaños en este momento.',
+      });
+      return;
+    }
+
     if (esVacaciones && balanceActual && diasRestantes < 0) {
       sileo.error({ title: 'Error', description: 'No tienes suficientes días disponibles.' });
       return;
@@ -118,7 +142,11 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
     try {
       const fechaInicioVal = data.fechaInicio || undefined;
-      const fechaFinVal = esPermiso ? fechaInicioVal : (data.fechaFin || undefined);
+      const fechaFinVal = esPermiso
+        ? fechaInicioVal
+        : esCumpleanos
+          ? fechaInicioVal
+          : (data.fechaFin || undefined);
 
       const duracionPermiso = (data.tipoPermiso as '1-2h' | '2-4h' | 'dia_completo') || undefined;
 
@@ -127,7 +155,11 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         tipo: tipoSeleccionado?.tipo || data.tipoAusenciaId,
         fechaInicio: fechaInicioVal,
         fechaFin: fechaFinVal,
-        diasSolicitados: esPermiso ? (duracionPermiso === 'dia_completo' ? 1 : 0) : diasLaborables,
+        diasSolicitados: esCumpleanos
+          ? 1
+          : esPermiso
+            ? (duracionPermiso === 'dia_completo' ? 1 : 0)
+            : diasLaborables,
         horaSalida: data.horaSalida || undefined,
         horaRegreso: data.horaRegreso || undefined,
         motivo: data.motivo || undefined,
@@ -214,6 +246,9 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
             />
 
             {esPermiso && <PermisoHorasSection form={form as any} />}
+            {esCumpleanos && (
+              <CumpleanosSection form={form as any} elegibilidad={elegibilidadCumpleanos} />
+            )}
             {necesitaFechas && (
               <VacacionesSection
                 form={form as any}
@@ -236,7 +271,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="font-semibold">
-                      Motivo / Justificación {esPermiso || !esVacaciones ? '*' : '(Opcional)'}
+                      Motivo / Justificación {esPermiso || (!esVacaciones && !esCumpleanos) ? '*' : '(Opcional)'}
                     </FormLabel>
                     <FormControl>
                       <Textarea
@@ -314,7 +349,11 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
               </Button>
               <Button
                 type="submit"
-                disabled={submitting || (esVacaciones && balanceActual && diasRestantes < 0)}
+                disabled={
+                  submitting ||
+                  (esVacaciones && balanceActual && diasRestantes < 0) ||
+                  (esCumpleanos && !elegibilidadCumpleanos?.puedeSolicitar)
+                }
                 className="w-full sm:w-auto"
               >
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

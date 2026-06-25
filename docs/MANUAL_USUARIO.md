@@ -1,7 +1,7 @@
 # Manual de Usuario — Sistema de Gestión de Vacaciones CNI
 
 **Organización:** Consejo Nacional de Inversiones (CNI), Honduras  
-**Versión:** 1.0 · **Junio 2026**
+**Versión:** 1.1 · **Junio 2026**
 
 Este manual describe cómo usar la plataforma web de vacaciones y permisos según su rol en la organización.
 
@@ -33,7 +33,7 @@ Use el menú de usuario (esquina superior) y seleccione **Cerrar sesión**.
 
 | Rol | Qué puede hacer |
 |-----|-----------------|
-| **Empleado** | Crear y consultar sus solicitudes, ver su balance, editar su perfil |
+| **Empleado** | Crear y consultar sus solicitudes, ver su balance detallado, editar su perfil |
 | **Jefe** | Todo lo anterior + aprobar/rechazar solicitudes de su equipo, ver reportes de departamento |
 | **Director** | Como jefe; puede enviar solicitudes propias con VoBo del Ministro (salta aprobación de jefe) |
 | **RRHH** | Gestión de usuarios, departamentos, asignación de días, aprobación final, reportes globales |
@@ -47,8 +47,13 @@ El menú lateral muestra solo las opciones disponibles para su rol.
 
 ### Ver mi balance de días
 
-1. Entre al **Dashboard** (`/dashboard`).
-2. Revise la tarjeta **Mi balance**: días disponibles, usados y pendientes por tipo de ausencia.
+1. Entre al **Dashboard** (`/dashboard`) o a **Mi Balance** (`/mi-balance`) en el menú Personal.
+2. Revise la tabla con:
+   - **Días vencidos** — saldo inicial del año laboral
+   - **Días proporcionales** — días acumulados por antigüedad en el periodo
+   - **Días disponibles** — saldo que puede usar hoy (inicial + proporcionales − usados − pendientes)
+
+> El día libre por cumpleaños **no descuenta** de estos días de vacaciones.
 
 ### Crear una solicitud
 
@@ -58,12 +63,38 @@ El menú lateral muestra solo las opciones disponibles para su rol.
    - **Permiso de salida** — 1–2 h, 2–4 h o día completo
    - **Licencia médica** — adjunte constancia médica (PDF o imagen)
    - **Permiso personal** — otros permisos autorizados
+   - **Día libre por cumpleaños** — 1 día al año, solo en el mes en que cumple años (ver sección siguiente)
 3. Indique **fechas de inicio y fin** (o fecha y duración para permisos por horas).
 4. El sistema calcula automáticamente los **días hábiles** (excluye fines de semana).
 5. Agregue **motivo** y, si aplica, **adjuntos**.
 6. Pulse **Enviar solicitud**.
 
-> Al enviar, los días se **reservan** de su saldo hasta que RRHH apruebe o alguien rechace/cancele.
+> Al enviar vacaciones o permiso de día completo, los días se **reservan** de su saldo hasta que RRHH apruebe o alguien rechace/cancele.
+
+### Día libre por cumpleaños
+
+Beneficio de **1 día libre al año**, distinto del saldo de vacaciones.
+
+| Requisito | Detalle |
+|-----------|---------|
+| Fecha de nacimiento | Debe estar registrada en el sistema (RRHH la carga en Usuarios) |
+| Cuándo solicitarlo | Solo durante el **mes de su cumpleaños** |
+| Cuántas veces | **Una vez por año calendario** |
+| Descuento de vacaciones | **No** — no afecta su balance de días de vacaciones |
+| Adjuntos | No requiere VoBo del Ministro aunque usted sea director |
+
+**Pasos:**
+
+1. En **Nueva solicitud**, elija **Día libre por cumpleaños**.
+2. Lea el mensaje de elegibilidad (indica si puede solicitarlo o el motivo por el que no).
+3. Seleccione la **fecha del día libre** (debe caer en su mes de cumpleaños).
+4. Envíe la solicitud; sigue el flujo normal de aprobación (jefe → RRHH).
+
+**Motivos por los que no puede solicitarlo:**
+
+- No tiene fecha de nacimiento registrada
+- No estamos en su mes de cumpleaños
+- Ya utilizó su día libre por cumpleaños este año (solicitud pendiente, aprobada o finalizada)
 
 ### Consultar el estado de mis solicitudes
 
@@ -120,7 +151,8 @@ Si usted es **Director** y solicita vacaciones propias:
 
 1. **Usuarios** (`/usuarios`) — crear, editar o desactivar empleados.
 2. Asigne **rol** (empleado, jefe, RRHH) y **departamento**.
-3. **Importar Excel**: descargue la plantilla, llene los datos y suba el archivo. Los usuarios importados reciben contraseña temporal y deben cambiarla al primer login.
+3. Registre la **fecha de nacimiento** de cada colaborador; es obligatoria para habilitar el **día libre por cumpleaños**.
+4. **Importar Excel**: descargue la plantilla, llene los datos y suba el archivo. Los usuarios importados reciben contraseña temporal y deben cambiarla al primer login.
 
 ### Departamentos
 
@@ -205,6 +237,7 @@ Empleado crea solicitud
 | Permiso día completo | Un día hábil |
 | Licencia médica | Constancia médica obligatoria (PDF/JPG/PNG) |
 | Permiso personal | Según política interna CNI |
+| Día libre por cumpleaños | Fecha de nacimiento registrada; solo en el mes de cumpleaños; 1 vez al año; no descuenta vacaciones |
 
 **Adjuntos permitidos:** PDF, PNG, JPG — máximo según configuración del sistema.
 
@@ -213,7 +246,10 @@ Empleado crea solicitud
 ## 9. Preguntas frecuentes
 
 **¿Por qué mis días disponibles bajaron al enviar una solicitud?**  
-Los días se reservan al enviar. Si RRHH rechaza o usted cancela, vuelven a estar disponibles.
+Los días de **vacaciones** (y permiso de salida de día completo) se reservan al enviar. Si RRHH rechaza o usted cancela, vuelven a estar disponibles. El **día libre por cumpleaños** no reserva ni descuenta días de vacaciones.
+
+**¿Por qué no puedo solicitar el día libre por cumpleaños?**  
+Verifique que RRHH tenga su fecha de nacimiento, que estemos en su mes de cumpleaños y que no haya usado ya ese beneficio este año.
 
 **¿Cuándo se descuentan definitivamente?**  
 Cuando RRHH aprueba la solicitud.
@@ -235,4 +271,4 @@ Para incidencias técnicas o acceso al sistema, contacte al área de Tecnología
 
 ---
 
-*Manual de usuario v1.0 — Sistema de Gestión de Vacaciones CNI Honduras*
+*Manual de usuario v1.1 — Sistema de Gestión de Vacaciones CNI Honduras*

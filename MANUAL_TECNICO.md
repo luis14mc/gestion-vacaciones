@@ -1,6 +1,6 @@
 # Manual Técnico — Sistema de Gestión de Vacaciones CNI Honduras
 
-**Versión:** 6.0  
+**Versión:** 6.1  
 **Organización:** Consejo Nacional de Inversiones (CNI) Honduras  
 **Stack:** Next.js 16 + React 19 + Drizzle ORM + PostgreSQL 16 + NextAuth.js v5  
 **Última actualización:** Junio 2026
@@ -147,7 +147,7 @@ src/
 ├── auth.ts                       # Configuración NextAuth v5
 └── middleware.ts                 # Protección de rutas + expiración de sesión
 
-drizzle/                          # Migraciones 0000–0005
+drizzle/                          # Migraciones 0000–0006
 scripts/                          # seed, deploy, backup, migrate
 tests/                            # unit + integration (Vitest)
 docs/                             # Manuales y estado de producción
@@ -178,7 +178,7 @@ erDiagram
 
 | Tabla | Descripción |
 |-------|-------------|
-| `usuarios` | Empleados con flags de rol y jerarquía (`jefe_superior_id`) |
+| `usuarios` | Empleados con flags de rol, jerarquía (`jefe_superior_id`) y `fecha_nacimiento` (date) |
 | `roles`, `permisos`, `usuarios_roles`, `roles_permisos` | RBAC |
 | `solicitudes` | Solicitudes con estado, aprobaciones jefe/RRHH, `version` |
 | `balances` | Saldo por usuario/año/tipo de ausencia |
@@ -204,6 +204,21 @@ Un trigger SQL (`drizzle/0005_balance_trigger.sql`) recalcula `cantidad_disponib
 
 > **Nota:** La migración inicial `0000` incluía estados de aprobación ejecutiva que ya no se usan en el código TypeScript actual.
 
+### Enum `tipo_solicitud` (runtime)
+
+`vacaciones` · `permiso_salida` · `licencia_medica` · `permiso_personal` · `dia_cumpleanos`
+
+> Valor `dia_cumpleanos` agregado en migración `0006_fecha_nacimiento_dia_cumpleanos.sql`.
+
+### Migración 0006 — cumpleaños
+
+```sql
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_nacimiento date;
+ALTER TYPE tipo_solicitud ADD VALUE IF NOT EXISTS 'dia_cumpleanos';
+```
+
+Aplicar con `pnpm db:migrate` en entornos que usen el runner de migraciones.
+
 ---
 
 ## 4. Módulos del Sistema
@@ -211,7 +226,8 @@ Un trigger SQL (`drizzle/0005_balance_trigger.sql`) recalcula `cantidad_disponib
 | Módulo | Ruta UI | APIs principales |
 |--------|---------|------------------|
 | Dashboard | `/dashboard` | `/api/dashboard/*` |
-| Solicitudes | `/solicitudes`, `/solicitudes/nueva` | `/api/solicitudes` |
+| Mi balance | `/mi-balance` | `/api/dashboard/mi-balance` |
+| Solicitudes | `/solicitudes`, `/solicitudes/nueva` | `/api/solicitudes`, `/api/solicitudes/cumpleanos-elegibilidad` |
 | Aprobaciones | `/aprobar-solicitudes` | `/api/solicitudes/[id]/accion` |
 | Mi equipo | `/mi-equipo` | Dashboard jefe |
 | Reportes dept. | `/reportes-departamento` | `/api/reportes/departamento` |
@@ -269,6 +285,7 @@ stateDiagram-v2
 | Alcance departamento | Jefe solo aprueba solicitudes de su departamento |
 | Jefe solicitante | Si el solicitante es jefe, solo un director puede aprobar |
 | Director + VoBo | Director con adjunto VoBo salta `pendiente_jefe` → `aprobada_jefe` |
+| Día cumpleaños | Tipo `dia_cumpleanos`: no descuenta balance; requiere `fecha_nacimiento`; solo en mes de cumpleaños; máx. 1 solicitud activa por año calendario |
 | Admin override | `esAdmin` puede ejecutar cualquier acción |
 | Optimistic locking | Verifica `version` en cada transición |
 
@@ -276,9 +293,23 @@ stateDiagram-v2
 
 | Evento | Efecto |
 |--------|--------|
-| `enviar` | `pendiente += días`, `disponible -= días` |
+| `enviar` | `pendiente += días`, `disponible -= días` *(solo vacaciones y permiso salida día completo)* |
 | `aprobar_rrhh` | `pendiente -= días`, `usada += días` |
 | `rechazar_*` / `cancelar` | `pendiente -= días`, `disponible += días` |
+
+> **`dia_cumpleanos`:** `solicitudConsumeBalance()` en `workflow.service.ts` retorna `false`; no hay reserva ni movimiento en `balances`.
+
+### Día libre por cumpleaños (dominio)
+
+Módulo `src/lib/domain/cumpleanos.ts`:
+
+| Función | Propósito |
+|---------|-----------|
+| `calcularElegibilidadCumpleanos()` | Estado UI: mes actual, ya tomado, mensaje |
+| `validarFechaSolicitudCumpleanos()` | Valida mes de nacimiento vs fecha solicitada y año en curso |
+| `ESTADOS_DIA_CUMPLEANOS_ACTIVOS` | Estados que cuentan como “ya tomado”: `pendiente_jefe`, `aprobada_jefe`, `pendiente_rrhh`, `aprobada_rrhh`, `finalizada` |
+
+Validación en `crearSolicitud()` (`solicitudes.service.ts`): fecha de nacimiento obligatoria, unicidad anual, fecha en mes correcto. Directores no requieren VoBo para este tipo.
 
 ---
 
@@ -292,7 +323,7 @@ stateDiagram-v2
 
 ### `solicitudes.service.ts`
 
-- `crearSolicitud()` — transacción con validación de balance y código
+- `crearSolicitud()` — transacción con validación de balance, reglas de cumpleaños y código
 - Funciones legacy (`aprobarSolicitudJefe`, etc.) — usadas por tests de integración; deprecadas para API
 
 ### `email.service.ts`
@@ -316,6 +347,7 @@ Registra login, logout, acciones de workflow y cambios administrativos.
 | Método | Ruta | Descripción | Permiso |
 |--------|------|-------------|---------|
 | GET/POST | `/api/solicitudes` | Listar/crear | Auth + RBAC |
+| GET | `/api/solicitudes/cumpleanos-elegibilidad` | Elegibilidad día cumpleaños | Auth |
 | GET/POST | `/api/solicitudes/[id]/accion` | Acciones workflow | Según rol |
 | GET/POST | `/api/balances` | Consultar/ajustar | Auth |
 | GET | `/api/reportes` | Reportes RRHH | RRHH |
@@ -336,6 +368,7 @@ Registra login, logout, acciones de workflow y cambios administrativos.
 | GET | `/api/dashboard/*` | Métricas por rol | Según rol |
 | GET | `/api/calendario/ausencias` | Calendario | Auth |
 | GET | `/api/tipos-ausencia` | Catálogo | Auth |
+| GET | `/api/health` | Health check (BD) | Público |
 
 ### Formato de respuesta
 
@@ -362,10 +395,11 @@ Errores manejados por `withErrorHandler` — nunca exponen stack traces.
 |--------|-------|-------------|
 | `ADMIN` | 10 | Acceso total |
 | `RRHH` | 8 | Aprobación final, reportes, asignación |
+| `DIRECTOR` | 6 | Aprobación nivel 1 (directores de área) |
 | `JEFE` | 5 | Aprobación nivel 1 |
 | `EMPLEADO` | 1 | Solicitudes propias |
 
-> **Gap conocido:** El flag `esDirector` y lógica de director existen en código, pero el rol `DIRECTOR` no está en `ROLES_DATA` del seed. Ver [Estado de Producción](./docs/ESTADO_PRODUCCION.md).
+> El rol `DIRECTOR` está incluido en `scripts/seed-database.ts` desde jun 2026. `syncUserRoles()` lo asigna cuando `esDirector=true`.
 
 ### Verificación
 
@@ -493,9 +527,13 @@ sudo ./scripts/setup-ec2.sh    # Primera vez
 | Archivo | Casos | Tipo |
 |---------|-------|------|
 | `state-machine.test.ts` | ~44 | Unit — workflow completo |
-| `labor-days.test.ts` | 6 | Unit |
+| `labor-days.test.ts` | 6 | Unit — días hábiles + feriados |
+| `feriados-honduras.test.ts` | 4 | Unit |
+| `cumpleanos.test.ts` | 9 | Unit |
 | `adjuntos.test.ts` | 8 | Unit |
 | `config-catalog.test.ts` | 11 | Unit |
+| `balance-display.test.ts` | 3 | Unit — columnas Mi Balance |
+| `cumpleanos.test.ts` | 9 | Unit — elegibilidad y validación de fechas |
 | `password-generator.test.ts` | 5 | Unit |
 | `solicitudes.service.integration.test.ts` | ~20 | Integración |
 | `usuarios/solicitudes.service.test.ts` | ~73 | Estructural |
@@ -514,15 +552,17 @@ pnpm test:all                 # Ambos
 
 | Ítem | Estado |
 |------|--------|
-| Rol DIRECTOR ausente en seed | Pendiente |
-| Permiso `aprobar_ejecutiva` sin uso | Pendiente limpieza |
-| `/api/health` referenciado en middleware pero no implementado | Pendiente |
-| Código solicitud: `SOL-YYYY-XXXXX` (servicio) vs `CNI-SOL-…` (SQL legacy) | Pendiente unificación |
+| Feriados puente (movidos al lunes) | Pendiente ampliación catálogo |
 | Tests integración usan API legacy de solicitudes | Pendiente migración a workflow |
 | NextAuth v5 beta | Monitorear estabilidad |
+| ~~Rol DIRECTOR ausente en seed~~ | ✅ Corregido |
+| ~~Permiso `aprobar_ejecutiva` sin uso~~ | ✅ Retirado del seed |
+| ~~`/api/health` no implementado~~ | ✅ Implementado |
+| ~~Código solicitud dual~~ | ✅ Unificado `CNI-SOL-YYYY-XXXX` |
+| ~~Feriados en `contarDiasHabiles()`~~ | ✅ `feriados-honduras.ts` |
 
 Detalle y checklist de go-live: [docs/ESTADO_PRODUCCION.md](./docs/ESTADO_PRODUCCION.md)
 
 ---
 
-*Manual técnico v6.0 — Sistema de Gestión de Vacaciones CNI Honduras*
+*Manual técnico v6.1 — Sistema de Gestión de Vacaciones CNI Honduras*

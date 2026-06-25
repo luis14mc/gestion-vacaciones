@@ -29,6 +29,7 @@ import {
   Globe,
   Wrench,
   Server,
+  MailCheck,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
@@ -96,11 +97,9 @@ const LABELS: Record<string, string> = {
   "vacaciones.dias_minimos_solicitud": "Mínimo de Días por Solicitud",
   "vacaciones.dias_maximos_consecutivos": "Máximo Días Consecutivos",
   "vacaciones.dias_anticipacion": "Días de Anticipación Mínima",
-  "vacaciones.umbral_aprobacion_ejecutiva": "Umbral para Aprobación Ejecutiva",
   "vacaciones.permitir_medio_dia": "Permitir Medio Día",
   "vacaciones.acumulacion_habilitada": "Acumulación Habilitada",
   "vacaciones.max_acumulacion": "Máximo de Días Acumulables",
-  "vacaciones.incluir_feriados": "Incluir Feriados",
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
   "notificaciones.email_remitente": "Correo Remitente",
@@ -171,18 +170,16 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
         "vacaciones.dias_minimos_solicitud",
         "vacaciones.dias_maximos_consecutivos",
         "vacaciones.dias_anticipacion",
-        "vacaciones.umbral_aprobacion_ejecutiva",
       ],
     },
     {
       titulo: "Reglas de Acumulación",
-      descripcion: "Control sobre medio día, acumulación y conteo de días",
+      descripcion: "Control sobre medio día y acumulación de saldo",
       icon: Calendar,
       claves: [
         "vacaciones.permitir_medio_dia",
         "vacaciones.acumulacion_habilitada",
         "vacaciones.max_acumulacion",
-        "vacaciones.incluir_feriados",
       ],
     },
   ],
@@ -292,6 +289,9 @@ function mergeConfigFallbacks(configs: ConfigItem[]) {
   ];
 }
 
+const SMTP_CLAVES =
+  GRUPOS.notificaciones.find((g) => g.titulo === "Servidor SMTP")?.claves ?? [];
+
 // ─── Componente Principal ─────────────────────────────
 export default function ConfiguracionClient({ session }: ConfiguracionClientProps) {
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
@@ -300,6 +300,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   const [categoriaActiva, setCategoriaActiva] = useState<CategoriaId>("general");
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+  const [testingSmtp, setTestingSmtp] = useState(false);
 
   // ── Cargar configuraciones ──
   const cargarConfiguraciones = useCallback(async () => {
@@ -380,6 +381,52 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       notify.error("Error", "Error al guardar configuraciones");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const probarConexionSmtp = async () => {
+    const smtpDirty = SMTP_CLAVES.filter((clave) => dirtyKeys.has(clave));
+
+    try {
+      setTestingSmtp(true);
+
+      if (smtpDirty.length > 0) {
+        const cambios = smtpDirty.map((clave) => ({
+          clave,
+          valor: editedValues[clave],
+        }));
+
+        const saveRes = await fetch("/api/configuracion", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cambios),
+        });
+        const saveData = await saveRes.json();
+
+        if (!saveData.success) {
+          notify.error(
+            "Error",
+            saveData.error || "No se pudieron guardar los cambios SMTP antes de probar"
+          );
+          return;
+        }
+
+        await cargarConfiguraciones();
+      }
+
+      const res = await fetch("/api/configuracion/verificar-smtp", { method: "POST" });
+      const data = await res.json();
+
+      if (data.success) {
+        notify.success("SMTP", data.message || "Conexión SMTP verificada correctamente.");
+      } else {
+        const detalle = data.detalle ? `: ${data.detalle}` : "";
+        notify.error("SMTP", `${data.message || data.error || "No se pudo verificar SMTP"}${detalle}`);
+      }
+    } catch {
+      notify.error("Error", "No se pudo verificar la conexión SMTP");
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
@@ -524,6 +571,30 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                     configs={configs}
                     dirtyKeys={dirtyKeys}
                     onValueChange={handleValueChange}
+                    footer={
+                      grupo.titulo === "Servidor SMTP" ? (
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-[11px] text-muted-foreground">
+                            Si hay cambios sin guardar en SMTP, se guardan automáticamente antes de probar.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-2 shrink-0"
+                            onClick={probarConexionSmtp}
+                            disabled={testingSmtp || saving}
+                          >
+                            {testingSmtp ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <MailCheck className="w-4 h-4" />
+                            )}
+                            Probar conexión SMTP
+                          </Button>
+                        </div>
+                      ) : undefined
+                    }
                   />
                 ))}
               </div>
@@ -542,9 +613,10 @@ interface GrupoCardProps {
   configs: ConfigItem[];
   dirtyKeys: Set<string>;
   onValueChange: (clave: string, valor: string) => void;
+  footer?: React.ReactNode;
 }
 
-function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange }: GrupoCardProps) {
+function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange, footer }: GrupoCardProps) {
   const Icon = grupo.icon;
 
   return (
@@ -588,6 +660,12 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange }: GrupoCa
             );
           })}
         </div>
+        {footer ? (
+          <>
+            <Separator className="my-5" />
+            {footer}
+          </>
+        ) : null}
       </CardContent>
     </Card>
   );

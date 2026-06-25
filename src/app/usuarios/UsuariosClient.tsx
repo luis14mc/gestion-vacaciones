@@ -476,6 +476,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => abrirModalEditar(usuario)}
+                                aria-label={`Editar ${usuario.nombre} ${usuario.apellido}`}
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
@@ -484,6 +485,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
                                 onClick={() => handleDelete(usuario.id)}
+                                aria-label={`Eliminar ${usuario.nombre} ${usuario.apellido}`}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>

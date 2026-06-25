@@ -26,6 +26,7 @@ import {
   balances,
   configuracion,
 } from '../src/lib/db/schema';
+import { syncUserRolesDesdeBD } from '../src/services/rbac.service';
 
 config();
 
@@ -46,6 +47,7 @@ const db = drizzle(client);
 const ROLES_DATA = [
   { codigo: 'ADMIN', nombre: 'Administrador', descripcion: 'Acceso total', nivel: 10, esRolSistema: true },
   { codigo: 'RRHH', nombre: 'Recursos Humanos', descripcion: 'Gestion de personal', nivel: 8, esRolSistema: true },
+  { codigo: 'DIRECTOR', nombre: 'Director de Area', descripcion: 'Aprobacion nivel 1 (directores)', nivel: 6, esRolSistema: true },
   { codigo: 'JEFE', nombre: 'Jefe de Departamento', descripcion: 'Aprobacion nivel 1', nivel: 5, esRolSistema: true },
   { codigo: 'EMPLEADO', nombre: 'Empleado', descripcion: 'Usuario estandar', nivel: 1, esRolSistema: true },
 ];
@@ -64,7 +66,6 @@ const PERMISOS_DATA = [
   { codigo: 'solicitudes.ver_departamento', modulo: 'solicitudes', recurso: 'solicitud', accion: 'ver_departamento', descripcion: 'Ver solicitudes del departamento' },
   { codigo: 'solicitudes.aprobar_jefe', modulo: 'solicitudes', recurso: 'solicitud', accion: 'aprobar_jefe', descripcion: 'Aprobar como jefe' },
   { codigo: 'solicitudes.aprobar_rrhh', modulo: 'solicitudes', recurso: 'solicitud', accion: 'aprobar_rrhh', descripcion: 'Aprobar como RRHH' },
-  { codigo: 'solicitudes.aprobar_ejecutiva', modulo: 'solicitudes', recurso: 'solicitud', accion: 'aprobar_ejecutiva', descripcion: 'Aprobar como ejecutivo' },
   { codigo: 'solicitudes.ver_todas', modulo: 'solicitudes', recurso: 'solicitud', accion: 'ver_todas', descripcion: 'Ver todas las solicitudes' },
   { codigo: 'balances.ver_propio', modulo: 'balances', recurso: 'balance', accion: 'ver_propio', descripcion: 'Ver balance propio' },
   { codigo: 'balances.ver_todos', modulo: 'balances', recurso: 'balance', accion: 'ver_todos', descripcion: 'Ver todos los balances' },
@@ -94,12 +95,9 @@ const CONFIGURACION_DATA = [
   { clave: 'vacaciones.dias_minimos_solicitud', valor: '1', descripcion: 'Cantidad minima de dias por solicitud', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'vacaciones.dias_maximos_consecutivos', valor: '15', descripcion: 'Maximo de dias consecutivos permitidos', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'vacaciones.dias_anticipacion', valor: '5', descripcion: 'Dias de anticipacion minima', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
-  { clave: 'vacaciones.umbral_aprobacion_ejecutiva', valor: '10', descripcion: 'Umbral para aprobacion ejecutiva', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'vacaciones.permitir_medio_dia', valor: 'true', descripcion: 'Permitir medio dia', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
   { clave: 'vacaciones.acumulacion_habilitada', valor: 'false', descripcion: 'Permitir acumulacion', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
   { clave: 'vacaciones.max_acumulacion', valor: '5', descripcion: 'Maximo de dias acumulables', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
-  { clave: 'vacaciones.incluir_fines_semana', valor: 'false', descripcion: 'Contar fines de semana', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
-  { clave: 'vacaciones.incluir_feriados', valor: 'false', descripcion: 'Contar feriados', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
   { clave: 'notificaciones.email_habilitado', valor: 'false', descripcion: 'Habilitar notificaciones por correo', categoria: 'notificaciones', tipoDato: 'boolean', esPublico: false },
   { clave: 'notificaciones.email_remitente', valor: 'noreply@cni.hn', descripcion: 'Email remitente', categoria: 'notificaciones', tipoDato: 'string', esPublico: false },
   { clave: 'notificaciones.smtp_host', valor: 'smtp.office365.com', descripcion: 'Servidor SMTP para el envio de notificaciones', categoria: 'notificaciones', tipoDato: 'string', esPublico: false },
@@ -117,7 +115,6 @@ const CONFIGURACION_DATA = [
   { clave: 'departamentos.max_ausencias_simultaneas', valor: '3', descripcion: 'Maximo de ausencias simultaneas', categoria: 'departamentos', tipoDato: 'number', esPublico: false },
   { clave: 'departamentos.porcentaje_max_ausentes', valor: '30', descripcion: 'Porcentaje maximo ausente', categoria: 'departamentos', tipoDato: 'number', esPublico: false },
   { clave: 'departamentos.validar_conflictos', valor: 'true', descripcion: 'Validar conflictos de fechas', categoria: 'departamentos', tipoDato: 'boolean', esPublico: false },
-  { clave: 'departamentos.jefe_puede_auto_aprobar', valor: 'false', descripcion: 'Permitir autoaprobacion de jefe', categoria: 'departamentos', tipoDato: 'boolean', esPublico: false },
   { clave: 'departamentos.mostrar_calendario_equipo', valor: 'true', descripcion: 'Mostrar calendario de equipo', categoria: 'departamentos', tipoDato: 'boolean', esPublico: false },
   { clave: 'seguridad.sesion_duracion_horas', valor: '168', descripcion: 'Duracion maxima de sesion en horas', categoria: 'seguridad', tipoDato: 'number', esPublico: false },
   { clave: 'seguridad.password_min_length', valor: '8', descripcion: 'Longitud minima de contrasena', categoria: 'seguridad', tipoDato: 'number', esPublico: false },
@@ -133,6 +130,17 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   ADMIN: PERMISOS_DATA.map((p) => p.codigo),
   RRHH: PERMISOS_DATA.filter((p) => !['usuarios.crear', 'usuarios.eliminar'].includes(p.codigo)).map((p) => p.codigo),
   JEFE: [
+    'sistema.acceso',
+    'sistema.dashboard',
+    'solicitudes.ver_propias',
+    'solicitudes.crear',
+    'solicitudes.ver_departamento',
+    'solicitudes.aprobar_jefe',
+    'balances.ver_propio',
+    'departamentos.ver',
+    'reportes.departamento',
+  ],
+  DIRECTOR: [
     'sistema.acceso',
     'sistema.dashboard',
     'solicitudes.ver_propias',
@@ -325,6 +333,19 @@ async function seedDemoUsers() {
   console.log(`${demoUsers.length} usuarios demo creados/actualizados sin imprimir contrasenas.`);
 }
 
+async function syncExistingUserRoles() {
+  const activos = await db
+    .select({ id: usuarios.id })
+    .from(usuarios)
+    .where(eq(usuarios.activo, true));
+
+  for (const row of activos) {
+    await syncUserRolesDesdeBD(row.id);
+  }
+
+  console.log(`Roles sincronizados desde flags para ${activos.length} usuarios activos.`);
+}
+
 async function seed() {
   console.log('========================================');
   console.log('SEED CNI - datos base idempotentes');
@@ -334,6 +355,7 @@ async function seed() {
     await upsertCatalogs();
     console.log('Datos base aplicados: roles, permisos, departamentos, configuracion y ano laboral.');
 
+    await syncExistingUserRoles();
     await seedDemoUsers();
 
     console.log('\nSeed completado.');

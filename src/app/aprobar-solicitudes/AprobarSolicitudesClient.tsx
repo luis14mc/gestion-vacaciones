@@ -469,7 +469,7 @@ export default function AprobarSolicitudesClient({
                                   setMostrarModal(true);
                                   setAccion(null);
                                 }}
-                                title="Ver detalles"
+                                aria-label="Ver detalles"
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
@@ -553,6 +553,7 @@ export default function AprobarSolicitudesClient({
                               setMostrarModal(true);
                               setAccion(null);
                             }}
+                            aria-label="Ver detalles"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>

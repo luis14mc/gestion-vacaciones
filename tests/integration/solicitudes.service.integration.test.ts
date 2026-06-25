@@ -10,19 +10,65 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   crearSolicitud,
-  aprobarSolicitudJefe,
-  aprobarSolicitudRRHH,
-  rechazarSolicitud,
-  obtenerSolicitudPorId,
   listarSolicitudes,
 } from '@/services/solicitudes.service'
+import { ejecutarAccion } from '@/services/workflow.service'
 import {
   crearDatosBaseTest,
   crearUsuarioTest,
   crearBalanceTest,
-  crearSolicitudTest,
 } from '../helpers/test-data'
 import './setup'
+
+const FECHA_INICIO_LAB = '2026-03-02'
+const FECHA_FIN_LAB = '2026-03-06'
+const DIAS_LAB = 5
+
+async function aprobarComoJefe(solicitudId: number, jefe: { id: number }, departamentoId: number, comentario?: string) {
+  return ejecutarAccion({
+    solicitudId,
+    accion: 'aprobar_jefe',
+    usuarioId: jefe.id,
+    esDirector: false,
+    esJefe: true,
+    esRrhh: false,
+    esAdmin: false,
+    departamentoId,
+    comentario,
+  })
+}
+
+async function aprobarComoRRHH(solicitudId: number, rrhh: { id: number }, comentario?: string) {
+  return ejecutarAccion({
+    solicitudId,
+    accion: 'aprobar_rrhh',
+    usuarioId: rrhh.id,
+    esDirector: false,
+    esJefe: false,
+    esRrhh: true,
+    esAdmin: false,
+    comentario,
+  })
+}
+
+async function rechazarComoJefe(
+  solicitudId: number,
+  jefe: { id: number },
+  departamentoId: number,
+  motivoRechazo: string
+) {
+  return ejecutarAccion({
+    solicitudId,
+    accion: 'rechazar_jefe',
+    usuarioId: jefe.id,
+    esDirector: false,
+    esJefe: true,
+    esRrhh: false,
+    esAdmin: false,
+    departamentoId,
+    motivoRechazo,
+  })
+}
 
 describe('Solicitudes Service - Integration Tests', () => {
   let datosBase: Awaited<ReturnType<typeof crearDatosBaseTest>>
@@ -70,6 +116,25 @@ describe('Solicitudes Service - Integration Tests', () => {
       cantidadDisponible: 15,
       tipoAusencia: 'vacaciones',
     })
+
+    const { db } = await import('@/lib/db')
+    const { usuarios } = await import('@/lib/db/schema')
+    const { eq } = await import('drizzle-orm')
+
+    await db
+      .update(usuarios)
+      .set({ jefeSuperiorId: usuarioJefe.id })
+      .where(eq(usuarios.id, usuarioEmpleado.id))
+
+    await db
+      .update(usuarios)
+      .set({ esJefe: true })
+      .where(eq(usuarios.id, usuarioJefe.id))
+
+    await db
+      .update(usuarios)
+      .set({ esRrhh: true })
+      .where(eq(usuarios.id, usuarioRRHH.id))
   })
 
   // ===================================================
@@ -77,18 +142,18 @@ describe('Solicitudes Service - Integration Tests', () => {
   // ===================================================
 
   describe('crearSolicitud()', () => {
-    it('debe crear solicitud con código SOL-YYYY-XXXXX', async () => {
+    it('debe crear solicitud con código CNI-SOL-YYYY-XXXX', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
         motivo: 'Vacaciones familiares',
       })
 
       expect(solicitud).toBeDefined()
-      expect(solicitud.codigo).toMatch(/^SOL-\d{4}-\d{5}$/)
+      expect(solicitud.codigo).toMatch(/^CNI-SOL-\d{4}-\d{4}$/)
       expect(solicitud.estado).toBe('pendiente_jefe')
       expect(solicitud.usuarioId).toBe(usuarioEmpleado.id)
     })
@@ -101,9 +166,9 @@ describe('Solicitudes Service - Integration Tests', () => {
       await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
         motivo: 'Vacaciones',
       })
 
@@ -115,7 +180,7 @@ describe('Solicitudes Service - Integration Tests', () => {
       })
 
       expect(balance).toBeDefined()
-      expect(parseFloat(balance!.cantidadPendiente)).toBe(5)
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(DIAS_LAB)
     })
 
     it('debe rechazar si balance insuficiente', async () => {
@@ -199,77 +264,84 @@ describe('Solicitudes Service - Integration Tests', () => {
   })
 
   // ===================================================
-  // TESTS: aprobarSolicitudJefe()
+  // TESTS: ejecutarAccion() — aprobación jefe
   // ===================================================
 
-  describe('aprobarSolicitudJefe()', () => {
+  describe('ejecutarAccion() — aprobar_jefe', () => {
     it('debe cambiar estado a aprobada_jefe', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      const aprobada = await aprobarSolicitudJefe(
+      const resultado = await aprobarComoJefe(
         solicitud.id,
-        usuarioJefe.id,
+        usuarioJefe,
+        datosBase.departamento.id,
         'Aprobado por jefe'
       )
 
-      expect(aprobada.estado).toBe('aprobada_jefe')
-      expect(aprobada.aprobadaJefePor).toBe(usuarioJefe.id)
-      expect(aprobada.comentarioJefe).toBe('Aprobado por jefe')
+      expect(resultado.exito).toBe(true)
+      expect(resultado.solicitud.estado).toBe('aprobada_jefe')
+      expect(resultado.solicitud.aprobadaJefePor).toBe(usuarioJefe.id)
+      expect(resultado.solicitud.comentarioJefe).toBe('Aprobado por jefe')
     })
 
     it('debe incrementar campo version (optimistic locking)', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
       const versionInicial = solicitud.version
 
-      const aprobada = await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      const resultado = await aprobarComoJefe(
+        solicitud.id,
+        usuarioJefe,
+        datosBase.departamento.id
+      )
 
-      expect(aprobada.version).toBe((versionInicial || 1) + 1)
+      expect(resultado.exito).toBe(true)
+      expect(resultado.solicitud.version).toBe((versionInicial || 1) + 1)
     })
 
     it('debe rechazar si estado no es pendiente_jefe', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      // Aprobar por jefe primero
-      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      await aprobarComoJefe(solicitud.id, usuarioJefe, datosBase.departamento.id)
 
-      // Intentar aprobar de nuevo
-      await expect(
-        aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
-      ).rejects.toThrow(/Estado inválido/)
+      const segundoIntento = await aprobarComoJefe(
+        solicitud.id,
+        usuarioJefe,
+        datosBase.departamento.id
+      )
+
+      expect(segundoIntento.exito).toBe(false)
     })
 
     it('debe detectar lost updates con optimistic locking', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      // Aprobar la solicitud
-      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      await aprobarComoJefe(solicitud.id, usuarioJefe, datosBase.departamento.id)
 
-      // Intentar aprobar con versión desactualizada (simular conflicto)
       const { db } = await import('@/lib/db')
       const { solicitudes } = await import('@/lib/db/schema')
       const { sql, eq, and } = await import('drizzle-orm')
@@ -284,38 +356,39 @@ describe('Solicitudes Service - Integration Tests', () => {
           .where(
             and(
               eq(solicitudes.id, solicitud.id),
-              eq(solicitudes.version, 1) // Versión antigua
+              eq(solicitudes.version, 1)
             )
           )
           .returning()
-      ).resolves.toHaveLength(0) // No debe actualizar nada
+      ).resolves.toHaveLength(0)
     })
   })
 
   // ===================================================
-  // TESTS: aprobarSolicitudRRHH()
+  // TESTS: ejecutarAccion() — aprobación RRHH
   // ===================================================
 
-  describe('aprobarSolicitudRRHH()', () => {
+  describe('ejecutarAccion() — aprobar_rrhh', () => {
     it('debe cambiar estado a aprobada_rrhh', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      await aprobarComoJefe(solicitud.id, usuarioJefe, datosBase.departamento.id)
 
-      const aprobada = await aprobarSolicitudRRHH(
+      const resultado = await aprobarComoRRHH(
         solicitud.id,
-        usuarioRRHH.id,
+        usuarioRRHH,
         'Aprobado por RRHH'
       )
 
-      expect(aprobada.estado).toBe('aprobada_rrhh')
-      expect(aprobada.aprobadaRrhhPor).toBe(usuarioRRHH.id)
+      expect(resultado.exito).toBe(true)
+      expect(resultado.solicitud.estado).toBe('aprobada_rrhh')
+      expect(resultado.solicitud.aprobadaRrhhPor).toBe(usuarioRRHH.id)
     })
 
     it('debe mover días: pendiente → usada en balance', async () => {
@@ -326,13 +399,13 @@ describe('Solicitudes Service - Integration Tests', () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
-      await aprobarSolicitudRRHH(solicitud.id, usuarioRRHH.id)
+      await aprobarComoJefe(solicitud.id, usuarioJefe, datosBase.departamento.id)
+      await aprobarComoRRHH(solicitud.id, usuarioRRHH)
 
       const balance = await db.query.balances.findFirst({
         where: and(
@@ -342,48 +415,49 @@ describe('Solicitudes Service - Integration Tests', () => {
       })
 
       expect(balance).toBeDefined()
-      expect(parseFloat(balance!.cantidadPendiente)).toBe(0) // Pendiente = 0
-      expect(parseFloat(balance!.cantidadUsada)).toBe(5) // Usada = 5
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(0)
+      expect(parseFloat(balance!.cantidadUsada)).toBe(DIAS_LAB)
     })
 
     it('debe rechazar si estado no es aprobada_jefe', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      // Intentar aprobar sin aprobación de jefe
-      await expect(
-        aprobarSolicitudRRHH(solicitud.id, usuarioRRHH.id)
-      ).rejects.toThrow(/Estado debe ser aprobada_jefe/)
+      const resultado = await aprobarComoRRHH(solicitud.id, usuarioRRHH)
+
+      expect(resultado.exito).toBe(false)
     })
   })
 
   // ===================================================
-  // TESTS: rechazarSolicitud()
+  // TESTS: ejecutarAccion() — rechazo jefe
   // ===================================================
 
-  describe('rechazarSolicitud()', () => {
+  describe('ejecutarAccion() — rechazar_jefe', () => {
     it('debe cambiar estado a rechazada_jefe', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      const rechazada = await rechazarSolicitud(
+      const resultado = await rechazarComoJefe(
         solicitud.id,
-        usuarioJefe.id,
+        usuarioJefe,
+        datosBase.departamento.id,
         'Fechas no disponibles'
       )
 
-      expect(rechazada.estado).toBe('rechazada_jefe')
-      expect(rechazada.motivoRechazo).toBe('Fechas no disponibles')
+      expect(resultado.exito).toBe(true)
+      expect(resultado.solicitud.estado).toBe('rechazada_jefe')
+      expect(resultado.solicitud.motivoRechazo).toBe('Fechas no disponibles')
     })
 
     it('debe devolver días a balance disponible', async () => {
@@ -394,13 +468,17 @@ describe('Solicitudes Service - Integration Tests', () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      // Rechazar solicitud
-      await rechazarSolicitud(solicitud.id, usuarioJefe.id, 'Rechazada')
+      await rechazarComoJefe(
+        solicitud.id,
+        usuarioJefe,
+        datosBase.departamento.id,
+        'Rechazada'
+      )
 
       const balance = await db.query.balances.findFirst({
         where: and(
@@ -410,28 +488,30 @@ describe('Solicitudes Service - Integration Tests', () => {
       })
 
       expect(balance).toBeDefined()
-      expect(parseFloat(balance!.cantidadPendiente)).toBe(0) // Devuelto a disponible
+      expect(parseFloat(balance!.cantidadPendiente)).toBe(0)
     })
 
     it('debe registrar motivo de rechazo', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
       const motivoEsperado = 'Equipo con mucha carga de trabajo'
-      const rechazada = await rechazarSolicitud(
+      const resultado = await rechazarComoJefe(
         solicitud.id,
-        usuarioJefe.id,
+        usuarioJefe,
+        datosBase.departamento.id,
         motivoEsperado
       )
 
-      expect(rechazada.motivoRechazo).toBe(motivoEsperado)
-      expect(rechazada.rechazadaPor).toBe(usuarioJefe.id)
-      expect(rechazada.rechazadaFecha).toBeDefined()
+      expect(resultado.exito).toBe(true)
+      expect(resultado.solicitud.motivoRechazo).toBe(motivoEsperado)
+      expect(resultado.solicitud.rechazadaPor).toBe(usuarioJefe.id)
+      expect(resultado.solicitud.rechazadaFecha).toBeDefined()
     })
   })
 
@@ -444,9 +524,9 @@ describe('Solicitudes Service - Integration Tests', () => {
       await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
       const resultado = await listarSolicitudes({
@@ -461,12 +541,12 @@ describe('Solicitudes Service - Integration Tests', () => {
       const solicitud = await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
-      await aprobarSolicitudJefe(solicitud.id, usuarioJefe.id)
+      await aprobarComoJefe(solicitud.id, usuarioJefe, datosBase.departamento.id)
 
       const resultado = await listarSolicitudes({
         estado: 'aprobada_jefe',
@@ -480,9 +560,9 @@ describe('Solicitudes Service - Integration Tests', () => {
       await crearSolicitud({
         usuarioId: usuarioEmpleado.id,
         tipo: 'vacaciones',
-        fechaInicio: '2026-03-01',
-        fechaFin: '2026-03-05',
-        diasSolicitados: 5,
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
       })
 
       const resultado = await listarSolicitudes({})

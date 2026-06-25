@@ -4,6 +4,10 @@
 
 **Última actualización:** Junio 2026 · **Versión del sistema:** 0.1.0
 
+**Versión del sistema:** 0.1.0
+
+Novedades documentadas: Mi Balance, día libre por cumpleaños, feriados Honduras, código `CNI-SOL`, estado de producción actualizado.
+
 ---
 
 ## Documentos principales
@@ -14,6 +18,9 @@
 | [MANUAL_TECNICO.md](../MANUAL_TECNICO.md) | Desarrolladores / TI | Arquitectura, API, base de datos, despliegue, seguridad |
 | [MANUAL_USUARIO.md](./MANUAL_USUARIO.md) | Empleados, jefes, RRHH, admin | Guía de uso por rol y flujos operativos |
 | [ESTADO_PRODUCCION.md](./ESTADO_PRODUCCION.md) | Dirección / TI | Evaluación de preparación para producción |
+| [AUDITORIA.md](../AUDITORIA.md) | TI / seguridad | Hallazgos corregidos y pendientes |
+| [ARCHIVOS_NO_VERSIONADOS.md](./ARCHIVOS_NO_VERSIONADOS.md) | Desarrolladores | Qué no subir a Git (Neon, `.env.local`, secretos) |
+| [validaciones.md](../validaciones.md) | TI | Estado de auditoría y pendientes |
 
 ---
 
@@ -22,6 +29,7 @@
 | Recurso | Descripción |
 |---------|-------------|
 | [.env.example](../.env.example) | Plantilla para desarrollo local |
+| [.env.test.example](../.env.test.example) | Plantilla tests integración (copiar a `.env.test`, no versionar) |
 | [.env.production.example](../.env.production.example) | Plantilla para EC2 / Docker en producción |
 | [docker-compose.yml](../docker-compose.yml) | Orquestación PostgreSQL + app + Nginx |
 | [scripts/setup-ec2.sh](../scripts/setup-ec2.sh) | Configuración inicial del servidor |

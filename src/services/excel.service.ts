@@ -292,6 +292,7 @@ export async function exportarReporteSolicitudes(opts: ExcelOptions & {
     permiso_salida: 'Permiso Salida',
     licencia_medica: 'Licencia Médica',
     permiso_personal: 'Permiso Personal',
+    dia_cumpleanos: 'Día libre por cumpleaños',
   };
 
   rows.forEach((row: any, i: number) => {

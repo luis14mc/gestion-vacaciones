@@ -8,13 +8,14 @@
 
 Plataforma web para la gestión de solicitudes de vacaciones, permisos y licencias del **Consejo Nacional de Inversiones (CNI)**, Honduras. Centraliza el flujo de aprobación entre empleados, jefes de departamento y Recursos Humanos, con control automático de saldos y trazabilidad completa.
 
-**Versión:** 0.1.0 · **Estado:** [Condicionalmente listo para piloto](./docs/ESTADO_PRODUCCION.md)
+**Versión:** 0.1.0 · **Estado:** [Listo para piloto departamental (Fase 1)](./docs/ESTADO_PRODUCCION.md)
 
 ---
 
 ## Características
 
-- **Solicitudes digitales** — vacaciones, permisos por horas, licencias médicas y permisos personales, con adjuntos validados
+- **Solicitudes digitales** — vacaciones, permisos, licencias, cumpleaños; feriados HN excluidos del conteo
+- **Vista Mi Balance** — días vencidos, proporcionales y disponibles por colaborador
 - **Aprobación en dos niveles** — Jefe/Director → RRHH, con reglas CNI (alcance por departamento, VoBo de director, sin auto-aprobación)
 - **Saldos automáticos** — reserva al enviar, confirmación al aprobar, liberación al rechazar/cancelar
 - **RBAC** — roles Admin, RRHH, Jefe, Empleado con permisos granulares
@@ -57,7 +58,10 @@ pnpm install
 
 # Configurar entorno
 cp .env.example .env.local
-# Editar DATABASE_URL y AUTH_SECRET
+# Editar DATABASE_URL y AUTH_SECRET (no subir .env.local a Git)
+
+# Tests de integración (opcional): cp .env.test.example .env.test
+# Neon u otra BD local — ver docs/ARCHIVOS_NO_VERSIONADOS.md
 
 # Base de datos
 pnpm db:push
@@ -114,6 +118,8 @@ Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-
 | [MANUAL_TECNICO.md](./MANUAL_TECNICO.md) | Arquitectura, API, BD, seguridad |
 | [docs/MANUAL_USUARIO.md](./docs/MANUAL_USUARIO.md) | Guía por rol (empleado, jefe, RRHH, admin) |
 | [docs/ESTADO_PRODUCCION.md](./docs/ESTADO_PRODUCCION.md) | Evaluación de preparación para producción |
+| [AUDITORIA.md](./AUDITORIA.md) | Auditoría de seguridad y funcionalidad |
+| [docs/ARCHIVOS_NO_VERSIONADOS.md](./docs/ARCHIVOS_NO_VERSIONADOS.md) | Qué archivos no van a Git (Neon, `.env.local`, etc.) |
 | [.env.example](./.env.example) | Variables de entorno (desarrollo) |
 | [.env.production.example](./.env.production.example) | Variables de entorno (producción) |
 

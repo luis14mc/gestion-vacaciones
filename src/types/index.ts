@@ -57,7 +57,8 @@ export type TipoAusencia =
   | 'vacaciones'
   | 'permiso_salida'
   | 'licencia_medica'
-  | 'permiso_personal';
+  | 'permiso_personal'
+  | 'dia_cumpleanos';
 
 // =====================================================
 // TIPOS EXTENDIDOS CON RELACIONES
@@ -188,6 +189,7 @@ export interface FormularioUsuario {
   esAdmin?: boolean;
   jefeSuperiorId?: number;
   fechaIngreso?: string;
+  fechaNacimiento?: string;
 }
 
 // =====================================================

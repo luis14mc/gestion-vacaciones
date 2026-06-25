@@ -21,6 +21,7 @@ import {
   jsonb,
   unique,
   index,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { usuarios } from './auth';
@@ -38,10 +39,12 @@ export const departamentos = pgTable(
     
     // Jefe del departamento (ID plano - evita circular con usuarios)
     // Validar en capa de servicio que el jefe existe y es activo
-    jefeId: bigint('jefe_id', { mode: 'number' }),
+    jefeId: bigint('jefe_id', { mode: 'number' })
+      .references((): AnyPgColumn => usuarios.id, { onDelete: 'set null' }),
     
     // Jerarquía de departamentos (árbol)
-    departamentoPadreId: bigint('departamento_padre_id', { mode: 'number' }),
+    departamentoPadreId: bigint('departamento_padre_id', { mode: 'number' })
+      .references((): AnyPgColumn => departamentos.id, { onDelete: 'set null' }),
     nivel: integer('nivel').notNull().default(1),
     
     // Estado

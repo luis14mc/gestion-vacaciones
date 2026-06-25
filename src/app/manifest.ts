@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Vacaciones CNI Honduras",
     short_name: "Vacaciones CNI",
     description:
-      "Sistema de gestion de vacaciones, permisos y licencias para colaboradores de CNI Honduras.",
+      "Portal de gestion de vacaciones, permisos y licencias para colaboradores de CNI Honduras.",
     start_url: "/login",
     scope: "/",
     display: "standalone",

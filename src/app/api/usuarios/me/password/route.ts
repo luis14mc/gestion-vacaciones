@@ -4,6 +4,7 @@ import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { validarPasswordPolitica } from "@/lib/config/password-policy";
+import { metadataConPasswordActualizada } from "@/lib/config/password-expiry";
 import bcrypt from "bcryptjs";
 
 // PATCH: Cambiar contraseña del usuario autenticado
@@ -66,13 +67,12 @@ export async function PATCH(request: NextRequest) {
 
     // Actualizar contraseña y limpiar la marca de "debe cambiar password"
     const metadataActual = (usuario.metadata as Record<string, unknown>) || {};
-    const { debeCambiarPassword: _omit, ...metadataLimpia } = metadataActual;
 
     await db
       .update(usuarios)
       .set({
         passwordHash: hashedPassword,
-        metadata: metadataLimpia,
+        metadata: metadataConPasswordActualizada(metadataActual, { quitarDebeCambiar: true }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(usuarios.id, userId));

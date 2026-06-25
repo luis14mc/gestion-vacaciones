@@ -17,12 +17,15 @@ import {
   text,
   boolean,
   timestamp,
+  date,
   integer,
   jsonb,
   unique,
   index,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { departamentos } from './organizacion';
 
 // ============================================================
 // TABLA: usuarios
@@ -36,7 +39,8 @@ export const usuarios = pgTable(
     apellido: varchar('apellido', { length: 100 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     
-    departamentoId: bigint('departamento_id', { mode: 'number' }),
+    departamentoId: bigint('departamento_id', { mode: 'number' })
+      .references((): AnyPgColumn => departamentos.id, { onDelete: 'set null' }),
     cargo: varchar('cargo', { length: 100 }),
     
     // Datos adicionales
@@ -51,11 +55,13 @@ export const usuarios = pgTable(
     esAdmin: boolean('es_admin').notNull().default(false),
     
     // Jerarquía: quién aprueba las solicitudes de este usuario
-    jefeSuperiorId: bigint('jefe_superior_id', { mode: 'number' }),
+    jefeSuperiorId: bigint('jefe_superior_id', { mode: 'number' })
+      .references((): AnyPgColumn => usuarios.id, { onDelete: 'set null' }),
     
     // Estado y metadatos
     activo: boolean('activo').notNull().default(true),
     fechaIngreso: timestamp('fecha_ingreso', { withTimezone: true, mode: 'string' }),
+    fechaNacimiento: date('fecha_nacimiento', { mode: 'string' }),
     metadata: jsonb('metadata').default({}).notNull(),
     
     // Auditoría

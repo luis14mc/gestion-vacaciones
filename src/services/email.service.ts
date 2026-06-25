@@ -74,6 +74,15 @@ export async function getConfiguracionEmail(): Promise<ConfiguracionEmail> {
   };
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function crearTransporteConConfig(config: ConfiguracionEmail) {
   return nodemailer.createTransport({
     host: config.host,
@@ -88,6 +97,42 @@ function crearTransporteConConfig(config: ConfiguracionEmail) {
       rejectUnauthorized: config.rejectUnauthorized,
     },
   });
+}
+
+export async function verificarConexionSMTP(): Promise<{
+  exito: boolean;
+  mensaje: string;
+  detalle?: string;
+}> {
+  try {
+    const config = await getConfiguracionEmail();
+
+    if (!config.habilitado) {
+      return {
+        exito: false,
+        mensaje: 'Las notificaciones por email están deshabilitadas en la configuración.',
+      };
+    }
+
+    if (!config.host || !config.user || !config.password) {
+      return {
+        exito: false,
+        mensaje: 'Configuración SMTP incompleta (host, usuario o contraseña).',
+      };
+    }
+
+    const transporter = crearTransporteConConfig(config);
+    await transporter.verify();
+
+    return { exito: true, mensaje: 'Conexión SMTP verificada correctamente.' };
+  } catch (error) {
+    const detalle = error instanceof Error ? error.message : String(error);
+    return {
+      exito: false,
+      mensaje: 'No se pudo verificar la conexión SMTP.',
+      detalle,
+    };
+  }
 }
 
 export async function enviarEmail(options: EmailOptions) {
@@ -126,6 +171,7 @@ function nombreTipoSolicitud(tipo: string) {
     permiso_salida: 'permiso de salida',
     licencia_medica: 'licencia medica',
     permiso_personal: 'permiso personal',
+    dia_cumpleanos: 'dia libre por cumpleanos',
     licencia_paternidad: 'licencia de paternidad',
     licencia_maternidad: 'licencia de maternidad',
     compensacion: 'compensacion',
@@ -162,8 +208,8 @@ export async function notificarNuevaSolicitudAJefe(
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
       <h2 style="color: #182243;">Nueva Solicitud Pendiente de Aprobacion</h2>
-      <p>Hola <strong>${jefeNombre}</strong>,</p>
-      <p>El colaborador <strong>${solicitanteNombre}</strong> ha enviado una nueva solicitud de ${solicitud}.</p>
+      <p>Hola <strong>${escapeHtml(jefeNombre)}</strong>,</p>
+      <p>El colaborador <strong>${escapeHtml(solicitanteNombre)}</strong> ha enviado una nueva solicitud de ${solicitud}.</p>
       <p>Por favor, ingresa al Sistema de Gestion de Vacaciones CNI para revisar y aprobar o rechazar esta solicitud.</p>
       <br>
       <a href="https://vacaciones.cni.hn/aprobar-solicitudes" style="background-color: #00B5E2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ver Solicitudes Pendientes</a>
@@ -174,7 +220,7 @@ export async function notificarNuevaSolicitudAJefe(
 
   return enviarEmail({
     to: jefeEmail,
-    subject: `[CNI Vacaciones] Nueva solicitud de ${solicitanteNombre}`,
+    subject: `[CNI Vacaciones] Nueva solicitud de ${escapeHtml(solicitanteNombre)}`,
     html,
   });
 }
@@ -190,7 +236,7 @@ export async function notificarAprobacionJefeARRHH(
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
       <h2 style="color: #182243;">Aprobacion Pendiente de RRHH</h2>
-      <p>El jefe inmediato ha aprobado la solicitud de ${solicitud} de <strong>${solicitanteNombre}</strong>.</p>
+      <p>El jefe inmediato ha aprobado la solicitud de ${solicitud} de <strong>${escapeHtml(solicitanteNombre)}</strong>.</p>
       <p>La solicitud se encuentra ahora en la bandeja de Recursos Humanos para su validacion final${requiereSaldo ? ' y actualizacion de saldo' : ''}.</p>
       <br>
       <a href="https://vacaciones.cni.hn/aprobar-solicitudes" style="background-color: #00B5E2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ir a la Bandeja de RRHH</a>
@@ -201,7 +247,7 @@ export async function notificarAprobacionJefeARRHH(
 
   return enviarEmail({
     to: rrhhEmail,
-    subject: `[CNI Vacaciones] Solicitud de ${solicitanteNombre} lista para RRHH`,
+    subject: `[CNI Vacaciones] Solicitud de ${escapeHtml(solicitanteNombre)} lista para RRHH`,
     html,
   });
 }
@@ -223,7 +269,7 @@ export async function notificarResolucionAEmpleado(
     ? `Nos complace informarte que tu solicitud de ${solicitud} ha sido validada y <strong>aprobada por Recursos Humanos</strong>.`
     : `Tu solicitud de ${solicitud} ha sido <strong>rechazada</strong>.`;
   const motivoHtml = !esAprobada && motivoRechazo
-    ? `<p style="background-color: #fef2f2; padding: 10px; border-left: 4px solid #dc2626;"><strong>Motivo del rechazo:</strong> ${motivoRechazo}</p>`
+    ? `<p style="background-color: #fef2f2; padding: 10px; border-left: 4px solid #dc2626;"><strong>Motivo del rechazo:</strong> ${escapeHtml(motivoRechazo)}</p>`
     : '';
   const ctaHref = requiereBalance ? 'https://vacaciones.cni.hn/mi-perfil' : 'https://vacaciones.cni.hn/solicitudes';
   const ctaTexto = requiereBalance ? 'Ver mi balance actual' : 'Ver mis solicitudes';
@@ -231,7 +277,7 @@ export async function notificarResolucionAEmpleado(
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
       <h2 style="color: ${color};">${titulo}</h2>
-      <p>Hola <strong>${empleadoNombre}</strong>,</p>
+      <p>Hola <strong>${escapeHtml(empleadoNombre)}</strong>,</p>
       <p>${mensaje}</p>
       ${motivoHtml}
       <br>

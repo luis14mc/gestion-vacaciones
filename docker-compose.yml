@@ -78,6 +78,12 @@ services:
           memory: 384M
     networks:
       - cni-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
 
   # ─────────────────────────────────────────────────────────
   # Nginx (Reverse Proxy compartido para TODAS las apps)

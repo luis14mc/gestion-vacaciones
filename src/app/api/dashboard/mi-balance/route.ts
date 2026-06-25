@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { balances, solicitudes, anosLaborales } from "@/lib/db/schema";
+import { balances, solicitudes, anosLaborales, usuarios } from "@/lib/db/schema";
+import { mapBalanceToFila } from "@/lib/domain/balance-display";
 import { desc, eq, and, isNull, sql } from "drizzle-orm";
 
 const balanceSelect = {
@@ -10,6 +11,7 @@ const balanceSelect = {
   anoLaboralId: balances.anoLaboralId,
   tipoAusencia: balances.tipoAusencia,
   cantidadInicial: balances.cantidadInicial,
+  cantidadAcumulada: balances.cantidadAcumulada,
   cantidadUsada: balances.cantidadUsada,
   cantidadPendiente: balances.cantidadPendiente,
   cantidadDisponible: balances.cantidadDisponible,
@@ -33,15 +35,25 @@ export async function GET() {
     const usuarioId = session.id;
     const anioActual = new Date().getFullYear();
 
+    const [usuario] = await db
+      .select({
+        nombre: usuarios.nombre,
+        apellido: usuarios.apellido,
+        fechaIngreso: usuarios.fechaIngreso,
+      })
+      .from(usuarios)
+      .where(eq(usuarios.id, usuarioId))
+      .limit(1);
+
     // Obtener año laboral activo
     const [anoLaboralActivo] = await db
-      .select({ id: anosLaborales.id })
+      .select({ id: anosLaborales.id, ano: anosLaborales.ano })
       .from(anosLaborales)
       .where(eq(anosLaborales.activo, true))
       .limit(1);
 
     const [anoLaboralActual] = await db
-      .select({ id: anosLaborales.id })
+      .select({ id: anosLaborales.id, ano: anosLaborales.ano })
       .from(anosLaborales)
       .where(eq(anosLaborales.ano, anioActual))
       .limit(1);
@@ -83,14 +95,32 @@ export async function GET() {
       balance = balanceReciente ?? null;
     }
 
+    const anoLaboral = anoLaboralActivo ?? anoLaboralActual ?? null;
+
+    const balanceDetalle = usuario
+      ? mapBalanceToFila({
+          nombre: usuario.nombre,
+          apellido: usuario.apellido,
+          fechaIngreso: usuario.fechaIngreso,
+          cantidadInicial: balance?.cantidadInicial ?? 0,
+          cantidadAcumulada: balance?.cantidadAcumulada ?? 0,
+          cantidadDisponible: balance?.cantidadDisponible ?? 0,
+        })
+      : null;
+
     if (!balance) {
       return NextResponse.json({
         success: true,
         data: {
           diasAsignados: 0,
+          diasAcumulados: 0,
           diasUsados: 0,
           diasPendientes: 0,
           diasDisponibles: 0,
+          diasVencidos: 0,
+          diasProporcionales: 0,
+          balanceDetalle,
+          anoLaboral: anoLaboral?.ano ?? anioActual,
           solicitudesPendientes: 0,
           solicitudesAprobadas: 0,
           solicitudesRechazadas: 0,
@@ -100,6 +130,7 @@ export async function GET() {
     }
 
     const diasAsignados = Number(balance.cantidadInicial || 0);
+    const diasAcumulados = Number(balance.cantidadAcumulada || 0);
     const diasUsados = Number(balance.cantidadUsada || 0);
     const diasPendientesBalance = Number(balance.cantidadPendiente || 0);
     const diasDisponibles = Number(balance.cantidadDisponible || 0);
@@ -181,9 +212,14 @@ export async function GET() {
       success: true,
       data: {
         diasAsignados,
+        diasAcumulados,
         diasUsados,
         diasPendientes,
         diasDisponibles,
+        diasVencidos: diasAsignados,
+        diasProporcionales: diasAcumulados,
+        balanceDetalle,
+        anoLaboral: anoLaboral?.ano ?? anioActual,
         solicitudesPendientes: Number(pendientes?.count || 0),
         solicitudesAprobadas: Number(aprobadas?.count || 0),
         solicitudesRechazadas: Number(rechazadas?.count || 0),

@@ -17,7 +17,23 @@ export async function GET(request: NextRequest) {
       { id: 'vacaciones', nombre: 'Vacaciones', tipo: 'vacaciones', activo: true, colorHex: '#10b981', permiteHoras: false },
       { id: 'licencia_medica', nombre: 'Licencia Médica', tipo: 'licencia_medica', activo: true, colorHex: '#ef4444', permiteHoras: false },
       { id: 'permiso_personal', nombre: 'Permiso Personal', tipo: 'permiso_personal', activo: true, colorHex: '#f59e0b', permiteHoras: false },
-      { id: 'permiso_salida', nombre: 'Permiso de Salida', tipo: 'permiso_salida', activo: true, colorHex: '#6366f1', permiteHoras: true },
+      {
+        id: 'permiso_salida',
+        nombre: 'Permiso de Salida',
+        tipo: 'permiso_salida',
+        activo: true,
+        colorHex: '#6366f1',
+        permiteHoras: true,
+      },
+      {
+        id: 'dia_cumpleanos',
+        nombre: 'Día libre por cumpleaños',
+        tipo: 'dia_cumpleanos',
+        activo: true,
+        colorHex: '#ec4899',
+        permiteHoras: false,
+        requiereMesCumpleanos: true,
+      },
     ];
 
     return NextResponse.json({

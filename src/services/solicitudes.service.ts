@@ -9,9 +9,15 @@
 
 import { db } from '@/lib/db';
 import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray, isNull } from 'drizzle-orm';
 import { obtenerConfigs, asNumber } from '@/lib/config/service';
 import { contarDiasHabiles } from '@/lib/domain/labor-days';
+import { reservarBalanceVacaciones } from '@/lib/domain/balance-effects';
+import {
+  ESTADOS_DIA_CUMPLEANOS_ACTIVOS,
+  validarFechaSolicitudCumpleanos,
+} from '@/lib/domain/cumpleanos';
+import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
 
 // =====================================================
 // TIPOS
@@ -19,7 +25,7 @@ import { contarDiasHabiles } from '@/lib/domain/labor-days';
 
 export interface CrearSolicitudParams {
   usuarioId: number;
-  tipo: 'vacaciones' | 'permiso_salida' | 'licencia_medica' | 'permiso_personal';
+  tipo: 'vacaciones' | 'permiso_salida' | 'licencia_medica' | 'permiso_personal' | 'dia_cumpleanos';
   fechaInicio?: string;
   fechaFin?: string;
   diasSolicitados?: number;
@@ -63,14 +69,23 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
   } = params;
 
   return await db.transaction(async (tx) => {
-    const descuentaBalance = tipo === 'vacaciones' || (tipo === 'permiso_salida' && duracionPermiso === 'dia_completo');
+    const descuentaBalance =
+      tipo === 'vacaciones' ||
+      (tipo === 'permiso_salida' && duracionPermiso === 'dia_completo');
 
     // Días AUTORITATIVOS (no se confía en el valor del cliente):
-    // - permiso de salida día completo: 1
-    // - vacaciones: se recalculan desde el rango de fechas en el servidor
-    // - otros: lo informado (no descuentan balance)
     let diasParaSolicitud: number;
-    if (tipo === 'permiso_salida') {
+    let fechaInicioFinal = fechaInicio;
+    let fechaFinFinal = fechaFin;
+
+    if (tipo === 'dia_cumpleanos') {
+      if (!fechaInicio) {
+        throw new Error('Debe seleccionar la fecha del día libre por cumpleaños');
+      }
+      fechaInicioFinal = fechaInicio.slice(0, 10);
+      fechaFinFinal = fechaInicioFinal;
+      diasParaSolicitud = 1;
+    } else if (tipo === 'permiso_salida') {
       diasParaSolicitud = duracionPermiso === 'dia_completo' ? 1 : Number(diasSolicitados || 0);
     } else if (tipo === 'vacaciones') {
       if (!fechaInicio || !fechaFin) {
@@ -122,12 +137,12 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     }
 
     // 2. Validar fechas
-    if (fechaInicio && fechaFin && fechaInicio > fechaFin) {
+    if (fechaInicioFinal && fechaFinFinal && fechaInicioFinal > fechaFinFinal) {
       throw new Error('La fecha de inicio no puede ser posterior a la fecha de fin');
     }
 
-    // 3. Validar VoBo de Ministro para Directores
-    if (esDirector && (!documentosAdjuntos || documentosAdjuntos.length === 0)) {
+    // 3. Validar VoBo de Ministro para Directores (no aplica a día de cumpleaños)
+    if (esDirector && tipo !== 'dia_cumpleanos' && (!documentosAdjuntos || documentosAdjuntos.length === 0)) {
       throw new Error('Los Directores deben adjuntar obligatoriamente el correo con el VoBo del Ministro.');
     }
 
@@ -138,6 +153,51 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
 
     if (!usuario || !usuario.activo) {
       throw new Error('Usuario no encontrado o inactivo');
+    }
+
+    if (tipo === 'dia_cumpleanos') {
+      if (!usuario.fechaNacimiento) {
+        throw new Error('No tiene registrada su fecha de nacimiento. Contacte a Recursos Humanos.');
+      }
+
+      const validacionFecha = validarFechaSolicitudCumpleanos(
+        usuario.fechaNacimiento,
+        fechaInicioFinal!
+      );
+      if (!validacionFecha.valido) {
+        throw new Error(validacionFecha.error ?? 'Fecha no válida para día de cumpleaños');
+      }
+
+      const anioActual = new Date().getFullYear();
+      const [solicitudExistente] = await tx
+        .select({ id: solicitudes.id })
+        .from(solicitudes)
+        .where(
+          and(
+            eq(solicitudes.usuarioId, usuarioId),
+            eq(solicitudes.tipo, 'dia_cumpleanos'),
+            inArray(solicitudes.estado, [...ESTADOS_DIA_CUMPLEANOS_ACTIVOS]),
+            isNull(solicitudes.deletedAt),
+            sql`EXTRACT(YEAR FROM ${solicitudes.fechaInicio}) = ${anioActual}`
+          )
+        )
+        .limit(1);
+
+      if (solicitudExistente) {
+        throw new Error('Ya utilizó su día libre por cumpleaños este año.');
+      }
+    }
+
+    if (fechaInicioFinal && fechaFinFinal) {
+      await validarConflictosDepartamento(
+        {
+          usuarioId,
+          departamentoId: usuario.departamentoId,
+          fechaInicio: fechaInicioFinal,
+          fechaFin: fechaFinFinal,
+        },
+        tx
+      );
     }
 
     // 2. Obtener año laboral activo
@@ -171,22 +231,22 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       }
     }
 
-    // 4. Generar código único
+    // 4. Generar código único (formato CNI: CNI-SOL-YYYY-XXXX)
     const year = new Date().getFullYear();
     const lastSolicitud = await tx.query.solicitudes.findFirst({
-      where: sql`${solicitudes.codigo} LIKE ${`SOL-${year}-%`}`,
+      where: sql`(${solicitudes.codigo} LIKE ${`CNI-SOL-${year}-%`} OR ${solicitudes.codigo} LIKE ${`SOL-${year}-%`})`,
       orderBy: [desc(solicitudes.id)],
     });
 
     let nextNumber = 1;
     if (lastSolicitud?.codigo) {
-      const match = lastSolicitud.codigo.match(/SOL-\d{4}-(\d+)/);
+      const match = lastSolicitud.codigo.match(/(?:CNI-SOL|SOL)-\d{4}-(\d+)/);
       if (match) {
-        nextNumber = parseInt(match[1]) + 1;
+        nextNumber = parseInt(match[1], 10) + 1;
       }
     }
 
-    const codigo = `SOL-${year}-${String(nextNumber).padStart(5, '0')}`;
+    const codigo = `CNI-SOL-${year}-${String(nextNumber).padStart(4, '0')}`;
 
     // 5. Crear solicitud
     // Director crea + adjunta VoBo → va directo a RRHH (estado: aprobada_jefe)
@@ -222,8 +282,8 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         usuarioId,
         anoLaboralId: anoLaboral.id,
         tipo,
-        fechaInicio,
-        fechaFin,
+        fechaInicio: fechaInicioFinal,
+        fechaFin: fechaFinFinal,
         diasSolicitados: diasParaSolicitud.toString(),
         duracionPermiso,
         horaSalida: horaSalidaFinal,
@@ -245,15 +305,11 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
 
     // 6. Si es vacación, actualizar balance (cantidad_pendiente)
     if (descuentaBalance && diasParaBalance > 0) {
-      await tx.execute(sql`
-        UPDATE balances
-        SET cantidad_pendiente = cantidad_pendiente + ${diasParaBalance},
-            cantidad_disponible = GREATEST(0, cantidad_disponible - ${diasParaBalance}),
-            updated_at = NOW()
-        WHERE usuario_id = ${usuarioId}
-          AND ano_laboral_id = ${anoLaboral.id}
-          AND tipo_ausencia = 'vacaciones'
-      `);
+      await reservarBalanceVacaciones(tx, {
+        usuarioId,
+        anoLaboralId: anoLaboral.id,
+        dias: diasParaBalance,
+      });
     }
 
     return nuevaSolicitud;
@@ -473,7 +529,7 @@ export async function listarSolicitudes(filtros: {
 }) {
   const { usuarioId, estado, tipo, limit = 50, offset = 0 } = filtros;
 
-  const conditions = [];
+  const conditions = [isNull(solicitudes.deletedAt)];
 
   if (usuarioId) {
     conditions.push(eq(solicitudes.usuarioId, usuarioId));
@@ -583,8 +639,15 @@ export async function cancelarSolicitud(
         version: sql`${solicitudes.version} + 1`,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(solicitudes.id, solicitudId))
+      .where(and(
+        eq(solicitudes.id, solicitudId),
+        eq(solicitudes.version, solicitud.version)
+      ))
       .returning();
+
+    if (!updated) {
+      throw new Error('Conflicto de versión: la solicitud fue modificada por otro usuario');
+    }
 
     return updated;
   });

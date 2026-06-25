@@ -5,6 +5,7 @@ import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { crearSolicitud } from '@/services/solicitudes.service';
 import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
+import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { obtenerConfigs, asBool } from '@/lib/config/service';
 import { validarAdjuntos } from '@/lib/security/adjuntos';
 import { withErrorHandler } from '@/lib/api-handler';
@@ -15,7 +16,7 @@ export const runtime = 'nodejs';
 // Esquema de validación estricto para la API (OWASP A03)
 const crearSolicitudSchema = z.object({
   usuarioId: z.number().int().positive(),
-  tipo: z.enum(['vacaciones', 'permiso_salida', 'licencia_medica', 'permiso_personal']),
+  tipo: z.enum(['vacaciones', 'permiso_salida', 'licencia_medica', 'permiso_personal', 'dia_cumpleanos']),
   fechaInicio: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   fechaFin: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   diasSolicitados: z.number().min(0).optional(),
@@ -145,6 +146,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     licencia_medica: 'Licencia Médica',
     permiso_personal: 'Permiso Personal',
     permiso_salida: 'Permiso de Salida',
+    dia_cumpleanos: 'Día libre por cumpleaños',
   };
 
   const solicitudesListado = results.map((sol: any) => ({
@@ -342,6 +344,22 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       })
       .catch(e => console.error('[Jefe Lookup Error]', e));
   }
+
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarAuditoria({
+    usuarioId: sessionUser.id,
+    accion: 'crear',
+    tablaAfectada: 'solicitudes',
+    registroId: Number(solicitudCreada.id),
+    detalles: {
+      evento: 'crear_solicitud',
+      tipo,
+      usuarioSolicitanteId: usuarioId,
+      codigo: solicitudCreada.codigo,
+    },
+    ipAddress,
+    userAgent,
+  });
 
   return NextResponse.json({
     success: true,

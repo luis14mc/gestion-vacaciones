@@ -40,17 +40,12 @@ export const vacacionesConfigSchema = z.object({
     (v) => { const n = Number(v); return !isNaN(n) && n >= 0 && n <= 90; },
     "Debe ser un número entre 0 y 90"
   ),
-  "vacaciones.umbral_aprobacion_ejecutiva": z.string().refine(
-    (v) => { const n = Number(v); return !isNaN(n) && n >= 1 && n <= 365; },
-    "Debe ser un número entre 1 y 365"
-  ),
   "vacaciones.permitir_medio_dia": z.string().regex(/^(true|false)$/),
   "vacaciones.acumulacion_habilitada": z.string().regex(/^(true|false)$/),
   "vacaciones.max_acumulacion": z.string().refine(
     (v) => { const n = Number(v); return !isNaN(n) && n >= 0 && n <= 365; },
     "Debe ser un número entre 0 y 365"
   ),
-  "vacaciones.incluir_feriados": z.string().regex(/^(true|false)$/),
 });
 
 // ─── Notificaciones ───────────────────────────────────

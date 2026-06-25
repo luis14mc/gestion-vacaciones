@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { asignarRol } from '@/services/usuarios.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
+import { syncFlagsFromRoles } from '@/services/rbac.service';
 import { db } from '@/lib/db';
 import { roles, usuariosRoles } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest) {
 
     // 6. Asignar rol usando servicio
     await asignarRol(Number(usuarioId), rol.id);
+
+    await syncFlagsFromRoles(Number(usuarioId));
 
     const { ipAddress, userAgent } = datosPeticion(request);
     await registrarAuditoria({
@@ -142,6 +145,8 @@ export async function DELETE(request: NextRequest) {
           eq(usuariosRoles.rolId, rol.id)
         )
       );
+
+    await syncFlagsFromRoles(Number(usuarioId));
 
     const { ipAddress, userAgent } = datosPeticion(request);
     await registrarAuditoria({

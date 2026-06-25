@@ -9,6 +9,8 @@ import { MetricCard } from '@/components/dashboard/MetricCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { CalendarView } from '@/components/dashboard/CalendarView';
+import { BalanceDiasTable } from '@/components/balance/BalanceDiasTable';
+import type { BalanceDiasFila } from '@/lib/domain/balance-display';
 import type { Session } from 'next-auth';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -24,9 +26,14 @@ interface Metrics {
 
 interface BalancePersonal {
   diasAsignados: number;
+  diasAcumulados?: number;
   diasUsados: number;
   diasPendientes: number;
   diasDisponibles: number;
+  diasVencidos?: number;
+  diasProporcionales?: number;
+  balanceDetalle?: BalanceDiasFila | null;
+  anoLaboral?: number;
   solicitudesPendientes: number;
   solicitudesAprobadas: number;
   solicitudesRechazadas: number;
@@ -253,17 +260,28 @@ export default function DashboardClient({ session }: { session: Session }) {
             </div>
           )}
 
-          {/* Employee balance */}
+          {/* Employee balance — vista tipo hoja RRHH */}
           {isEmpleado && balance && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard title="Días Asignados" value={balance.diasAsignados} subtitle="Total este año" icon={Calendar} color="primary" />
-              <MetricCard title="Disponibles" value={balance.diasDisponibles} subtitle="Puedes solicitar" icon={CheckCircle} color="success" />
-              <MetricCard title="Días Usados" value={balance.diasUsados} subtitle={balance.diasAsignados ? `${Math.round((balance.diasUsados / balance.diasAsignados) * 100)}% utilizado` : '0%'} icon={Car} color="error" />
-              <MetricCard title="Pendientes" value={balance.solicitudesPendientes} subtitle={`${balance.diasPendientes} días por aprobar`} icon={Hourglass} color="warning" />
+            <BalanceDiasTable
+              filas={balance.balanceDetalle ? [balance.balanceDetalle] : []}
+              anoLaboral={balance.anoLaboral ?? null}
+            />
+          )}
+
+          {!isEmpleado && balance?.balanceDetalle && (
+            <div>
+              <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <User className="w-3.5 h-3.5" />
+                Mi Balance Personal
+              </h3>
+              <BalanceDiasTable
+                filas={[balance.balanceDetalle]}
+                anoLaboral={balance.anoLaboral ?? null}
+              />
             </div>
           )}
 
-          {!isEmpleado && balance && (
+          {!isEmpleado && balance && !balance.balanceDetalle && (
             <div>
               <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
                 <User className="w-3.5 h-3.5" />

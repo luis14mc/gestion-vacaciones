@@ -38,10 +38,10 @@
       "breakpoints": true
     },
     {
-      "idx": 5,
+      "idx": 6,
       "version": "7",
-      "when": 1780000002000,
-      "tag": "0005_balance_trigger",
+      "when": 1780000003000,
+      "tag": "0006_fecha_nacimiento_dia_cumpleanos",
       "breakpoints": true
     }
   ]

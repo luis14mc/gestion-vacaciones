@@ -125,6 +125,7 @@ function getNavGroups(session: Session): NavGroup[] {
   groups.push({
     title: 'Personal',
     items: [
+      { label: 'Mi Balance', href: '/mi-balance', icon: Calendar },
       { label: 'Mi Perfil', href: '/mi-perfil', icon: UserCircle },
     ],
   });
@@ -341,7 +342,7 @@ export default function AppShell({ children, session }: AppShellProps) {
         </header>
 
         {/* Page content */}
-        <main className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:px-8 max-w-[1440px] w-full mx-auto">
+        <main id="main-content" className="min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 lg:px-8 max-w-[1440px] w-full mx-auto">
           {children}
         </main>
 
@@ -377,28 +378,32 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   const segments = pathname.split('/').filter(Boolean);
 
   return (
-    <div className="flex items-center gap-1.5 text-[13px]">
-      <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
-        Inicio
-      </Link>
-      {segments.map((seg, i) => {
-        const label = ROUTE_LABELS[seg] || seg;
-        const href = '/' + segments.slice(0, i + 1).join('/');
-        const isLast = i === segments.length - 1;
+    <nav aria-label="Breadcrumb" className="text-[13px]">
+      <ol className="flex items-center gap-1.5">
+        <li>
+          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+            Inicio
+          </Link>
+        </li>
+        {segments.map((seg, i) => {
+          const label = ROUTE_LABELS[seg] || seg;
+          const href = '/' + segments.slice(0, i + 1).join('/');
+          const isLast = i === segments.length - 1;
 
-        return (
-          <React.Fragment key={href}>
-            <span className="text-muted-foreground/50">/</span>
-            {isLast ? (
-              <span className="text-foreground font-medium">{label}</span>
-            ) : (
-              <Link href={href} className="text-muted-foreground hover:text-foreground transition-colors">
-                {label}
-              </Link>
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
+          return (
+            <li key={href} className="flex items-center gap-1.5">
+              <span className="text-muted-foreground/50" aria-hidden="true">/</span>
+              {isLast ? (
+                <span className="text-foreground font-medium" aria-current="page">{label}</span>
+              ) : (
+                <Link href={href} className="text-muted-foreground hover:text-foreground transition-colors">
+                  {label}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }

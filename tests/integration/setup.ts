@@ -17,7 +17,12 @@ import * as schema from '../../src/lib/db/schema';
 // =====================================================
 // CARGAR VARIABLES DE ENTORNO
 // =====================================================
-config({ path: resolve(__dirname, '../../.env') }); // Usar misma BD
+config({ path: resolve(__dirname, '../../.env') });
+
+const databaseUrl = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
+if (process.env.DATABASE_URL_TEST) {
+  console.log('ℹ️  Usando DATABASE_URL_TEST para tests de integración');
+}
 
 // =====================================================
 // CONEXIÓN A BASE DE DATOS
@@ -33,11 +38,11 @@ beforeAll(async () => {
   console.log('🧪 SETUP INTEGRATION TESTS - CNI');
   console.log('🧪 ========================================\n');
   
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL no configurada');
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL no configurada (o DATABASE_URL_TEST para integración)');
   }
 
-  client = postgres(process.env.DATABASE_URL + '?sslmode=require', {
+  client = postgres(databaseUrl + '?sslmode=require', {
     max: 1,
     ssl: { rejectUnauthorized: false }
   });

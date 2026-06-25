@@ -45,7 +45,6 @@ const BOOLEAN_KEYS = new Set([
   'app.mantenimiento',
   'vacaciones.permitir_medio_dia',
   'vacaciones.acumulacion_habilitada',
-  'vacaciones.incluir_feriados',
   'notificaciones.email_habilitado',
   'notificaciones.smtp_secure',
   'notificaciones.smtp_require_tls',
@@ -66,7 +65,6 @@ const NUMBER_KEYS = new Set([
   'vacaciones.dias_minimos_solicitud',
   'vacaciones.dias_maximos_consecutivos',
   'vacaciones.dias_anticipacion',
-  'vacaciones.umbral_aprobacion_ejecutiva',
   'vacaciones.max_acumulacion',
   'notificaciones.smtp_port',
   'notificaciones.recordatorio_dias_antes',
@@ -119,6 +117,11 @@ export const CONFIG_DEFAULT_VALUES: Record<string, string> = {
   'notificaciones.notificar_rrhh_aprobacion_jefe': 'true',
   // General
   'app.mantenimiento': 'false',
+  // Departamentos
+  'departamentos.validar_conflictos': 'true',
+  'departamentos.max_ausencias_simultaneas': '0',
+  // Seguridad (0 = desactivado)
+  'seguridad.forzar_cambio_password_dias': '0',
 };
 
 export interface ConfigMeta {

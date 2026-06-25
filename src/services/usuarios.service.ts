@@ -9,8 +9,10 @@
 
 import { db } from '@/lib/db';
 import { usuarios, usuariosRoles, roles } from '@/lib/db/schema';
-import { eq, and, or, sql, ilike } from 'drizzle-orm';
+import { eq, and, or, sql, ilike, isNull } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
+import { validarPasswordPolitica } from '@/lib/config/password-policy';
+import { metadataConPasswordActualizada } from '@/lib/config/password-expiry';
 
 // =====================================================
 // TIPOS
@@ -24,6 +26,7 @@ export interface CrearUsuarioParams {
   departamentoId?: number;
   cargo?: string;
   fechaIngreso?: string;
+  fechaNacimiento?: string;
   activo?: boolean;
   esAdmin?: boolean;
   esRrhh?: boolean;
@@ -43,6 +46,7 @@ export interface ActualizarUsuarioParams {
   departamentoId?: number;
   cargo?: string;
   fechaIngreso?: string;
+  fechaNacimiento?: string;
   activo?: boolean;
   numeroEmpleado?: string;
   telefono?: string;
@@ -65,6 +69,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
     departamentoId,
     cargo,
     fechaIngreso,
+    fechaNacimiento,
     activo = true,
     esAdmin = false,
     esRrhh = false,
@@ -78,6 +83,16 @@ export async function crearUsuario(params: CrearUsuarioParams) {
   } = params;
 
   return await db.transaction(async (tx) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error('El formato del email no es válido');
+    }
+
+    const errorPassword = await validarPasswordPolitica(password);
+    if (errorPassword) {
+      throw new Error(errorPassword);
+    }
+
     // Validar email único
     const existente = await tx.query.usuarios.findFirst({
       where: eq(usuarios.email, email.toLowerCase()),
@@ -100,6 +115,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         departamentoId,
         cargo,
         fechaIngreso,
+        fechaNacimiento: fechaNacimiento?.slice(0, 10),
         activo,
         esAdmin,
         esRrhh,
@@ -109,7 +125,9 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         telefono,
         direccion,
         jefeSuperiorId,
-        metadata: debeCambiarPassword ? { debeCambiarPassword: true } : {},
+        metadata: metadataConPasswordActualizada(
+          debeCambiarPassword ? { debeCambiarPassword: true } : {}
+        ),
       })
       .returning();
 
@@ -190,6 +208,11 @@ export async function actualizarUsuario(id: number, params: ActualizarUsuarioPar
   if (params.departamentoId !== undefined) updateData.departamentoId = params.departamentoId;
   if (params.cargo !== undefined) updateData.cargo = params.cargo;
   if (params.fechaIngreso !== undefined) updateData.fechaIngreso = params.fechaIngreso;
+  if (params.fechaNacimiento !== undefined) {
+    updateData.fechaNacimiento = params.fechaNacimiento
+      ? params.fechaNacimiento.slice(0, 10)
+      : null;
+  }
   if (params.activo !== undefined) updateData.activo = params.activo;
 
   const [updated] = await db
@@ -302,11 +325,12 @@ export async function listarUsuarios(filtros: {
   }
 
   if (search) {
+    const sanitizedSearch = search.replace(/%/g, '\\%').replace(/_/g, '\\_');
     conditions.push(
       or(
-        ilike(usuarios.nombre, `%${search}%`),
-        ilike(usuarios.apellido, `%${search}%`),
-        ilike(usuarios.email, `%${search}%`)
+        ilike(usuarios.nombre, `%${sanitizedSearch}%`),
+        ilike(usuarios.apellido, `%${sanitizedSearch}%`),
+        ilike(usuarios.email, `%${sanitizedSearch}%`)
       )!
     );
   }

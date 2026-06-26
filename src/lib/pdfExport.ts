@@ -1,3 +1,7 @@
+/**
+ * @deprecated Preferir exportación PDF desde backend (/api/reportes/exportar?formato=pdf).
+ * Mantenido para ReportesDepartamentoClient hasta migración completa.
+ */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 

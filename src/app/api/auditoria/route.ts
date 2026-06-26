@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { db } from '@/lib/db';
-import { registrosAuditoria, usuarios } from '@/lib/db/schema';
-import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
+import { parseFiltrosAuditoria, filtrosAuditoriaToRecord } from '@/lib/domain/auditoria/filters';
+import { listarRegistrosAuditoria } from '@/lib/domain/auditoria/queries';
+import { puedeVerAuditoria } from '@/lib/domain/auditoria/access';
+import { registrarEventoAuditoria, datosPeticion } from '@/services/auditoria.service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,88 +13,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
-    if (!session.esAdmin) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 403 });
+    if (!puedeVerAuditoria(session)) {
+      return NextResponse.json(
+        { success: false, error: 'Solo administradores pueden consultar la auditoría global' },
+        { status: 403 }
+      );
     }
 
-    const { searchParams } = request.nextUrl;
-    const pagina = parseInt(searchParams.get('pagina') || '1');
-    const limite = parseInt(searchParams.get('limite') || '50');
-    const accion = searchParams.get('accion');
-    const tabla = searchParams.get('tabla');
-    const fechaInicio = searchParams.get('fechaInicio');
-    const fechaFin = searchParams.get('fechaFin');
-
-    const offset = (pagina - 1) * limite;
-
-    const condiciones = [];
-
-    if (accion && accion !== 'todas') {
-      condiciones.push(eq(registrosAuditoria.accion, accion));
-    }
-
-    if (tabla && tabla !== 'todas') {
-      condiciones.push(eq(registrosAuditoria.tablaAfectada, tabla));
-    }
-
-    if (fechaInicio) {
-      const inicio = new Date(fechaInicio);
-      inicio.setHours(0, 0, 0, 0);
-      condiciones.push(gte(registrosAuditoria.createdAt, inicio.toISOString()));
-    }
-
-    if (fechaFin) {
-      const fin = new Date(fechaFin);
-      fin.setHours(23, 59, 59, 999);
-      condiciones.push(lte(registrosAuditoria.createdAt, fin.toISOString()));
-    }
-
-    const whereClause = condiciones.length > 0 ? and(...condiciones) : undefined;
-
-    const [totalResult] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(registrosAuditoria)
-      .where(whereClause);
-
-    const total = Number(totalResult?.count || 0);
-
-    const registros = await db.query.registrosAuditoria.findMany({
-      where: whereClause,
-      limit: limite,
-      offset: offset,
-      orderBy: [desc(registrosAuditoria.createdAt)],
-      with: {
-        usuario: {
-          columns: {
-            id: true,
-            nombre: true,
-            apellido: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    // Mapear el formato que espera el frontend
-    const dataFormatted = registros.map(r => ({
-      id: r.id,
-      usuario_id: r.usuarioId,
-      accion: r.accion,
-      tabla_afectada: r.tablaAfectada,
-      registro_id: r.registroId,
-      detalles: r.detalles,
-      ip_address: r.ipAddress,
-      user_agent: r.userAgent,
-      fecha_creacion: r.createdAt,
-      usuario: r.usuario,
-    }));
+    const filtros = parseFiltrosAuditoria(request.nextUrl.searchParams);
+    const resultado = await listarRegistrosAuditoria(filtros);
 
     return NextResponse.json({
       success: true,
-      data: dataFormatted,
-      total,
-      paginaActual: pagina,
-      totalPaginas: Math.ceil(total / limite),
+      data: resultado.data,
+      total: resultado.total,
+      paginaActual: resultado.paginaActual,
+      totalPaginas: resultado.totalPaginas,
+      limite: resultado.limite,
+      resumen: resultado.resumen,
+      meta: {
+        generadoEn: new Date().toISOString(),
+        filtros: filtrosAuditoriaToRecord(filtros),
+      },
     });
   } catch (error) {
     console.error('Error fetching auditoria:', error);
@@ -109,34 +50,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
-    if (!session.esAdmin) {
+    if (!puedeVerAuditoria(session)) {
       return NextResponse.json(
-        { success: false, error: 'Solo administradores pueden registrar eventos manualmente' },
+        { success: false, error: 'Solo administradores pueden registrar eventos manuales' },
         { status: 403 }
       );
     }
 
     const body = await request.json();
-    const { accion, tablaAfectada, registroId, detalles } = body;
+    const { accion, tablaAfectada, registroId, detalles, motivo } = body;
 
-    if (!accion || !tablaAfectada) {
-      return NextResponse.json({ success: false, error: 'Faltan campos requeridos' }, { status: 400 });
+    if (!accion || !tablaAfectada || !motivo) {
+      return NextResponse.json(
+        { success: false, error: 'Faltan campos requeridos: accion, tablaAfectada, motivo' },
+        { status: 400 }
+      );
     }
 
-    const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-    const userAgent = request.headers.get('user-agent') || 'unknown';
+    const { ipAddress, userAgent } = datosPeticion(request);
 
-    await db.insert(registrosAuditoria).values({
+    await registrarEventoAuditoria({
       usuarioId: session.id,
-      accion,
-      tablaAfectada,
+      accion: 'crear',
+      modulo: 'auditoria',
+      evento: 'evento_manual_admin',
+      severidad: 'advertencia',
+      resultado: 'exito',
+      tablaAfectada: 'auditoria',
       registroId: registroId ? Number(registroId) : null,
-      detalles: detalles ? JSON.stringify(detalles) : null,
-      ipAddress: ipAddress.substring(0, 45),
+      detalles: {
+        manual: true,
+        motivo,
+        accionSolicitada: accion,
+        tablaSolicitada: tablaAfectada,
+        payload: detalles ?? null,
+      },
+      ipAddress,
       userAgent,
     });
 
-    return NextResponse.json({ success: true, message: 'Evento registrado' });
+    return NextResponse.json({ success: true, message: 'Evento manual registrado' });
   } catch (error) {
     console.error('Error saving auditoria:', error);
     return NextResponse.json({ success: false, error: 'Error interno' }, { status: 500 });

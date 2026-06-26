@@ -3,6 +3,10 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balances, solicitudes, anosLaborales, usuarios } from "@/lib/db/schema";
 import { mapBalanceToFila } from "@/lib/domain/balance-display";
+import {
+  calcularConsumoBalance,
+  calcularDisponibleBalance,
+} from "@/lib/domain/balance-consumo";
 import { desc, eq, and, isNull, sql } from "drizzle-orm";
 
 const balanceSelect = {
@@ -97,18 +101,18 @@ export async function GET() {
 
     const anoLaboral = anoLaboralActivo ?? anoLaboralActual ?? null;
 
-    const balanceDetalle = balance && usuario
-      ? mapBalanceToFila({
-          nombre: usuario.nombre,
-          apellido: usuario.apellido,
-          fechaIngreso: usuario.fechaIngreso,
-          cantidadInicial: balance.cantidadInicial,
-          cantidadAcumulada: balance.cantidadAcumulada,
-          cantidadDisponible: balance.cantidadDisponible,
-        })
-      : null;
-
     if (!balance) {
+      const balanceDetalleSinBalance = usuario
+        ? mapBalanceToFila({
+            nombre: usuario.nombre,
+            apellido: usuario.apellido,
+            fechaIngreso: usuario.fechaIngreso,
+            cantidadInicial: 0,
+            cantidadAcumulada: 0,
+            cantidadDisponible: 0,
+          })
+        : null;
+
       return NextResponse.json({
         success: true,
         data: {
@@ -120,7 +124,7 @@ export async function GET() {
           diasDisponibles: 0,
           diasVencidos: 0,
           diasProporcionales: 0,
-          balanceDetalle,
+          balanceDetalle: balanceDetalleSinBalance,
           anoLaboral: anoLaboral?.ano ?? anioActual,
           solicitudesPendientes: 0,
           solicitudesAprobadas: 0,
@@ -132,9 +136,42 @@ export async function GET() {
 
     const diasAsignados = Number(balance.cantidadInicial || 0);
     const diasAcumulados = Number(balance.cantidadAcumulada || 0);
-    const diasUsados = Number(balance.cantidadUsada || 0);
-    const diasPendientesBalance = Number(balance.cantidadPendiente || 0);
-    const diasDisponibles = Number(balance.cantidadDisponible || 0);
+    const baseBalance = diasAsignados + diasAcumulados;
+
+    const solicitudesConsumo = await db
+      .select({
+        estado: solicitudes.estado,
+        diasSolicitados: solicitudes.diasSolicitados,
+        tipo: solicitudes.tipo,
+        duracionPermiso: solicitudes.duracionPermiso,
+      })
+      .from(solicitudes)
+      .where(
+        and(
+          eq(solicitudes.usuarioId, usuarioId),
+          eq(solicitudes.anoLaboralId, balance.anoLaboralId),
+          isNull(solicitudes.deletedAt)
+        )
+      );
+
+    const { usada: diasUsados, pendiente: diasPendientes } =
+      calcularConsumoBalance(solicitudesConsumo);
+    const diasDisponibles = calcularDisponibleBalance(
+      baseBalance,
+      diasUsados,
+      diasPendientes
+    );
+
+    const balanceDetalle = usuario
+      ? mapBalanceToFila({
+          nombre: usuario.nombre,
+          apellido: usuario.apellido,
+          fechaIngreso: usuario.fechaIngreso,
+          cantidadInicial: balance.cantidadInicial,
+          cantidadAcumulada: balance.cantidadAcumulada,
+          cantidadDisponible: diasDisponibles,
+        })
+      : null;
 
     // Obtener solicitudes pendientes
     const [pendientes] = await db
@@ -147,24 +184,6 @@ export async function GET() {
           isNull(solicitudes.deletedAt)
         )
       );
-
-    // Calcular días pendientes de aprobación
-    const solicitudesPendientesData = await db
-      .select({ dias: solicitudes.diasSolicitados })
-      .from(solicitudes)
-      .where(
-        and(
-          eq(solicitudes.usuarioId, usuarioId),
-          sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
-          isNull(solicitudes.deletedAt)
-        )
-      );
-
-    const diasPendientesSolicitudes = solicitudesPendientesData.reduce(
-      (sum, sol) => sum + Number(sol.dias),
-      0
-    );
-    const diasPendientes = diasPendientesBalance || diasPendientesSolicitudes;
 
     // Obtener solicitudes aprobadas (este año)
     const inicioAnio = `${anioActual}-01-01`;
@@ -213,7 +232,7 @@ export async function GET() {
       success: true,
       data: {
         tieneBalance: true,
-        diasAsignados,
+        diasAsignados: baseBalance,
         diasAcumulados,
         diasUsados,
         diasPendientes,

@@ -19,7 +19,7 @@ import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { filtrarConfigCatalogo, getConfigMeta, validarConfig } from '@/lib/config/catalog';
 import { invalidarCacheConfig } from '@/lib/config/service';
-import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
+import { registrarEventoAuditoria, datosPeticion } from '@/services/auditoria.service';
 
 export const runtime = 'nodejs';
 
@@ -136,11 +136,19 @@ export async function PATCH(request: NextRequest) {
       invalidarCacheConfig();
 
       const { ipAddress, userAgent } = datosPeticion(request);
-      await registrarAuditoria({
+      await registrarEventoAuditoria({
         usuarioId: session.id,
         accion: 'actualizar',
+        modulo: 'configuracion',
+        evento: 'actualizar_configuracion',
         tablaAfectada: 'configuracion',
-        detalles: { claves: body.map((i: any) => i.clave) },
+        detalles: {
+          claves: body.map((i: { clave: string; valor: unknown }) => i.clave),
+          cambios: body.map((i: { clave: string; valor: unknown }) => ({
+            clave: i.clave,
+            valorNuevo: i.valor,
+          })),
+        },
         ipAddress,
         userAgent,
       });
@@ -207,12 +215,14 @@ export async function PATCH(request: NextRequest) {
     invalidarCacheConfig();
 
     const { ipAddress, userAgent } = datosPeticion(request);
-    await registrarAuditoria({
+    await registrarEventoAuditoria({
       usuarioId: session.id,
       accion: 'actualizar',
+      modulo: 'configuracion',
+      evento: 'actualizar_configuracion',
       tablaAfectada: 'configuracion',
       registroId: Number(id),
-      detalles: { campos: Object.keys(camposPermitidos) },
+      detalles: { clave: existente.clave, campos: Object.keys(camposPermitidos) },
       ipAddress,
       userAgent,
     });

@@ -91,6 +91,7 @@ function getNavGroups(session: Session): NavGroup[] {
       title: 'Gestión',
       items: [
         { label: 'Mi Equipo', href: '/mi-equipo', icon: UsersRound },
+        { label: 'Reportes', href: '/reportes', icon: BarChart3 },
         { label: 'Reportes Depto.', href: '/reportes-departamento', icon: BarChart3 },
       ],
     });

@@ -1,35 +1,17 @@
 /**
  * ============================================================
- * EXCEL SERVICE - Exportación de reportes
+ * EXCEL SERVICE - Exportación institucional CNI
  * ============================================================
- * @description Genera archivos Excel con ExcelJS.
- *   Separado del servicio de reportes (SRP).
- * @version 1.0
+ * Genera archivos .xlsx con ExcelJS desde datasets canónicos.
  * ============================================================
  */
 
 import ExcelJS from 'exceljs';
-import { db } from '@/lib/db';
-import { solicitudes, usuarios, balances, departamentos, anosLaborales } from '@/lib/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
-
-// =====================================================
-// TIPOS
-// =====================================================
-
-interface ExcelOptions {
-  departamentoId?: number;
-  anoLaboralId?: number;
-}
-
-// =====================================================
-// ESTILOS REUTILIZABLES
-// =====================================================
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
-  fgColor: { argb: 'FF1E3A5F' }, // Azul CNI
+  fgColor: { argb: 'FF1E3A5F' },
 };
 
 const HEADER_FONT: Partial<ExcelJS.Font> = {
@@ -50,15 +32,15 @@ function applyHeaderStyle(row: ExcelJS.Row) {
     cell.fill = HEADER_FILL;
     cell.font = HEADER_FONT;
     cell.border = BORDER_THIN;
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
   });
-  row.height = 25;
+  row.height = 28;
 }
 
 function applyDataStyle(row: ExcelJS.Row, isEven: boolean) {
   row.eachCell((cell) => {
     cell.border = BORDER_THIN;
-    cell.alignment = { vertical: 'middle' };
+    cell.alignment = { vertical: 'middle', wrapText: true };
     if (isEven) {
       cell.fill = {
         type: 'pattern',
@@ -69,251 +51,139 @@ function applyDataStyle(row: ExcelJS.Row, isEven: boolean) {
   });
 }
 
-// =====================================================
-// REPORTE: Balances por usuario
-// =====================================================
+function esColumnaNumerica(key: string): boolean {
+  return (
+    key.includes('dias_') ||
+    key.startsWith('total_') ||
+    key === 'porcentaje_uso' ||
+    key === 'promedio_dias' ||
+    key === 'ano_laboral' ||
+    key === 'ano' ||
+    key === 'mes_cumpleanos'
+  );
+}
 
-export async function exportarReporteBalances(opts: ExcelOptions = {}): Promise<Buffer> {
+function esColumnaFecha(key: string): boolean {
+  return (
+    key.includes('fecha') ||
+    key === 'ultima_actualizacion' ||
+    key === 'fecha_creacion'
+  );
+}
+
+export interface ExportarFilasExcelInput {
+  titulo: string;
+  hoja: string;
+  columnas: Array<{ key: string; header: string }>;
+  filas: Record<string, unknown>[];
+  meta?: {
+    generadoEn: string;
+    filtros: Record<string, unknown>;
+    totalRegistros?: number;
+    sinDatos?: boolean;
+  };
+}
+
+export async function exportarFilasExcel(input: ExportarFilasExcelInput): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'CNI Honduras - Sistema de Vacaciones';
   workbook.created = new Date();
 
-  const ws = workbook.addWorksheet('Balances', {
-    views: [{ state: 'frozen', ySplit: 2 }],
+  const ws = workbook.addWorksheet(input.hoja.slice(0, 31), {
+    views: [{ state: 'frozen', ySplit: 4 }],
   });
 
-  // ── Título ──
-  ws.mergeCells('A1:G1');
+  const colCount = Math.max(input.columnas.length, 1);
+  const lastColLetter =
+    colCount <= 26
+      ? String.fromCharCode(64 + colCount)
+      : `A${String.fromCharCode(64 + colCount - 26)}`;
+
+  ws.mergeCells(`A1:${lastColLetter}1`);
   const titleCell = ws.getCell('A1');
-  titleCell.value = 'Reporte de Balances de Vacaciones - CNI Honduras';
+  titleCell.value = input.titulo;
   titleCell.font = { bold: true, size: 14, color: { argb: 'FF1E3A5F' } };
-  titleCell.alignment = { horizontal: 'center' };
-  ws.getRow(1).height = 30;
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getRow(1).height = 32;
 
-  // ── Headers ──
-  ws.columns = [
-    { header: '', key: 'nombre', width: 28 },
-    { header: '', key: 'email', width: 30 },
-    { header: '', key: 'departamento', width: 22 },
-    { header: '', key: 'diasInicial', width: 16 },
-    { header: '', key: 'diasUsados', width: 16 },
-    { header: '', key: 'diasPendientes', width: 16 },
-    { header: '', key: 'diasDisponibles', width: 18 },
-  ];
+  const generado = input.meta?.generadoEn
+    ? new Date(input.meta.generadoEn).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })
+    : new Date().toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' });
 
-  const headerRow = ws.getRow(2);
-  headerRow.values = [
-    'Colaborador',
-    'Email',
-    'Departamento',
-    'Días Iniciales',
-    'Días Usados',
-    'Días Pendientes',
-    'Días Disponibles',
-  ];
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  ws.getCell('A2').value = `Generado: ${generado}`;
+  ws.getCell('A2').font = { size: 10, color: { argb: 'FF64748B' } };
+  ws.getCell('A2').alignment = { horizontal: 'center' };
+
+  const filtrosTexto = input.meta?.filtros
+    ? Object.entries(input.meta.filtros)
+        .filter(([, v]) => v != null && v !== '' && v !== 'all')
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(' · ')
+    : '';
+  ws.mergeCells(`A3:${lastColLetter}3`);
+  ws.getCell('A3').value = filtrosTexto
+    ? `Filtros: ${filtrosTexto}`
+    : 'Filtros: ninguno adicional';
+  ws.getCell('A3').font = { size: 9, color: { argb: 'FF64748B' } };
+  ws.getCell('A3').alignment = { horizontal: 'center', wrapText: true };
+
+  ws.columns = input.columnas.map((col) => ({
+    header: '',
+    key: col.key,
+    width: Math.max(12, Math.min(col.header.length + 4, 36)),
+  }));
+
+  const headerRowNum = 4;
+  const headerRow = ws.getRow(headerRowNum);
+  headerRow.values = input.columnas.map((c) => c.header);
   applyHeaderStyle(headerRow);
 
-  // ── Datos ──
-  const query = sql`
-    SELECT
-      u.nombre || ' ' || u.apellido AS nombre_completo,
-      u.email,
-      COALESCE(d.nombre, 'Sin asignar') AS departamento,
-      b.cantidad_inicial,
-      b.cantidad_usada,
-      b.cantidad_pendiente,
-      b.cantidad_disponible
-    FROM balances b
-    INNER JOIN usuarios u ON u.id = b.usuario_id
-    LEFT JOIN departamentos d ON d.id = u.departamento_id
-    INNER JOIN anos_laborales al ON al.id = b.ano_laboral_id AND al.activo = true
-    WHERE b.tipo_ausencia = 'vacaciones'
-      AND u.activo = true
-      ${opts.departamentoId ? sql`AND u.departamento_id = ${opts.departamentoId}` : sql``}
-    ORDER BY d.nombre, u.apellido, u.nombre
-  `;
+  const dataStart = headerRowNum + 1;
+  const filas =
+    input.meta?.sinDatos || input.filas.length === 0
+      ? [
+          Object.fromEntries([
+            [
+              input.columnas[0]?.key ?? 'colaborador',
+              'Sin datos para los filtros seleccionados',
+            ],
+          ]),
+        ]
+      : input.filas;
 
-  const rows = await db.execute(query) as any[];
-  let totalInicial = 0;
-  let totalUsados = 0;
-  let totalPendientes = 0;
-  let totalDisponibles = 0;
-
-  rows.forEach((row: any, i: number) => {
-    const inicial = parseFloat(row.cantidad_inicial || '0');
-    const usados = parseFloat(row.cantidad_usada || '0');
-    const pendientes = parseFloat(row.cantidad_pendiente || '0');
-    const disponibles = parseFloat(row.cantidad_disponible || '0');
-
-    totalInicial += inicial;
-    totalUsados += usados;
-    totalPendientes += pendientes;
-    totalDisponibles += disponibles;
-
-    const dataRow = ws.addRow({
-      nombre: row.nombre_completo,
-      email: row.email,
-      departamento: row.departamento,
-      diasInicial: inicial,
-      diasUsados: usados,
-      diasPendientes: pendientes,
-      diasDisponibles: disponibles,
-    });
-
+  filas.forEach((fila, i) => {
+    const dataRow = ws.addRow(fila);
     applyDataStyle(dataRow, i % 2 === 0);
 
-    // Color condicional para disponibles
-    const dispCell = dataRow.getCell('diasDisponibles');
-    if (disponibles <= 0) {
-      dispCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-    } else if (disponibles <= 3) {
-      dispCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
-    }
+    input.columnas.forEach((col, colIndex) => {
+      const cell = dataRow.getCell(colIndex + 1);
+      if (esColumnaNumerica(col.key) && typeof fila[col.key] === 'number') {
+        cell.numFmt = col.key === 'porcentaje_uso' ? '0.00"%"' : '0.00';
+      } else if (esColumnaNumerica(col.key) && fila[col.key] != null && fila[col.key] !== '') {
+        const num = Number(fila[col.key]);
+        if (Number.isFinite(num)) {
+          cell.value = num;
+          cell.numFmt = '0.00';
+        }
+      } else if (esColumnaFecha(col.key) && fila[col.key]) {
+        cell.numFmt = 'dd/mm/yyyy';
+      }
+    });
   });
 
-  // ── Totales ──
-  const totalRow = ws.addRow({
-    nombre: 'TOTALES',
-    email: '',
-    departamento: `${rows.length} colaboradores`,
-    diasInicial: totalInicial,
-    diasUsados: totalUsados,
-    diasPendientes: totalPendientes,
-    diasDisponibles: totalDisponibles,
-  });
-  totalRow.font = { bold: true };
-  totalRow.eachCell((cell) => {
-    cell.border = BORDER_THIN;
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFE2E8F0' },
+  const lastDataRow = dataStart + filas.length - 1;
+  if (input.filas.length > 0) {
+    ws.autoFilter = {
+      from: { row: headerRowNum, column: 1 },
+      to: { row: lastDataRow, column: input.columnas.length },
     };
-  });
+  }
 
-  // ── Footer ──
-  const footerRow = ws.addRow([]);
-  ws.addRow([`Generado: ${new Date().toLocaleString('es-HN')}`]);
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer);
-}
-
-// =====================================================
-// REPORTE: Solicitudes
-// =====================================================
-
-export async function exportarReporteSolicitudes(opts: ExcelOptions & {
-  estado?: string;
-  fechaDesde?: string;
-  fechaHasta?: string;
-} = {}): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'CNI Honduras';
-  workbook.created = new Date();
-
-  const ws = workbook.addWorksheet('Solicitudes', {
-    views: [{ state: 'frozen', ySplit: 2 }],
-  });
-
-  // ── Título ──
-  ws.mergeCells('A1:H1');
-  const titleCell = ws.getCell('A1');
-  titleCell.value = 'Reporte de Solicitudes - CNI Honduras';
-  titleCell.font = { bold: true, size: 14, color: { argb: 'FF1E3A5F' } };
-  titleCell.alignment = { horizontal: 'center' };
-  ws.getRow(1).height = 30;
-
-  // ── Headers ──
-  ws.columns = [
-    { header: '', key: 'codigo', width: 20 },
-    { header: '', key: 'colaborador', width: 28 },
-    { header: '', key: 'tipo', width: 18 },
-    { header: '', key: 'fechaInicio', width: 14 },
-    { header: '', key: 'fechaFin', width: 14 },
-    { header: '', key: 'dias', width: 10 },
-    { header: '', key: 'estado', width: 22 },
-    { header: '', key: 'fechaCreacion', width: 18 },
-  ];
-
-  const headerRow = ws.getRow(2);
-  headerRow.values = [
-    'Código',
-    'Colaborador',
-    'Tipo',
-    'Fecha Inicio',
-    'Fecha Fin',
-    'Días',
-    'Estado',
-    'Fecha Creación',
-  ];
-  applyHeaderStyle(headerRow);
-
-  // ── Datos ──
-  const conditions = [sql`u.activo = true`];
-  if (opts.departamentoId) conditions.push(sql`u.departamento_id = ${opts.departamentoId}`);
-  if (opts.estado) conditions.push(sql`s.estado = ${opts.estado}`);
-  if (opts.fechaDesde) conditions.push(sql`s.fecha_inicio >= ${opts.fechaDesde}`);
-  if (opts.fechaHasta) conditions.push(sql`s.fecha_fin <= ${opts.fechaHasta}`);
-
-  const whereClause = sql.join(conditions, sql` AND `);
-
-  const query = sql`
-    SELECT
-      s.codigo,
-      u.nombre || ' ' || u.apellido AS colaborador,
-      s.tipo,
-      s.fecha_inicio,
-      s.fecha_fin,
-      s.dias_solicitados,
-      s.estado,
-      s.created_at
-    FROM solicitudes s
-    INNER JOIN usuarios u ON u.id = s.usuario_id
-    WHERE ${whereClause}
-    ORDER BY s.created_at DESC
-  `;
-
-  const rows = await db.execute(query) as any[];
-
-  const ESTADO_LABELS: Record<string, string> = {
-    borrador: 'Borrador',
-    pendiente_jefe: 'Pendiente Jefe',
-    aprobada_jefe: 'Aprobada por Jefe',
-    rechazada_jefe: 'Rechazada por Jefe',
-    aprobada_rrhh: 'Aprobada por RRHH',
-    rechazada_rrhh: 'Rechazada por RRHH',
-    cancelada: 'Cancelada',
-    finalizada: 'Finalizada',
-  };
-
-  const TIPO_LABELS: Record<string, string> = {
-    vacaciones: 'Vacaciones',
-    permiso_salida: 'Permiso Salida',
-    licencia_medica: 'Licencia Médica',
-    permiso_personal: 'Permiso Personal',
-    dia_cumpleanos: 'Día libre por cumpleaños',
-  };
-
-  rows.forEach((row: any, i: number) => {
-    const dataRow = ws.addRow({
-      codigo: row.codigo,
-      colaborador: row.colaborador,
-      tipo: TIPO_LABELS[row.tipo] || row.tipo,
-      fechaInicio: row.fecha_inicio || '-',
-      fechaFin: row.fecha_fin || '-',
-      dias: row.dias_solicitados ? parseFloat(row.dias_solicitados) : '-',
-      estado: ESTADO_LABELS[row.estado] || row.estado,
-      fechaCreacion: row.created_at ? new Date(row.created_at).toLocaleDateString('es-HN') : '-',
-    });
-
-    applyDataStyle(dataRow, i % 2 === 0);
-  });
-
-  // ── Resumen ──
   ws.addRow([]);
-  ws.addRow([`Total solicitudes: ${rows.length}`]);
-  ws.addRow([`Generado: ${new Date().toLocaleString('es-HN')}`]);
+  ws.addRow([
+    `Total registros: ${input.meta?.totalRegistros ?? input.filas.length}`,
+  ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

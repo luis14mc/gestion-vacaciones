@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Users, CheckCircle, Hourglass, Car, Shield,
-  FileText, Briefcase, UsersRound, Clock, X, User, RefreshCw,
+  FileText, Briefcase, UsersRound, Clock, X, User, RefreshCw, Calendar,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
@@ -160,6 +160,9 @@ export default function DashboardClient({ session }: { session: Session }) {
 
   const mensajeSinBalance = 'No hay balance de vacaciones asignado para el año laboral activo.';
 
+  const formatDiasMetrico = (value: number) =>
+    Number.isInteger(value) ? String(value) : value.toFixed(2);
+
   const renderMiBalancePersonal = (conTitulo: boolean) => {
     if (loading || !balance) return null;
 
@@ -282,6 +285,47 @@ export default function DashboardClient({ session }: { session: Session }) {
               <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
               <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
               <MetricCard title="Total Usuarios" value={metrics.usuarios_totales || 0} subtitle={metrics.nuevos_este_mes ? `+${metrics.nuevos_este_mes} este mes` : undefined} icon={Users} color="primary" />
+            </div>
+          )}
+
+          {isEmpleado && balance && balance.tieneBalance !== false && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard
+                title="Días asignados"
+                value={formatDiasMetrico(balance.diasAsignados)}
+                subtitle="Total este año"
+                icon={Calendar}
+                color="primary"
+              />
+              <MetricCard
+                title="Disponibles"
+                value={formatDiasMetrico(balance.diasDisponibles)}
+                subtitle="Puedes solicitar"
+                icon={CheckCircle}
+                color="success"
+              />
+              <MetricCard
+                title="Días usados"
+                value={formatDiasMetrico(balance.diasUsados)}
+                subtitle={
+                  balance.diasAsignados > 0
+                    ? `${Math.round((balance.diasUsados / balance.diasAsignados) * 100)}% utilizado`
+                    : undefined
+                }
+                icon={Car}
+                color="info"
+              />
+              <MetricCard
+                title="Pendientes"
+                value={formatDiasMetrico(balance.diasPendientes)}
+                subtitle={
+                  balance.solicitudesPendientes > 0
+                    ? `${balance.solicitudesPendientes} solicitud(es) por aprobar`
+                    : 'Sin días en trámite'
+                }
+                icon={Hourglass}
+                color="warning"
+              />
             </div>
           )}
 

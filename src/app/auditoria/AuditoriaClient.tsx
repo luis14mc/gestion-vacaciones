@@ -1,32 +1,50 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Session } from "next-auth";
+import { useCallback, useEffect, useState, type ElementType, type ReactNode } from 'react';
+import type { Session } from 'next-auth';
 import {
-  FileText,
-  Search,
-  Filter,
-  Calendar,
-  User,
   Activity,
   AlertCircle,
-  CheckCircle,
-  XCircle,
+  Calendar,
   Clock,
-  Eye
-} from "lucide-react";
+  Download,
+  Eye,
+  FileText,
+  Filter,
+  RefreshCw,
+  Search,
+  Shield,
+  Users,
+} from 'lucide-react';
 import { notify } from '@/lib/swal';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-
-interface AuditoriaClientProps {
-  session: Session;
-}
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { labelAccion, labelEvento } from '@/lib/domain/auditoria/labels';
+import { parseDetallesAuditoria } from '@/lib/domain/auditoria/sanitize';
 
 interface RegistroAuditoria {
   id: number;
@@ -38,6 +56,11 @@ interface RegistroAuditoria {
   ip_address: string | null;
   user_agent: string | null;
   fecha_creacion: string;
+  evento: string | null;
+  modulo: string | null;
+  severidad: string | null;
+  resultado: string | null;
+  entidad_nombre: string | null;
   usuario: {
     id: number;
     nombre: string;
@@ -46,519 +69,564 @@ interface RegistroAuditoria {
   };
 }
 
-type TipoAccion = "todas" | "crear" | "actualizar" | "eliminar" | "login" | "logout";
-type TablaAfectada = "todas" | "usuarios" | "solicitudes" | "balances" | "departamentos" | "configuracion";
+interface ResumenAuditoria {
+  totalRegistrosFiltrados: number;
+  totalRegistrosGlobal: number;
+  accionesHoy: number;
+  accionesUltimas24h: number;
+  usuariosUnicos: number;
+  eventosCriticos: number;
+  loginFallidos: number;
+  cambiosConfiguracion: number;
+  cambiosBalances: number;
+  exportacionesReportes: number;
+}
 
-export default function AuditoriaClient({ session }: AuditoriaClientProps) {
-  const router = useRouter();
+export default function AuditoriaClient({ session }: { session: Session }) {
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
+  const [resumen, setResumen] = useState<ResumenAuditoria | null>(null);
   const [selectedLog, setSelectedLog] = useState<RegistroAuditoria | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filtroAccion, setFiltroAccion] = useState<TipoAccion>("todas");
-  const [filtroTabla, setFiltroTabla] = useState<TablaAfectada>("todas");
-  const [fechaInicio, setFechaInicio] = useState("");
-  const [fechaFin, setFechaFin] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [consultadoEn, setConsultadoEn] = useState<string | null>(null);
+
+  const [q, setQ] = useState('');
+  const [filtroAccion, setFiltroAccion] = useState('all');
+  const [filtroTabla, setFiltroTabla] = useState('all');
+  const [filtroEvento, setFiltroEvento] = useState('all');
+  const [filtroModulo, setFiltroModulo] = useState('all');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [email, setEmail] = useState('');
+  const [ipAddress, setIpAddress] = useState('');
+  const [registroId, setRegistroId] = useState('');
+
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
-  const registrosPorPagina = 50;
+  const [totalFiltrado, setTotalFiltrado] = useState(0);
+  const limite = 50;
 
-  useEffect(() => {
-    cargarRegistros();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paginaActual]);
+  const buildParams = useCallback(() => {
+    const params = new URLSearchParams({
+      pagina: String(paginaActual),
+      limite: String(limite),
+    });
+    if (q.trim()) params.set('q', q.trim());
+    if (filtroAccion !== 'all') params.set('accion', filtroAccion);
+    if (filtroTabla !== 'all') params.set('tabla', filtroTabla);
+    if (filtroEvento !== 'all') params.set('evento', filtroEvento);
+    if (filtroModulo !== 'all') params.set('modulo', filtroModulo);
+    if (fechaInicio) params.set('fechaInicio', fechaInicio);
+    if (fechaFin) params.set('fechaFin', fechaFin);
+    if (email.trim()) params.set('email', email.trim());
+    if (ipAddress.trim()) params.set('ipAddress', ipAddress.trim());
+    if (registroId.trim()) params.set('registroId', registroId.trim());
+    return params;
+  }, [
+    paginaActual,
+    q,
+    filtroAccion,
+    filtroTabla,
+    filtroEvento,
+    filtroModulo,
+    fechaInicio,
+    fechaFin,
+    email,
+    ipAddress,
+    registroId,
+  ]);
 
-  const cargarRegistros = async () => {
+  const cargarRegistros = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        pagina: paginaActual.toString(),
-        limite: registrosPorPagina.toString(),
-      });
-
-      if (filtroAccion !== "todas") params.append("accion", filtroAccion);
-      if (filtroTabla !== "todas") params.append("tabla", filtroTabla);
-      if (fechaInicio) params.append("fechaInicio", fechaInicio);
-      if (fechaFin) params.append("fechaFin", fechaFin);
-
-      const res = await fetch(`/api/auditoria?${params}`);
+      const res = await fetch(`/api/auditoria?${buildParams().toString()}`, { cache: 'no-store' });
       const data = await res.json();
 
       if (data.success) {
         setRegistros(data.data || []);
+        setResumen(data.resumen || null);
         setTotalPaginas(data.totalPaginas || 1);
+        setTotalFiltrado(data.total ?? 0);
+        setConsultadoEn(data.meta?.generadoEn ?? new Date().toISOString());
+      } else {
+        notify.error('Error', data.error || 'Error al cargar auditoría');
       }
     } catch (error) {
-      console.error("Error cargando registros:", error);
-      notify.error("Error", "Error al cargar los registros de auditoría");
+      console.error(error);
+      notify.error('Error', 'Error al cargar auditoría');
     } finally {
       setLoading(false);
     }
-  };
+  }, [buildParams]);
+
+  useEffect(() => {
+    cargarRegistros();
+  }, [cargarRegistros]);
 
   const aplicarFiltros = () => {
     setPaginaActual(1);
-    cargarRegistros();
+    void cargarRegistros();
   };
 
   const limpiarFiltros = () => {
-    setSearchTerm("");
-    setFiltroAccion("todas");
-    setFiltroTabla("todas");
-    setFechaInicio("");
-    setFechaFin("");
+    setQ('');
+    setFiltroAccion('all');
+    setFiltroTabla('all');
+    setFiltroEvento('all');
+    setFiltroModulo('all');
+    setFechaInicio('');
+    setFechaFin('');
+    setEmail('');
+    setIpAddress('');
+    setRegistroId('');
     setPaginaActual(1);
-    setTimeout(() => cargarRegistros(), 100);
   };
 
-  const verDetalles = (registro: RegistroAuditoria) => {
-    setSelectedLog(registro);
-  };
-
-  const getIconoAccion = (accion: string) => {
-    switch (accion.toLowerCase()) {
-      case "crear":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case "actualizar":
-        return <AlertCircle className="w-4 h-4 text-amber-500" />;
-      case "eliminar":
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case "login":
-        return <User className="w-4 h-4 text-blue-500" />;
-      case "logout":
-        return <User className="w-4 h-4 text-muted-foreground" />;
-      default:
-        return <Activity className="w-4 h-4 text-foreground" />;
+  const exportarCsv = async () => {
+    setExportLoading(true);
+    try {
+      const res = await fetch(`/api/auditoria/exportar?${buildParams().toString()}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'Error al exportar');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `auditoria_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      notify.error('Error', error instanceof Error ? error.message : 'Error al exportar');
+    } finally {
+      setExportLoading(false);
     }
   };
 
-  const getBadgeVariant = (accion: string): "default" | "secondary" | "destructive" | "outline" => {
-    switch (accion.toLowerCase()) {
-      case "crear":
-        return "default"; // Will add bg-green-500 manually if wanted, or just default
-      case "actualizar":
-        return "default"; // bg-yellow-500
-      case "eliminar":
-        return "destructive";
-      case "login":
-        return "secondary";
-      case "logout":
-        return "outline";
-      default:
-        return "secondary";
-    }
-  };
-
-  const getBadgeColorClass = (accion: string) => {
-    switch (accion.toLowerCase()) {
-      case "crear":
-        return "bg-green-500 hover:bg-green-600";
-      case "actualizar":
-        return "bg-amber-500 hover:bg-amber-600";
-      case "login":
-        return "bg-blue-500 hover:bg-blue-600 text-white";
-      default:
-        return "";
-    }
-  };
-
-  // Filtrado local adicional por búsqueda de texto
-  const registrosFiltrados = registros.filter((r) => {
-    if (!searchTerm) return true;
-    const termino = searchTerm.toLowerCase();
-    return (
-      r.usuario.nombre.toLowerCase().includes(termino) ||
-      r.usuario.apellido.toLowerCase().includes(termino) ||
-      r.usuario.email.toLowerCase().includes(termino) ||
-      r.accion.toLowerCase().includes(termino) ||
-      r.tabla_afectada.toLowerCase().includes(termino)
-    );
-  });
-
-  // Estadísticas
-  const totalRegistros = registros.length;
-  const registrosHoy = registros.filter(r => {
-    const fecha = new Date(r.fecha_creacion);
-    const hoy = new Date();
-    return fecha.toDateString() === hoy.toDateString();
-  }).length;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto"></div>
-      </div>
-    );
-  }
+  const detallesModal = selectedLog ? parseDetallesAuditoria(selectedLog.detalles) : null;
 
   return (
-    <div>
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="bg-muted p-2.5 rounded-xl">
-              <FileText className="w-4 h-4 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">Auditoría del Sistema</h1>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                Registro detallado de todas las acciones realizadas en el sistema
-              </p>
-            </div>
-          </div>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            Auditoría del Sistema
+          </h1>
+          <p className="text-[13px] text-muted-foreground mt-0.5">
+            Bitácora institucional · solo administradores · datos desde PostgreSQL
+          </p>
         </div>
-
-        {/* Estadísticas */}
-        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
-          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-lg text-primary">
-                <Activity className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[13px] text-muted-foreground font-medium">Registros Totales</p>
-                <p className="text-2xl font-bold">{totalRegistros}</p>
-                <p className="text-xs text-muted-foreground mt-1">En esta página</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-500/10 rounded-lg text-blue-500">
-                <Clock className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[13px] text-muted-foreground font-medium">Acciones Hoy</p>
-                <p className="text-2xl font-bold">{registrosHoy}</p>
-                <p className="text-xs text-muted-foreground mt-1">En las últimas 24 horas</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-card p-4 text-card-foreground shadow-sm sm:p-5">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-amber-500/10 rounded-lg text-amber-500">
-                <Calendar className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[13px] text-muted-foreground font-medium">Página Actual</p>
-                <p className="text-2xl font-bold">{paginaActual}</p>
-                <p className="text-xs text-muted-foreground mt-1">de {totalPaginas} páginas</p>
-              </div>
-            </div>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={limpiarFiltros}>
+            Limpiar filtros
+          </Button>
+          <Button variant="outline" size="sm" onClick={cargarRegistros} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportarCsv} disabled={exportLoading}>
+            <Download className="h-4 w-4 mr-2" />
+            Exportar CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              setExportLoading(true);
+              try {
+                const params = buildParams();
+                params.set('formato', 'xlsx');
+                const res = await fetch(`/api/auditoria/exportar?${params.toString()}`);
+                if (!res.ok) throw new Error('Error al exportar Excel');
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `auditoria_${Date.now()}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (error) {
+                notify.error('Error', error instanceof Error ? error.message : 'Error al exportar');
+              } finally {
+                setExportLoading(false);
+              }
+            }}
+            disabled={exportLoading}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Excel
+          </Button>
         </div>
-
-        {/* Filtros */}
-        <div className="bg-card text-card-foreground border shadow-sm rounded-xl mb-6">
-          <div className="p-4 sm:p-5">
-            <h2 className="text-[13px] font-semibold mb-4 flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              Filtros de Búsqueda
-            </h2>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {/* Búsqueda de texto */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Buscar</label>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Usuario, acción, tabla..."
-                    className="w-full pl-9 h-10"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Filtro por acción */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Tipo de Acción</label>
-                <Select
-                  value={filtroAccion}
-                  onValueChange={(val) => setFiltroAccion(val as TipoAccion)}
-                >
-                  <SelectTrigger className="w-full h-10">
-                    <SelectValue placeholder="Todas las acciones" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas las acciones</SelectItem>
-                    <SelectItem value="crear">Crear</SelectItem>
-                    <SelectItem value="actualizar">Actualizar</SelectItem>
-                    <SelectItem value="eliminar">Eliminar</SelectItem>
-                    <SelectItem value="login">Login</SelectItem>
-                    <SelectItem value="login_fallido">Login fallido</SelectItem>
-                    <SelectItem value="logout">Logout</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Filtro por tabla */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Tabla Afectada</label>
-                <Select
-                  value={filtroTabla}
-                  onValueChange={(val) => setFiltroTabla(val as TablaAfectada)}
-                >
-                  <SelectTrigger className="w-full h-10">
-                    <SelectValue placeholder="Todas las tablas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas las tablas</SelectItem>
-                    <SelectItem value="usuarios">Usuarios</SelectItem>
-                    <SelectItem value="solicitudes">Solicitudes</SelectItem>
-                    <SelectItem value="balances">Balances</SelectItem>
-                    <SelectItem value="departamentos">Departamentos</SelectItem>
-                    <SelectItem value="configuracion">Configuración</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Fecha inicio */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Fecha Inicio</label>
-                <Input
-                  type="date"
-                  className="h-10"
-                  value={fechaInicio}
-                  onChange={(e) => setFechaInicio(e.target.value)}
-                />
-              </div>
-
-              {/* Fecha fin */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Fecha Fin</label>
-                <Input
-                  type="date"
-                  className="h-10"
-                  value={fechaFin}
-                  onChange={(e) => setFechaFin(e.target.value)}
-                />
-              </div>
-
-              {/* Botones */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium hidden md:block">&nbsp;</label>
-                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-                  <Button
-                    onClick={aplicarFiltros}
-                    className="flex-1 h-10"
-                  >
-                    Aplicar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={limpiarFiltros}
-                    className="flex-1 h-10"
-                  >
-                    Limpiar
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabla de registros */}
-        <div className="bg-card text-card-foreground border shadow-sm rounded-xl">
-          <div className="p-5">
-            <h2 className="text-[13px] font-semibold mb-4">
-              Registros de Auditoría
-            </h2>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha y Hora</TableHead>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Acción</TableHead>
-                    <TableHead>Tabla</TableHead>
-                    <TableHead className="text-center">ID Registro</TableHead>
-                    <TableHead>IP</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {registrosFiltrados.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
-                        <div className="flex flex-col items-center gap-2">
-                          <AlertCircle className="w-12 h-12 text-muted-foreground/30" />
-                          <p className="text-muted-foreground">
-                            No se encontraron registros de auditoría
-                          </p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    registrosFiltrados.map((registro) => (
-                      <TableRow key={registro.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-muted-foreground" />
-                            {new Date(registro.fecha_creacion).toLocaleString("es-ES", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-semibold">
-                              {registro.usuario.nombre} {registro.usuario.apellido}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {registro.usuario.email}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {getIconoAccion(registro.accion)}
-                            <Badge variant={getBadgeVariant(registro.accion)} className={getBadgeColorClass(registro.accion)}>
-                              {registro.accion}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {registro.tabla_afectada}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {registro.registro_id || "—"}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {registro.ip_address || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => verDetalles(registro)}
-                            title="Ver detalles"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Paginación */}
-            {totalPaginas > 1 && (
-              <div className="flex justify-center gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
-                  disabled={paginaActual === 1}
-                >
-                  Anterior
-                </Button>
-
-                <div className="flex gap-1">
-                  {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
-                    let pagina;
-                    if (totalPaginas <= 5) {
-                      pagina = i + 1;
-                    } else if (paginaActual <= 3) {
-                      pagina = i + 1;
-                    } else if (paginaActual >= totalPaginas - 2) {
-                      pagina = totalPaginas - 4 + i;
-                    } else {
-                      pagina = paginaActual - 2 + i;
-                    }
-
-                    return (
-                      <Button
-                        key={pagina}
-                        variant={paginaActual === pagina ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPaginaActual(pagina)}
-                      >
-                        {pagina}
-                      </Button>
-                    );
-                  })}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
-                  disabled={paginaActual === totalPaginas}
-                >
-                  Siguiente
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Detail Modal */}
-        <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Detalle de Auditoría</DialogTitle>
-            </DialogHeader>
-            {selectedLog && (
-              <div className="space-y-4 py-4">
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">Acción:</span>
-                  <Badge variant={getBadgeVariant(selectedLog.accion)} className={getBadgeColorClass(selectedLog.accion)}>{selectedLog.accion}</Badge>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">Usuario:</span>
-                  <span className="text-sm font-semibold min-[420px]:text-right">{selectedLog.usuario.nombre} {selectedLog.usuario.apellido}</span>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">Email:</span>
-                  <span className="break-all text-sm font-medium min-[420px]:text-right">{selectedLog.usuario.email}</span>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">Tabla:</span>
-                  <Badge variant="outline">{selectedLog.tabla_afectada}</Badge>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">ID Registro:</span>
-                  <span className="font-medium text-sm">{selectedLog.registro_id || "N/A"}</span>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">Fecha:</span>
-                  <span className="text-sm font-medium min-[420px]:text-right">{new Date(selectedLog.fecha_creacion).toLocaleString("es-ES")}</span>
-                </div>
-                <div className="grid gap-1 border-b pb-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-center">
-                  <span className="text-muted-foreground text-sm">IP:</span>
-                  <span className="font-mono text-xs">{selectedLog.ip_address || "N/A"}</span>
-                </div>
-                {selectedLog.detalles && (
-                  <div className="pt-2">
-                    <span className="text-muted-foreground text-sm block mb-2">Detalles:</span>
-                    <pre className="text-xs bg-muted p-3 rounded-xl overflow-x-auto border">
-                      {JSON.stringify(JSON.parse(selectedLog.detalles), null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedLog(null)}>Cerrar</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
+
+      {resumen ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <MetricCard
+            title="Filtrados"
+            value={resumen.totalRegistrosFiltrados}
+            subtitle={`Global: ${resumen.totalRegistrosGlobal}`}
+            icon={Activity}
+          />
+          <MetricCard title="Hoy (HN)" value={resumen.accionesHoy} icon={Clock} />
+          <MetricCard title="Últimas 24h" value={resumen.accionesUltimas24h} icon={Calendar} />
+          <MetricCard title="Usuarios únicos" value={resumen.usuariosUnicos} icon={Users} />
+          <MetricCard title="Críticos" value={resumen.eventosCriticos} icon={AlertCircle} />
+          <MetricCard title="Login fallidos" value={resumen.loginFallidos} icon={Shield} />
+          <MetricCard title="Configuración" value={resumen.cambiosConfiguracion} icon={FileText} />
+          <MetricCard title="Balances" value={resumen.cambiosBalances} icon={Activity} />
+          <MetricCard title="Exportaciones" value={resumen.exportacionesReportes} icon={Download} />
+        </div>
+      ) : null}
+
+      <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
+          <Filter className="h-4 w-4" />
+          Filtros avanzados
+        </h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2 xl:col-span-2">
+            <Label>Búsqueda (q)</Label>
+            <div className="relative">
+              <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Usuario, email, acción, tabla, IP, detalles..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
+              />
+            </div>
+          </div>
+          <FilterSelect
+            label="Acción"
+            value={filtroAccion}
+            onChange={setFiltroAccion}
+            options={[
+              ['all', 'Todas'],
+              ['crear', 'Crear'],
+              ['actualizar', 'Actualizar'],
+              ['eliminar', 'Eliminar'],
+              ['login', 'Login'],
+              ['login_fallido', 'Login fallido'],
+              ['logout', 'Logout'],
+            ]}
+          />
+          <FilterSelect
+            label="Tabla"
+            value={filtroTabla}
+            onChange={setFiltroTabla}
+            options={[
+              ['all', 'Todas'],
+              ['usuarios', 'Usuarios'],
+              ['solicitudes', 'Solicitudes'],
+              ['balances', 'Balances'],
+              ['departamentos', 'Departamentos'],
+              ['configuracion', 'Configuración'],
+              ['reportes', 'Reportes'],
+              ['auditoria', 'Auditoría'],
+            ]}
+          />
+          <FilterSelect
+            label="Evento"
+            value={filtroEvento}
+            onChange={setFiltroEvento}
+            options={[
+              ['all', 'Todos'],
+              ['login_exitoso', 'Login exitoso'],
+              ['login_fallido', 'Login fallido'],
+              ['exportar_reporte', 'Exportar reporte'],
+              ['exportar_auditoria', 'Exportar auditoría'],
+              ['actualizar_configuracion', 'Actualizar configuración'],
+              ['crear_solicitud', 'Crear solicitud'],
+              ['importar_usuarios', 'Importar usuarios'],
+            ]}
+          />
+          <FilterSelect
+            label="Módulo"
+            value={filtroModulo}
+            onChange={setFiltroModulo}
+            options={[
+              ['all', 'Todos'],
+              ['seguridad', 'Seguridad'],
+              ['usuarios', 'Usuarios'],
+              ['solicitudes', 'Solicitudes'],
+              ['balances', 'Balances'],
+              ['configuracion', 'Configuración'],
+              ['reportes', 'Reportes'],
+              ['auditoria', 'Auditoría'],
+            ]}
+          />
+          <DateField label="Fecha inicio" value={fechaInicio} onChange={setFechaInicio} />
+          <DateField label="Fecha fin" value={fechaFin} onChange={setFechaFin} />
+          <TextField label="Email" value={email} onChange={setEmail} />
+          <TextField label="IP" value={ipAddress} onChange={setIpAddress} />
+          <TextField label="Registro ID" value={registroId} onChange={setRegistroId} />
+        </div>
+        <div className="mt-4">
+          <Button onClick={aplicarFiltros} disabled={loading}>
+            Aplicar filtros
+          </Button>
+        </div>
+      </div>
+
+      {consultadoEn ? (
+        <p className="text-xs text-muted-foreground">
+          {totalFiltrado} registros filtrados · consulta{' '}
+          {new Date(consultadoEn).toLocaleString('es-HN')} · sesión{' '}
+          {session.user.email}
+        </p>
+      ) : null}
+
+      <div className="rounded-xl border bg-card overflow-hidden">
+        {loading ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">Cargando auditoría…</div>
+        ) : registros.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">
+            Sin datos para los filtros seleccionados.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha/Hora</TableHead>
+                  <TableHead>Usuario</TableHead>
+                  <TableHead>Acción</TableHead>
+                  <TableHead>Evento</TableHead>
+                  <TableHead>Tabla</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>IP</TableHead>
+                  <TableHead className="text-right">Detalle</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {registros.map((registro) => (
+                  <TableRow key={registro.id}>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(registro.fecha_creacion).toLocaleString('es-HN')}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm font-medium">
+                        {registro.usuario.nombre} {registro.usuario.apellido}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{registro.usuario.email}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{labelAccion(registro.accion)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{labelEvento(registro.evento)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{registro.tabla_afectada}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{registro.registro_id ?? '—'}</TableCell>
+                    <TableCell className="font-mono text-xs">{registro.ip_address ?? '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedLog(registro)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {totalPaginas > 1 ? (
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginaActual <= 1}
+            onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+          >
+            Anterior
+          </Button>
+          <span className="text-sm self-center">
+            Página {paginaActual} de {totalPaginas}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={paginaActual >= totalPaginas}
+            onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+          >
+            Siguiente
+          </Button>
+        </div>
+      ) : null}
+
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detalle de auditoría</DialogTitle>
+          </DialogHeader>
+          {selectedLog ? (
+            <div className="space-y-5 text-sm">
+              <Section title="Datos generales">
+                <Row label="Acción" value={labelAccion(selectedLog.accion)} />
+                <Row label="Evento" value={labelEvento(selectedLog.evento)} />
+                <Row label="Módulo" value={selectedLog.modulo ?? '—'} />
+                <Row label="Fecha" value={new Date(selectedLog.fecha_creacion).toLocaleString('es-HN')} />
+                <Row label="Resultado" value={selectedLog.resultado ?? '—'} />
+                <Row label="Severidad" value={selectedLog.severidad ?? '—'} />
+              </Section>
+              <Section title="Actor">
+                <Row
+                  label="Usuario"
+                  value={`${selectedLog.usuario.nombre} ${selectedLog.usuario.apellido}`}
+                />
+                <Row label="Email" value={selectedLog.usuario.email} />
+              </Section>
+              <Section title="Entidad afectada">
+                <Row label="Tabla" value={selectedLog.tabla_afectada} />
+                <Row label="Registro ID" value={String(selectedLog.registro_id ?? 'N/A')} />
+                <Row label="Entidad" value={selectedLog.entidad_nombre ?? '—'} />
+              </Section>
+              <Section title="Detalles técnicos">
+                {detallesModal?.parsed ? (
+                  <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto border">
+                    {JSON.stringify(detallesModal.parsed, null, 2)}
+                  </pre>
+                ) : detallesModal?.textoPlano ? (
+                  <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto border whitespace-pre-wrap">
+                    {detallesModal.textoPlano}
+                  </pre>
+                ) : (
+                  <p className="text-muted-foreground">Sin detalles adicionales.</p>
+                )}
+              </Section>
+              <Section title="IP / navegador">
+                <Row label="IP" value={selectedLog.ip_address ?? 'N/A'} mono />
+                <Row label="User Agent" value={selectedLog.user_agent ?? 'N/A'} />
+              </Section>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedLog(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+}: {
+  title: string;
+  value: number;
+  subtitle?: string;
+  icon: ElementType;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs text-muted-foreground">{title}</p>
+          <p className="text-2xl font-semibold tabular-nums">{value}</p>
+          {subtitle ? <p className="text-[11px] text-muted-foreground mt-1">{subtitle}</p> : null}
+        </div>
+        <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+      </div>
+    </div>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: [string, string][];
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(([val, text]) => (
+            <SelectItem key={val} value={val}>
+              {text}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <h3 className="font-semibold mb-2">{title}</h3>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[140px_1fr] border-b pb-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={mono ? 'font-mono text-xs break-all' : 'break-words'}>{value}</span>
     </div>
   );
 }

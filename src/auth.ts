@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/services/rbac.service";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limiter";
 import { obtenerConfigs, asNumber } from "@/lib/config/service";
-import { registrarAuditoria, datosPeticion } from "@/services/auditoria.service";
+import { registrarEventoAuditoria, datosPeticion } from "@/services/auditoria.service";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -47,9 +47,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const passwordValida = await bcrypt.compare(password, usuario.passwordHash);
 
         if (!passwordValida) {
-          await registrarAuditoria({
+          await registrarEventoAuditoria({
             usuarioId: usuario.id,
             accion: 'login_fallido',
+            modulo: 'seguridad',
+            evento: 'login_fallido',
+            severidad: 'advertencia',
+            resultado: 'fallo',
             tablaAfectada: 'usuarios',
             registroId: usuario.id,
             detalles: { email: email.toLowerCase() },
@@ -61,9 +65,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // ✅ Login exitoso: Resetear contador de intentos fallidos
         await resetRateLimit(email.toLowerCase());
 
-        await registrarAuditoria({
+        await registrarEventoAuditoria({
           usuarioId: usuario.id,
           accion: 'login',
+          modulo: 'seguridad',
+          evento: 'login_exitoso',
           tablaAfectada: 'usuarios',
           registroId: usuario.id,
           ...datos,
@@ -172,9 +178,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const token = (message as any)?.token;
       const id = token?.id ? Number(token.id) : null;
       if (id && !Number.isNaN(id)) {
-        await registrarAuditoria({
+        await registrarEventoAuditoria({
           usuarioId: id,
           accion: 'logout',
+          modulo: 'seguridad',
+          evento: 'logout',
           tablaAfectada: 'usuarios',
           registroId: id,
         });

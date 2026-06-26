@@ -117,8 +117,8 @@ export default function ExportarClient({ session }: ExportarClientProps) {
         tipo: exportacionSeleccionada,
         formato,
         incluirEliminados: incluirEliminados.toString(),
-        fechaInicio: rangoFechas.inicio,
-        fechaFin: rangoFechas.fin,
+        fechaInicio: rangoFechas.inicio ?? '',
+        fechaFin: rangoFechas.fin ?? '',
       });
 
       const res = await fetch(`/api/exportar?${params}`);
@@ -132,7 +132,7 @@ export default function ExportarClient({ session }: ExportarClientProps) {
 
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
-        if (filenameMatch) {
+        if (filenameMatch?.[1]) {
           filename = filenameMatch[1];
         }
       }

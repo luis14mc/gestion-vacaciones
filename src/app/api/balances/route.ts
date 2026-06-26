@@ -121,13 +121,14 @@ export async function POST(request: NextRequest) {
         .where(eq(anosLaborales.ano, Number(anio)))
         .limit(1);
 
-      if (anoResult.length === 0) {
+      const [anoLaboral] = anoResult;
+      if (!anoLaboral) {
         return NextResponse.json(
           { success: false, error: `No existe ano laboral configurado para ${anio}` },
           { status: 400 }
         );
       }
-      anoLaboralId = anoResult[0].id;
+      anoLaboralId = anoLaboral.id;
     }
 
     if (!anoLaboralId) {

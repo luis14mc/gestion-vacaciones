@@ -83,6 +83,25 @@ Implementación: `src/lib/domain/departamento-conflictos.ts`, `src/lib/config/pa
 
 ---
 
+## Verificación en producción
+
+```bash
+curl -s https://vacaciones.cni.hn/api/health | jq .
+curl -s https://vacaciones.cni.hn/api/tipos-ausencia | jq .
+curl -s -H "Cookie: <sesion>" https://vacaciones.cni.hn/api/dashboard/mi-balance | jq .
+curl -s -H "Cookie: <sesion_admin>" https://vacaciones.cni.hn/api/configuracion | jq .
+```
+
+Limpieza opcional de configuración legacy en BD (sin tocar datos críticos):
+
+```bash
+psql "$DATABASE_URL" -f database/limpiar-config-legacy.sql
+```
+
+O ejecutar el seed idempotente (`pnpm db:seed`), que elimina las mismas claves legacy antes de upsert.
+
+---
+
 ## Verificaciones recomendadas
 
 ```bash

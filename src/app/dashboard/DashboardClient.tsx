@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Users, CheckCircle, Hourglass, Car, Shield, Calendar,
+  Users, CheckCircle, Hourglass, Car, Shield,
   FileText, Briefcase, UsersRound, Clock, X, User, RefreshCw,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -25,6 +25,7 @@ interface Metrics {
 }
 
 interface BalancePersonal {
+  tieneBalance?: boolean;
   diasAsignados: number;
   diasAcumulados?: number;
   diasUsados: number;
@@ -83,50 +84,43 @@ export default function DashboardClient({ session }: { session: Session }) {
   // â”€â”€â”€ Data fetching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const cargarDatos = useCallback(async () => {
     try {
-      // Determine metrics endpoint
       let metricsUrl: string | null = null;
       if (esAdmin) metricsUrl = '/api/dashboard/admin/metricas';
       else if ((esDirector || esJefe) && !esRrhh) metricsUrl = '/api/dashboard/jefe/metricas';
       else if (esRrhh && !esAdmin) metricsUrl = '/api/dashboard/rrhh/metricas';
-      else metricsUrl = '/api/dashboard/mi-balance';
 
-      const debeCargarBalancePersonal = !isEmpleado;
-      const urls = [
-        metricsUrl,
-        '/api/dashboard/actividad',
-        `/api/dashboard/calendario?mes=${mes}&anio=${anio}`,
-        ...(debeCargarBalancePersonal ? ['/api/dashboard/mi-balance'] : []),
-      ];
+      const fetchJson = async (url: string) => {
+        const r = await fetch(url, { cache: 'no-store' });
+        const json = await r.json();
+        if (!r.ok || !json.success) {
+          console.warn(`[Dashboard] ${url} → ${r.status}`, json.error || json);
+        }
+        return json;
+      };
 
-      const responses = await Promise.all(
-        urls.map(async (url) => {
-          const r = await fetch(url, { cache: 'no-store' });
-          const json = await r.json();
-          if (!r.ok || !json.success) {
-            console.warn(`[Dashboard] ${url} → ${r.status}`, json.error || json);
-          }
-          return json;
-        })
-      );
+      const [metricsRes, actividadRes, calendarioRes, balanceRes] = await Promise.all([
+        metricsUrl ? fetchJson(metricsUrl) : Promise.resolve({ success: false }),
+        fetchJson('/api/dashboard/actividad'),
+        fetchJson(`/api/dashboard/calendario?mes=${mes}&anio=${anio}`),
+        fetchJson('/api/dashboard/mi-balance'),
+      ]);
 
-      // Process metrics / balance
-      if (isEmpleado) {
-        if (responses[0].success) setBalance(responses[0].data);
-      } else {
-        if (responses[0].success) {
-          setMetrics(responses[0].data);
+      if (!isEmpleado) {
+        if (metricsRes.success) {
+          setMetrics(metricsRes.data);
         } else {
           setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
         }
-
-        // Los usuarios con rol operativo también deben ver su balance personal.
-        if (debeCargarBalancePersonal && responses.length > 3 && responses[3].success) {
-          setBalance(responses[3].data);
-        }
       }
 
-      if (responses[1].success) setActividades(responses[1].data);
-      if (responses[2].success) setCalendario(responses[2].data);
+      if (balanceRes.success) {
+        setBalance(balanceRes.data);
+      } else {
+        setBalance(null);
+      }
+
+      if (actividadRes.success) setActividades(actividadRes.data);
+      if (calendarioRes.success) setCalendario(calendarioRes.data);
     } catch (error) {
       console.error('Error cargando datos:', error);
       if (!isEmpleado) {
@@ -163,6 +157,37 @@ export default function DashboardClient({ session }: { session: Session }) {
           : { icon: User, label: 'Empleado', desc: 'Tu espacio personal', color: 'accent' };
 
   const RoleIcon = roleConfig.icon;
+
+  const mensajeSinBalance = 'No hay balance de vacaciones asignado para el año laboral activo.';
+
+  const renderMiBalancePersonal = (conTitulo: boolean) => {
+    if (loading || !balance) return null;
+
+    const filas =
+      balance.tieneBalance !== false && balance.balanceDetalle
+        ? [balance.balanceDetalle]
+        : [];
+
+    const tabla = (
+      <BalanceDiasTable
+        filas={filas}
+        anoLaboral={balance.anoLaboral ?? null}
+        emptyMessage={mensajeSinBalance}
+      />
+    );
+
+    if (!conTitulo) return tabla;
+
+    return (
+      <div>
+        <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+          <User className="w-3.5 h-3.5" />
+          Mi Balance Personal
+        </h3>
+        {tabla}
+      </div>
+    );
+  };
 
   // â”€â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
@@ -246,7 +271,7 @@ export default function DashboardClient({ session }: { session: Session }) {
               <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
               <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
               <MetricCard title="Mi Equipo" value={metrics.usuarios_activos || 0} icon={Users} color="info" />
-              <MetricCard title="De Vacaciones" value={metrics.en_vacaciones || 0} subtitle="Del departamento" icon={Car} color="accent" />
+              <MetricCard title="De Vacaciones" value={metrics.en_vacaciones || 0} subtitle="De su equipo" icon={Car} color="accent" />
             </div>
           )}
 
@@ -260,41 +285,9 @@ export default function DashboardClient({ session }: { session: Session }) {
             </div>
           )}
 
-          {/* Employee balance — vista tipo hoja RRHH */}
-          {isEmpleado && balance && (
-            <BalanceDiasTable
-              filas={balance.balanceDetalle ? [balance.balanceDetalle] : []}
-              anoLaboral={balance.anoLaboral ?? null}
-            />
-          )}
+          {isEmpleado && renderMiBalancePersonal(false)}
 
-          {!isEmpleado && balance?.balanceDetalle && (
-            <div>
-              <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-                <User className="w-3.5 h-3.5" />
-                Mi Balance Personal
-              </h3>
-              <BalanceDiasTable
-                filas={[balance.balanceDetalle]}
-                anoLaboral={balance.anoLaboral ?? null}
-              />
-            </div>
-          )}
-
-          {!isEmpleado && balance && !balance.balanceDetalle && (
-            <div>
-              <h3 className="text-[13px] font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-                <User className="w-3.5 h-3.5" />
-                Mi Balance Personal
-              </h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard title="Días Asignados" value={balance.diasAsignados} icon={Calendar} color="primary" />
-                <MetricCard title="Disponibles" value={balance.diasDisponibles} icon={CheckCircle} color="success" />
-                <MetricCard title="Usados" value={balance.diasUsados} icon={Car} color="error" />
-                <MetricCard title="Mis Pendientes" value={balance.solicitudesPendientes} icon={Hourglass} color="warning" />
-              </div>
-            </div>
-          )}
+          {!isEmpleado && renderMiBalancePersonal(true)}
 
           {isEmpleado && balance && (
             <div className="bg-card text-card-foreground border shadow-sm rounded-xl">

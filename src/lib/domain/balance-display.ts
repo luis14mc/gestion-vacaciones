@@ -17,12 +17,10 @@ export interface BalanceDiasFila {
 
 export function formatFechaIngreso(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = String(d.getFullYear()).slice(-2);
-  return `${day}/${month}/${year}`;
+  const soloFecha = iso.includes('T') ? iso.slice(0, 10) : iso;
+  const [year, month, day] = soloFecha.split('-');
+  if (!year || !month || !day) return '—';
+  return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year.slice(-2)}`;
 }
 
 export function formatDias(value: number): string {

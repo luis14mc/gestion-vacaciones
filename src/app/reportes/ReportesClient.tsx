@@ -66,8 +66,8 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 
   const [filtros, setFiltros] = useState<FiltrosReporte>({
     tipoReporte: "balances",
-    fechaInicio: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    fechaFin: new Date().toISOString().split('T')[0],
+    fechaInicio: new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10),
+    fechaFin: new Date().toISOString().slice(0, 10),
     departamentoId: "",
     tipoAusenciaId: "",
     anio: new Date().getFullYear(),

@@ -3,6 +3,7 @@ import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { desc, isNull, or, eq, and, inArray, sql } from "drizzle-orm";
+import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 
 export async function GET() {
   try {
@@ -37,23 +38,16 @@ export async function GET() {
     if (esEmpleado) {
       solicitudesCondition = and(solicitudesCondition, eq(solicitudes.usuarioId, session.id));
     }
-    // Si es jefe, solo su departamento
+    // Si es jefe/director, mismo alcance que aprobar solicitudes (jefeSuperiorId)
     else if (esDirectorOJefe && !puedeVerTodo) {
-      if (!session.departamentoId) {
-        solicitudesCondition = and(solicitudesCondition, sql`false`);
-      } else {
-        const usuariosDept = await db
-          .select({ id: usuarios.id })
-          .from(usuarios)
-          .where(and(
-            eq(usuarios.departamentoId, session.departamentoId),
-            isNull(usuarios.deletedAt)
-          ));
-        const usuariosScopeIds = usuariosDept.map(u => u.id);
-        solicitudesCondition = usuariosScopeIds.length > 0
-          ? and(solicitudesCondition, inArray(solicitudes.usuarioId, usuariosScopeIds))
-          : and(solicitudesCondition, sql`false`);
-      }
+      const usuariosScopeIds = await resolverIdsEquipo({
+        jefeId: session.id,
+        esDirector: session.esDirector,
+        departamentoId: session.departamentoId,
+      });
+      solicitudesCondition = usuariosScopeIds.length > 0
+        ? and(solicitudesCondition, inArray(solicitudes.usuarioId, usuariosScopeIds))
+        : and(solicitudesCondition, sql`false`);
     }
 
     // Obtener últimas solicitudes (aprobadas, pendientes, creadas recientemente)
@@ -106,8 +100,13 @@ export async function GET() {
       usuariosCondition = isNull(usuarios.deletedAt);
 
       if (esDirectorOJefe && !puedeVerTodo) {
-        usuariosCondition = session.departamentoId
-          ? and(usuariosCondition, eq(usuarios.departamentoId, session.departamentoId))
+        const usuariosScopeIds = await resolverIdsEquipo({
+          jefeId: session.id,
+          esDirector: session.esDirector,
+          departamentoId: session.departamentoId,
+        });
+        usuariosCondition = usuariosScopeIds.length > 0
+          ? and(usuariosCondition, inArray(usuarios.id, usuariosScopeIds))
           : and(usuariosCondition, sql`false`);
       }
     }

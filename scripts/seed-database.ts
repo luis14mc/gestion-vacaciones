@@ -27,6 +27,7 @@ import {
   configuracion,
 } from '../src/lib/db/schema';
 import { syncUserRolesDesdeBD } from '../src/services/rbac.service';
+import { LEGACY_CONFIG_KEYS } from '../src/lib/config/catalog';
 
 config();
 
@@ -159,6 +160,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'balances.ver_propio',
   ],
 };
+
+async function limpiarConfigLegacy() {
+  for (const clave of LEGACY_CONFIG_KEYS) {
+    await db.delete(configuracion).where(eq(configuracion.clave, clave));
+  }
+}
 
 async function upsertCatalogs() {
   const now = new Date().toISOString();
@@ -305,6 +312,8 @@ async function seedDemoUsers() {
         activo: true,
       }).returning();
 
+    if (!createdOrUpdated) continue;
+
     await db.insert(usuariosRoles)
       .values({ usuarioId: createdOrUpdated.id, rolId: role.id, activo: true })
       .onConflictDoUpdate({
@@ -352,6 +361,7 @@ async function seed() {
   console.log('========================================\n');
 
   try {
+    await limpiarConfigLegacy();
     await upsertCatalogs();
     console.log('Datos base aplicados: roles, permisos, departamentos, configuracion y ano laboral.');
 

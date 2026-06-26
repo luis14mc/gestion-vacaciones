@@ -15,9 +15,17 @@ interface BalanceDiasTableProps {
   filas: BalanceDiasFila[];
   loading?: boolean;
   anoLaboral?: number | null;
+  emptyMessage?: string;
 }
 
-export function BalanceDiasTable({ filas, loading, anoLaboral }: BalanceDiasTableProps) {
+const DEFAULT_EMPTY_MESSAGE = 'No hay datos de balance disponibles.';
+
+export function BalanceDiasTable({
+  filas,
+  loading,
+  anoLaboral,
+  emptyMessage = DEFAULT_EMPTY_MESSAGE,
+}: BalanceDiasTableProps) {
   if (loading) {
     return (
       <div className="rounded-xl border bg-card overflow-hidden">
@@ -66,7 +74,7 @@ export function BalanceDiasTable({ filas, loading, anoLaboral }: BalanceDiasTabl
             {filas.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
-                  No hay datos de balance disponibles.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (

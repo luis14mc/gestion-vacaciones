@@ -126,10 +126,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   });
 
   // Contar total
-  const [{ count }] = await db
+  const countResult = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(solicitudes)
     .where(and(...conditions));
+  const count = Number(countResult[0]?.count ?? 0);
 
   // Calcular estadísticas para el frontend
   const [stats] = await db

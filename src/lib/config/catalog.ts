@@ -40,6 +40,20 @@ export const CONFIG_FIELD_SCHEMAS: Record<string, ZodTypeAny> = {
 // Conjunto de claves válidas del sistema.
 export const CONFIG_KEYS = new Set(Object.keys(CONFIG_FIELD_SCHEMAS));
 
+/** Claves legacy retiradas del catálogo (solo para limpieza idempotente en seed/SQL). */
+export const LEGACY_CONFIG_KEYS = [
+  'departamentos.jefe_auto_aprobar',
+  'departamentos.jefe_puede_auto_aprobar',
+  'flujo.jefe_auto_aprobar',
+  'jefe_auto_aprobar',
+  'jefe_puede_auto_aprobar',
+] as const;
+
+/** Excluye claves desconocidas o legacy del payload hacia el cliente. */
+export function filtrarConfigCatalogo<T extends { clave: string }>(items: T[]): T[] {
+  return items.filter((item) => CONFIG_KEYS.has(item.clave));
+}
+
 // Clasificación de tipos de dato (para metadata y render del cliente).
 const BOOLEAN_KEYS = new Set([
   'app.mantenimiento',
@@ -132,7 +146,7 @@ export interface ConfigMeta {
 
 export function getConfigMeta(clave: string): ConfigMeta {
   // El prefijo 'app' pertenece a la categoría 'general'.
-  const prefijo = clave.split('.')[0];
+  const prefijo = clave.split('.')[0] ?? 'general';
   const categoria = prefijo === 'app' ? 'general' : prefijo;
   return {
     categoria,

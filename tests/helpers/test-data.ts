@@ -60,6 +60,10 @@ export async function crearUsuarioTest(data: {
     activo: true,
   }).returning()
 
+  if (!usuario) {
+    throw new Error('No se pudo crear usuario de prueba')
+  }
+
   if (data.rolId) {
     await db.insert(usuariosRoles).values({
       usuarioId: usuario.id,

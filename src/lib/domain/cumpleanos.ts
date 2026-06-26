@@ -46,7 +46,7 @@ export function validarFechaSolicitudCumpleanos(
   if (!fechaNacimiento) {
     return {
       valido: false,
-      error: 'No tiene registrada su fecha de nacimiento. Contacte a Recursos Humanos.',
+      error: 'No tiene registrada su fecha de nacimiento. Registre su fecha de nacimiento con RRHH para habilitar el día libre por cumpleaños.',
     };
   }
 

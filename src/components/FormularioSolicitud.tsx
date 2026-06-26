@@ -74,7 +74,19 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   const requiereAdjunto = (esDirector && !esCumpleanos) || esLicenciaMedica;
 
   const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica', 'dia_cumpleanos'];
-  const tiposFiltrados = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
+  const tiposFiltradosBase = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
+  const tiposFiltrados = tiposFiltradosBase.some((t: any) => t.tipo === 'dia_cumpleanos')
+    ? tiposFiltradosBase
+    : [
+        ...tiposFiltradosBase,
+        {
+          id: 'dia_cumpleanos',
+          nombre: 'Día libre por cumpleaños',
+          tipo: 'dia_cumpleanos',
+          activo: true,
+          permiteHoras: false,
+        },
+      ];
 
   // Balance & Days Calculators
   const { diasLaborables } = useLaborDays(fechaInicio, fechaFin);

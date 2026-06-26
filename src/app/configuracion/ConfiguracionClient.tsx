@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
+import { CONFIG_KEYS, filtrarConfigCatalogo } from "@/lib/config/catalog";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -310,7 +311,8 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       const data = await res.json();
 
       if (data.success) {
-        const configsConFallbacks = mergeConfigFallbacks(data.data);
+        const configsCatalogo = filtrarConfigCatalogo(data.data as ConfigItem[]);
+        const configsConFallbacks = mergeConfigFallbacks(configsCatalogo);
         setConfigs(configsConFallbacks);
         // Inicializar valores editados
         const valores: Record<string, string> = {};
@@ -470,7 +472,9 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                 <div className="flex flex-col gap-1">
                   {CATEGORIAS.map((cat) => {
                     const Icon = cat.icon;
-                    const count = configs.filter((c) => c.categoria === cat.id).length;
+                    const count = GRUPOS[cat.id].flatMap((g) => g.claves).filter((clave) =>
+                      CONFIG_KEYS.has(clave)
+                    ).length;
                     const isActive = categoriaActiva === cat.id;
                     const hasDirty = GRUPOS[cat.id]
                       .flatMap((g) => g.claves)

@@ -14,7 +14,8 @@ const ESTADOS_OCUPAN_CALENDARIO = [
   'finalizada',
 ] as const;
 
-type DbOrTx = typeof db;
+type DbClient = typeof db;
+type DbOrTx = DbClient | Parameters<Parameters<DbClient['transaction']>[0]>[0];
 
 export async function validarConflictosDepartamento(
   params: {

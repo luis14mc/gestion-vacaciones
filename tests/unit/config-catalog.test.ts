@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validarConfig, getConfigMeta, CONFIG_KEYS } from '@/lib/config/catalog';
+import { validarConfig, getConfigMeta, CONFIG_KEYS, LEGACY_CONFIG_KEYS } from '@/lib/config/catalog';
 
 describe('config catalog - validarConfig', () => {
   it('rechaza claves desconocidas', () => {
@@ -52,5 +52,16 @@ describe('config catalog - getConfigMeta', () => {
   it('el catálogo cubre las claves esperadas', () => {
     expect(CONFIG_KEYS.has('notificaciones.smtp_host')).toBe(true);
     expect(CONFIG_KEYS.size).toBeGreaterThan(30);
+  });
+
+  it('no incluye claves legacy de auto-aprobación de jefe', () => {
+    for (const clave of LEGACY_CONFIG_KEYS) {
+      expect(CONFIG_KEYS.has(clave)).toBe(false);
+    }
+  });
+
+  it('Reglas de Flujo departamentos solo incluyen claves activas', () => {
+    expect(CONFIG_KEYS.has('departamentos.validar_conflictos')).toBe(true);
+    expect(CONFIG_KEYS.has('departamentos.mostrar_calendario_equipo')).toBe(true);
   });
 });

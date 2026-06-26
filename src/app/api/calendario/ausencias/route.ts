@@ -85,8 +85,12 @@ export async function GET(req: NextRequest) {
       const current = new Date(dStart);
       while (current <= dEnd) {
         const key = current.toISOString().split('T')[0];
+        if (!key) {
+          current.setDate(current.getDate() + 1);
+          continue;
+        }
         if (!diasMes[key]) diasMes[key] = [];
-        diasMes[key].push({
+        diasMes[key]!.push({
           id: a.id,
           codigo: a.codigo,
           tipo: a.tipo,

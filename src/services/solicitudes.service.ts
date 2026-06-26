@@ -241,7 +241,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     let nextNumber = 1;
     if (lastSolicitud?.codigo) {
       const match = lastSolicitud.codigo.match(/(?:CNI-SOL|SOL)-\d{4}-(\d+)/);
-      if (match) {
+      if (match?.[1]) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
     }

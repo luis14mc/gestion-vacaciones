@@ -263,9 +263,11 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
       isNull(usuarios.deletedAt)
     ));
 
-  if (empleadosCount.count > 0) {
+  const empleadosActivos = Number(empleadosCount?.count ?? 0);
+
+  if (empleadosActivos > 0) {
     return NextResponse.json(
-      { success: false, error: `No se puede eliminar: tiene ${empleadosCount.count} empleado(s) activo(s)` },
+      { success: false, error: `No se puede eliminar: tiene ${empleadosActivos} empleado(s) activo(s)` },
       { status: 409 }
     );
   }

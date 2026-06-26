@@ -461,12 +461,12 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
   }
 
   if (objetivo.esAdmin) {
-    const [{ total }] = await db
+    const totalAdminsResult = await db
       .select({ total: sql<number>`count(*)::int` })
       .from(usuarios)
       .where(and(eq(usuarios.esAdmin, true), eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
 
-    if (Number(total) <= 1) {
+    if (Number(totalAdminsResult[0]?.total ?? 0) <= 1) {
       return NextResponse.json(
         { success: false, error: 'No se puede desactivar al último administrador activo' },
         { status: 400 }

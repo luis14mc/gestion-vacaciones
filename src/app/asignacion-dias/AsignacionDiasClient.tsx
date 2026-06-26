@@ -189,7 +189,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     setModoModal("individual");
     if (usuario) {
       // Usar el primer tipo de ausencia (vacaciones) por defecto
-      const tipoVacacionesId = tiposAusencia.length > 0 ? tiposAusencia[0].id.toString() : "";
+      const tipoVacacionesId = tiposAusencia[0]?.id.toString() ?? "";
       setFormData({
         usuarioId: usuario.id.toString(),
         departamentoId: "",
@@ -198,7 +198,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
         operacion: "sumar",
       });
     } else {
-      const tipoVacacionesId = tiposAusencia.length > 0 ? tiposAusencia[0].id.toString() : "";
+      const tipoVacacionesId = tiposAusencia[0]?.id.toString() ?? "";
       setFormData({
         usuarioId: "",
         departamentoId: "",

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { usuarios, balances, solicitudes, anosLaborales } from "@/lib/db/schema";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
+import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 
 export const runtime = 'nodejs';
 
@@ -27,25 +28,47 @@ export async function GET(request: NextRequest) {
     const mes = parseInt(searchParams.get("mes") || String(new Date().getMonth() + 1));
     const anio = parseInt(searchParams.get("anio") || String(new Date().getFullYear()));
 
-    // Filtro contextual: Si es JEFE, solo su departamento
-    let departamentoCondition = undefined;
-    if (esDirectorOJefe && !esAdminORrhh) {
-      if (session.departamentoId) {
-        departamentoCondition = eq(usuarios.departamentoId, session.departamentoId);
-      } else {
-        return NextResponse.json(
-          { success: false, error: 'Usuario JEFE sin departamento asignado' },
-          { status: 403 }
-        );
-      }
-    }
+    // Filtro contextual: jefe/director ven su equipo (jefeSuperiorId), no todo el departamento
+    let usuariosDept: Array<typeof usuarios.$inferSelect> = [];
 
-    // Obtener usuarios
-    const usuariosDept = await db.query.usuarios.findMany({
-      where: departamentoCondition 
-        ? and(isNull(usuarios.deletedAt), departamentoCondition) 
-        : isNull(usuarios.deletedAt)
-    });
+    if (esDirectorOJefe && !esAdminORrhh) {
+      const usuariosIds = await resolverIdsEquipo({
+        jefeId: session.id,
+        esDirector: session.esDirector,
+        departamentoId: session.departamentoId,
+      });
+
+      if (usuariosIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            periodo: { mes, anio },
+            resumen: {
+              totalColaboradores: 0,
+              colaboradoresActivos: 0,
+              enVacacionesHoy: 0,
+              diasTotalesAsignados: 0,
+              diasTotalesUsados: 0,
+              diasTotalesDisponibles: 0,
+              promedioUsoPorPersona: 0,
+            },
+            solicitudes: { total: 0, aprobadas: 0, pendientes: 0, rechazadas: 0 },
+            proximasVacaciones: [],
+            topUsuarios: [],
+            historialDias: [],
+            detalle: [],
+          },
+        });
+      }
+
+      usuariosDept = await db.query.usuarios.findMany({
+        where: and(isNull(usuarios.deletedAt), inArray(usuarios.id, usuariosIds)),
+      });
+    } else {
+      usuariosDept = await db.query.usuarios.findMany({
+        where: isNull(usuarios.deletedAt),
+      });
+    }
 
     const usuariosIds = usuariosDept.map(u => u.id);
     const totalColaboradores = usuariosDept.length;
@@ -81,8 +104,8 @@ export async function GET(request: NextRequest) {
       : 0;
 
     // Solicitudes del período
-    const primerDia = new Date(anio, mes - 1, 1).toISOString().split('T')[0];
-    const ultimoDia = new Date(anio, mes, 0).toISOString().split('T')[0];
+    const primerDia = new Date(anio, mes - 1, 1).toISOString().slice(0, 10);
+    const ultimoDia = new Date(anio, mes, 0).toISOString().slice(0, 10);
 
     const solicitudesDept = usuariosIds.length > 0 ? await db
       .select({
@@ -142,7 +165,7 @@ export async function GET(request: NextRequest) {
         a.usuario.localeCompare(b.usuario)
       );
 
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = new Date().toISOString().slice(0, 10);
     const enVacacionesHoy = solicitudesDept.filter(
       (s: any) =>
         ['aprobada_rrhh', 'finalizada'].includes(s.estado) &&

@@ -97,14 +97,14 @@ export async function GET() {
 
     const anoLaboral = anoLaboralActivo ?? anoLaboralActual ?? null;
 
-    const balanceDetalle = usuario
+    const balanceDetalle = balance && usuario
       ? mapBalanceToFila({
           nombre: usuario.nombre,
           apellido: usuario.apellido,
           fechaIngreso: usuario.fechaIngreso,
-          cantidadInicial: balance?.cantidadInicial ?? 0,
-          cantidadAcumulada: balance?.cantidadAcumulada ?? 0,
-          cantidadDisponible: balance?.cantidadDisponible ?? 0,
+          cantidadInicial: balance.cantidadInicial,
+          cantidadAcumulada: balance.cantidadAcumulada,
+          cantidadDisponible: balance.cantidadDisponible,
         })
       : null;
 
@@ -112,6 +112,7 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         data: {
+          tieneBalance: false,
           diasAsignados: 0,
           diasAcumulados: 0,
           diasUsados: 0,
@@ -211,6 +212,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        tieneBalance: true,
         diasAsignados,
         diasAcumulados,
         diasUsados,

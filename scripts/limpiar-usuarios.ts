@@ -29,9 +29,10 @@ async function limpiar() {
   try {
     // Contar antes
     const [antes] = await client`SELECT COUNT(*) as total FROM usuarios WHERE es_admin = false`;
-    console.log(`Usuarios no-admin a eliminar: ${antes.total}`);
+    const totalAntes = Number(antes?.total ?? 0);
+    console.log(`Usuarios no-admin a eliminar: ${totalAntes}`);
 
-    if (Number(antes.total) === 0) {
+    if (totalAntes === 0) {
       console.log('\n✅ No hay usuarios no-admin que eliminar.');
       process.exit(0);
     }
@@ -69,7 +70,7 @@ async function limpiar() {
 
     // Verificar
     const [despues] = await client`SELECT COUNT(*) as total FROM usuarios`;
-    console.log(`\n✅ Limpieza completada. Usuarios restantes: ${despues.total} (admin)`);
+    console.log(`\n✅ Limpieza completada. Usuarios restantes: ${despues?.total ?? 0} (admin)`);
 
   } catch (error) {
     console.error('ERROR:', error);

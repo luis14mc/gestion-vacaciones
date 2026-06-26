@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes } from "@/lib/db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
+import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 
 export async function GET() {
   try {
@@ -22,42 +23,33 @@ export async function GET() {
       );
     }
 
-    const departamentoId = session.departamentoId;
+    const usuariosIds = await resolverIdsEquipo({
+      jefeId: session.id,
+      esDirector: session.esDirector,
+      departamentoId: session.departamentoId,
+    });
 
-    if (!departamentoId) {
-      return NextResponse.json(
-        { success: false, error: "Jefe sin departamento asignado" },
-        { status: 400 }
-      );
-    }
-
-    // Obtener usuarios del departamento
-    const usuariosDept = await db
-      .select({ id: usuarios.id })
-      .from(usuarios)
-      .where(and(eq(usuarios.departamentoId, departamentoId), isNull(usuarios.deletedAt)));
-
-    const usuariosIds = usuariosDept.map(u => u.id);
-
-    // Total de usuarios del departamento
     const totalUsuarios = usuariosIds.length;
 
-    // Obtener usuarios activos del departamento
-    const [usuariosActivos] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(usuarios)
-      .where(
-        and(
-          eq(usuarios.activo, true),
-          eq(usuarios.departamentoId, departamentoId),
-          isNull(usuarios.deletedAt)
-        )
-      );
+    const countFrom = (rows: { count: number }[]) => Number(rows[0]?.count ?? 0);
 
-    // Solicitudes pendientes del departamento
-    let solicitudesPendientes = { count: 0 };
+    let usuariosActivosCount = 0;
     if (usuariosIds.length > 0) {
-      [solicitudesPendientes] = await db
+      usuariosActivosCount = countFrom(await db
+        .select({ count: sql<number>`count(*)` })
+        .from(usuarios)
+        .where(
+          and(
+            eq(usuarios.activo, true),
+            inArray(usuarios.id, usuariosIds),
+            isNull(usuarios.deletedAt)
+          )
+        ));
+    }
+
+    let solicitudesPendientesCount = 0;
+    if (usuariosIds.length > 0) {
+      solicitudesPendientesCount = countFrom(await db
         .select({ count: sql<number>`count(*)` })
         .from(solicitudes)
         .where(
@@ -66,14 +58,13 @@ export async function GET() {
             inArray(solicitudes.usuarioId, usuariosIds),
             isNull(solicitudes.deletedAt)
           )
-        );
+        ));
     }
 
-    // Usuarios en vacaciones HOY del departamento (vigentes, no las ya finalizadas)
-    const hoy = new Date().toISOString().split('T')[0];
-    let enVacaciones = { count: 0 };
+    const hoy = new Date().toISOString().slice(0, 10);
+    let enVacacionesCount = 0;
     if (usuariosIds.length > 0) {
-      [enVacaciones] = await db
+      enVacacionesCount = countFrom(await db
         .select({ count: sql<number>`count(DISTINCT ${solicitudes.usuarioId})` })
         .from(solicitudes)
         .where(
@@ -84,32 +75,33 @@ export async function GET() {
             inArray(solicitudes.usuarioId, usuariosIds),
             isNull(solicitudes.deletedAt)
           )
-        );
+        ));
     }
 
-    // Nuevos usuarios este mes en el departamento
     const primerDiaMes = new Date();
     primerDiaMes.setDate(1);
     primerDiaMes.setHours(0, 0, 0, 0);
 
-    const [nuevosEsteMes] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(usuarios)
-      .where(
-        and(
-          sql`${usuarios.createdAt} >= ${primerDiaMes}`,
-          eq(usuarios.departamentoId, departamentoId),
-          isNull(usuarios.deletedAt)
-        )
-      );
+    let nuevosEsteMesCount = 0;
+    if (usuariosIds.length > 0) {
+      nuevosEsteMesCount = countFrom(await db
+        .select({ count: sql<number>`count(*)` })
+        .from(usuarios)
+        .where(
+          and(
+            sql`${usuarios.createdAt} >= ${primerDiaMes}`,
+            inArray(usuarios.id, usuariosIds),
+            isNull(usuarios.deletedAt)
+          )
+        ));
+    }
 
-    // Solicitudes aprobadas HOY por este jefe
     const hoyInicio = new Date();
     hoyInicio.setHours(0, 0, 0, 0);
     const hoyFin = new Date();
     hoyFin.setHours(23, 59, 59, 999);
 
-    const [aprobadasHoy] = await db
+    const aprobadasHoyCount = countFrom(await db
       .select({ count: sql<number>`count(*)` })
       .from(solicitudes)
       .where(
@@ -119,10 +111,9 @@ export async function GET() {
           sql`${solicitudes.aprobadaJefeFecha} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
         )
-      );
+      ));
 
-    // Solicitudes rechazadas HOY por este jefe
-    const [rechazadasHoy] = await db
+    const rechazadasHoyCount = countFrom(await db
       .select({ count: sql<number>`count(*)` })
       .from(solicitudes)
       .where(
@@ -133,16 +124,16 @@ export async function GET() {
           sql`${solicitudes.updatedAt} <= ${hoyFin.toISOString()}`,
           isNull(solicitudes.deletedAt)
         )
-      );
+      ));
 
     const metricas = {
       usuarios_totales: totalUsuarios,
-      usuarios_activos: Number(usuariosActivos?.count || 0),
-      solicitudes_pendientes: Number(solicitudesPendientes?.count || 0),
-      en_vacaciones: Number(enVacaciones?.count || 0),
-      nuevos_este_mes: Number(nuevosEsteMes?.count || 0),
-      aprobadas_hoy: Number(aprobadasHoy?.count || 0),
-      rechazadas_hoy: Number(rechazadasHoy?.count || 0),
+      usuarios_activos: usuariosActivosCount,
+      solicitudes_pendientes: solicitudesPendientesCount,
+      en_vacaciones: enVacacionesCount,
+      nuevos_este_mes: nuevosEsteMesCount,
+      aprobadas_hoy: aprobadasHoyCount,
+      rechazadas_hoy: rechazadasHoyCount,
     };
 
     return NextResponse.json({

@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
-import { getConfigMeta, validarConfig } from '@/lib/config/catalog';
+import { filtrarConfigCatalogo, getConfigMeta, validarConfig } from '@/lib/config/catalog';
 import { invalidarCacheConfig } from '@/lib/config/service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 
@@ -53,7 +53,7 @@ export async function GET() {
       throw e;
     }
 
-    return NextResponse.json({ success: true, data: results });
+    return NextResponse.json({ success: true, data: filtrarConfigCatalogo(results) });
   } catch (error) {
     // OWASP: No revelar trazas internas al cliente
     console.error('Error obteniendo configuraciones:', error);
@@ -175,18 +175,34 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const [actualizado] = await db
-      .update(configuracion)
-      .set({ ...camposPermitidos, updatedAt: new Date().toISOString() })
+    const [existente] = await db
+      .select({ id: configuracion.id, clave: configuracion.clave })
+      .from(configuracion)
       .where(eq(configuracion.id, id))
-      .returning();
+      .limit(1);
 
-    if (!actualizado) {
+    if (!existente) {
       return NextResponse.json(
         { success: false, error: 'Configuración no encontrada' },
         { status: 404 }
       );
     }
+
+    if (body.valor !== undefined) {
+      const errorValidacion = validarConfig(existente.clave, String(body.valor));
+      if (errorValidacion) {
+        return NextResponse.json(
+          { success: false, error: errorValidacion },
+          { status: 400 }
+        );
+      }
+    }
+
+    const [actualizado] = await db
+      .update(configuracion)
+      .set({ ...camposPermitidos, updatedAt: new Date().toISOString() })
+      .where(eq(configuracion.id, id))
+      .returning();
 
     invalidarCacheConfig();
 

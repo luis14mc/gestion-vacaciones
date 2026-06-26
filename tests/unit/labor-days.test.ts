@@ -23,8 +23,10 @@ describe('contarDiasHabiles', () => {
     expect(contarDiasHabiles('2026-06-15T10:00:00Z', '2026-06-19T18:00:00Z')).toBe(5);
   });
 
-  it('excluye feriados nacionales de Honduras', () => {
-    // 14 y 15 sep 2026: lunes hábil + martes feriado (Independencia)
-    expect(contarDiasHabiles('2026-09-14', '2026-09-15')).toBe(1);
+  it('excluye feriados nacionales de Honduras (con puente)', () => {
+    // 14 y 15 sep 2026: Independencia (mar) + puente lunes 14 → 0 días hábiles
+    expect(contarDiasHabiles('2026-09-14', '2026-09-15')).toBe(0);
+    // 16 sep 2026: miércoles hábil
+    expect(contarDiasHabiles('2026-09-16', '2026-09-16')).toBe(1);
   });
 });

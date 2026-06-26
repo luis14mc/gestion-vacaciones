@@ -42,8 +42,9 @@ async function createAdmin() {
       throw new Error('No se encontro el rol ADMIN en la base de datos. Ejecuta el seed primero.');
     }
     const adminRole = rolesAdmin[0];
-
-    // 2. Verificar si el usuario ya existe
+    if (!adminRole) {
+      throw new Error('No se encontro el rol ADMIN en la base de datos. Ejecuta el seed primero.');
+    }
     const email = process.env.ADMIN_EMAIL || 'soporteit@cni.hn';
     const adminPassword = process.env.ADMIN_PASSWORD;
 
@@ -58,6 +59,9 @@ async function createAdmin() {
       const passwordHash = await bcrypt.hash(adminPassword, 10);
       
       const adminExistente = usuariosExistentes[0];
+      if (!adminExistente) {
+        throw new Error(`No se pudo resolver el usuario existente ${email}.`);
+      }
       await db.update(usuarios)
         .set({ passwordHash, esAdmin: true, activo: true })
         .where(eq(usuarios.id, adminExistente.id));
@@ -95,6 +99,10 @@ async function createAdmin() {
       esJefe: false,
       activo: true,
     }).returning();
+
+    if (!nuevoAdmin) {
+      throw new Error('No se pudo crear el usuario administrador.');
+    }
 
     // 4. Asignar el rol ADMIN
     await db.insert(usuariosRoles).values({

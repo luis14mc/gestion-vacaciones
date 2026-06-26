@@ -12,7 +12,7 @@ const ESPECIAL = '!@#$%&*?';
 const TODOS = MAYUS + MINUS + DIGITS + ESPECIAL;
 
 function pick(chars: string): string {
-  return chars[randomInt(chars.length)];
+  return chars[randomInt(chars.length)] ?? chars[0] ?? 'A';
 }
 
 /**
@@ -27,7 +27,12 @@ export function generarPasswordTemporal(longitud = 12): string {
   // Mezcla Fisher-Yates para no dejar el patrón fijo al inicio
   for (let i = base.length - 1; i > 0; i--) {
     const j = randomInt(i + 1);
-    [base[i], base[j]] = [base[j], base[i]];
+    const current = base[i];
+    const swap = base[j];
+    if (current !== undefined && swap !== undefined) {
+      base[i] = swap;
+      base[j] = current;
+    }
   }
   return base.join('');
 }

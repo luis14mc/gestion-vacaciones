@@ -131,6 +131,10 @@ export async function crearUsuario(params: CrearUsuarioParams) {
       })
       .returning();
 
+    if (!nuevoUsuario) {
+      throw new Error('No se pudo crear el usuario');
+    }
+
     // Asignar roles si se especificaron
     const rolesAAsignar = [];
     if (esAdmin) rolesAAsignar.push('ADMIN');

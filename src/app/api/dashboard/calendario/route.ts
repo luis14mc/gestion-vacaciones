@@ -3,6 +3,7 @@ import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { solicitudes, usuarios } from "@/lib/db/schema";
 import { eq, and, isNull, gte, lte, or, inArray, sql } from "drizzle-orm";
+import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,8 +32,8 @@ export async function GET(request: NextRequest) {
     const ultimoDia = new Date(Number(anio), Number(mes), 0);
     
     // Convertir a strings para comparación con DATE columns
-    const primerDiaStr = primerDia.toISOString().split('T')[0];
-    const ultimoDiaStr = ultimoDia.toISOString().split('T')[0];
+    const primerDiaStr = primerDia.toISOString().slice(0, 10);
+    const ultimoDiaStr = ultimoDia.toISOString().slice(0, 10);
 
     // 3. Construir condiciones según permisos
     let whereConditions: any = and(
@@ -64,23 +65,16 @@ export async function GET(request: NextRequest) {
     if (esEmpleado) {
       whereConditions = and(whereConditions, eq(solicitudes.usuarioId, session.id));
     }
-    // Si es jefe, ver solo su departamento
+    // Si es jefe/director, mismo alcance que aprobar solicitudes (jefeSuperiorId)
     else if (esDirectorOJefe && !puedeVerTodo) {
-      if (!session.departamentoId) {
-        whereConditions = and(whereConditions, sql`false`);
-      } else {
-        const usuariosDept = await db
-          .select({ id: usuarios.id })
-          .from(usuarios)
-          .where(and(
-            eq(usuarios.departamentoId, session.departamentoId),
-            isNull(usuarios.deletedAt)
-          ));
-        const usuariosIds = usuariosDept.map(u => u.id);
-        whereConditions = usuariosIds.length > 0
-          ? and(whereConditions, inArray(solicitudes.usuarioId, usuariosIds))
-          : and(whereConditions, sql`false`);
-      }
+      const usuariosIds = await resolverIdsEquipo({
+        jefeId: session.id,
+        esDirector: session.esDirector,
+        departamentoId: session.departamentoId,
+      });
+      whereConditions = usuariosIds.length > 0
+        ? and(whereConditions, inArray(solicitudes.usuarioId, usuariosIds))
+        : and(whereConditions, sql`false`);
     }
 
     // Obtener solicitudes del mes (aprobadas o en uso)

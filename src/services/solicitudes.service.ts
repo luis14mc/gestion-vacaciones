@@ -17,6 +17,7 @@ import {
   ESTADOS_DIA_CUMPLEANOS_ACTIVOS,
   validarFechaSolicitudCumpleanos,
 } from '@/lib/domain/cumpleanos';
+import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
 import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
 
 // =====================================================
@@ -142,8 +143,13 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     }
 
     // 3. Validar VoBo de Ministro para Directores (no aplica a día de cumpleaños)
-    if (esDirector && tipo !== 'dia_cumpleanos' && (!documentosAdjuntos || documentosAdjuntos.length === 0)) {
-      throw new Error('Los Directores deben adjuntar obligatoriamente el correo con el VoBo del Ministro.');
+    const errorVoBoDirector = validarVoBoDirectorService({
+      esDirector,
+      tipo,
+      documentosAdjuntos,
+    });
+    if (errorVoBoDirector) {
+      throw new Error(errorVoBoDirector);
     }
 
     // 3. Validar usuario activo

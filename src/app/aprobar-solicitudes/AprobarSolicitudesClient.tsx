@@ -16,7 +16,13 @@ import {
   MessageSquare,
   Info,
 } from "lucide-react";
-import { notify, confirmAction } from "@/lib/swal";
+import { notify } from "@/lib/swal";
+import {
+  determinarAccionAprobacion,
+  esEstadoAccionableAprobacion,
+  etiquetaBotonAprobacion,
+  etiquetaEstadoBandeja,
+} from '@/lib/domain/aprobacion-inbox';
 import type { Session } from "next-auth";
 
 import { Button } from "@/components/ui/button";
@@ -89,11 +95,6 @@ interface AprobarSolicitudesClientProps {
   session: Session;
 }
 
-const ESTADOS_ACCIONABLES = ["pendiente_jefe", "aprobada_jefe"];
-
-const esEstadoAccionable = (estado: string) =>
-  ESTADOS_ACCIONABLES.includes(estado);
-
 export default function AprobarSolicitudesClient({
   session,
 }: AprobarSolicitudesClientProps) {
@@ -136,16 +137,15 @@ export default function AprobarSolicitudesClient({
       const data = await response.json();
 
       if (data.success) {
-        setSolicitudes(
-          (data.data || []).filter((solicitud: Solicitud) =>
-            esEstadoAccionable(solicitud.estado)
-          )
+        const filtradas = (data.data || []).filter((s: Solicitud) =>
+          esEstadoAccionableAprobacion(s.estado)
         );
+        setSolicitudes(filtradas);
         setStats({
-          total: data.total || 0,
-          pendientes: data.stats?.pendientes || 0,
-          aprobadas_hoy: data.stats?.aprobadas_hoy || 0,
-          rechazadas_hoy: data.stats?.rechazadas_hoy || 0,
+          total: data.total ?? filtradas.length,
+          pendientes: data.stats?.pendientes ?? data.total ?? filtradas.length,
+          aprobadas_hoy: data.stats?.aprobadas_hoy ?? 0,
+          rechazadas_hoy: data.stats?.rechazadas_hoy ?? 0,
         });
         setTotalPaginas(data.totalPages || 1);
       } else {
@@ -165,10 +165,6 @@ export default function AprobarSolicitudesClient({
     solicitud: Solicitud,
     accionSeleccionada: "aprobar" | "rechazar"
   ) => {
-    if (!esEstadoAccionable(solicitud.estado)) {
-      notify.warning("La solicitud ya no está pendiente de aprobación");
-      return;
-    }
     setSolicitudSeleccionada(solicitud);
     setAccion(accionSeleccionada);
     setComentarios("");
@@ -185,26 +181,20 @@ export default function AprobarSolicitudesClient({
     tipoAccion: "aprobar" | "rechazar",
     estadoSolicitud: string
   ): string => {
-    if (tipoAccion === "rechazar") {
-      if (estadoSolicitud === "pendiente_jefe") return "rechazar_jefe";
-      if (estadoSolicitud === "aprobada_jefe") return "rechazar_rrhh";
-      throw new Error("La solicitud ya no está pendiente de aprobación");
+    try {
+      return determinarAccionAprobacion(tipoAccion, estadoSolicitud);
+    } catch (error) {
+      throw error instanceof Error
+        ? error
+        : new Error("La solicitud ya no está pendiente de aprobación");
     }
-    if (estadoSolicitud === "pendiente_jefe") return "aprobar_jefe";
-    if (estadoSolicitud === "aprobada_jefe") return "aprobar_rrhh";
-    throw new Error("La solicitud ya no está pendiente de aprobación");
   };
 
-  const getEtiquetaBoton = (estado: string): string => {
-    if (estado === "aprobada_jefe") return "Aprobar RRHH";
-    return "Aprobar";
-  };
+  const getEtiquetaBoton = (estado: string): string => etiquetaBotonAprobacion(estado);
 
-  const getEtiquetaEstado = (estado: string): string => {
-    if (estado === "pendiente_jefe") return "Pend. Jefe";
-    if (estado === "aprobada_jefe") return "Pend. RRHH";
-    return estado;
-  };
+  const getEtiquetaEstado = (estado: string): string => etiquetaEstadoBandeja(estado);
+
+  const puedeAccionar = (estado: string) => esEstadoAccionableAprobacion(estado);
 
   const procesarSolicitud = async () => {
     if (!solicitudSeleccionada || !accion) return;
@@ -217,6 +207,12 @@ export default function AprobarSolicitudesClient({
     }
 
     try {
+      if (!puedeAccionar(solicitudSeleccionada.estado)) {
+        notify.error("La solicitud ya no está pendiente de aprobación");
+        await cargarSolicitudes();
+        return;
+      }
+
       const accionBackend = determinarAccionBackend(
         accion,
         solicitudSeleccionada.estado
@@ -259,9 +255,7 @@ export default function AprobarSolicitudesClient({
     } catch (error) {
       console.error("Error al procesar solicitud:", error);
       notify.error(
-        error instanceof Error
-          ? error.message
-          : "No se pudo procesar la solicitud. Intenta de nuevo."
+        "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo."
       );
     }
   };
@@ -357,7 +351,7 @@ export default function AprobarSolicitudesClient({
         <Card className="bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-[13px] font-semibold">
-              Solicitudes Pendientes ({stats.total})
+              Solicitudes Pendientes ({stats.pendientes})
             </CardTitle>
             <CardDescription className="sr-only">
               Lista de solicitudes que requieren tu decisión
@@ -454,7 +448,7 @@ export default function AprobarSolicitudesClient({
                           </TableCell>
                           <TableCell>
                             <div className="flex justify-center gap-2">
-                              {esEstadoAccionable(sol.estado) && (
+                              {puedeAccionar(sol.estado) ? (
                                 <>
                                   <Button
                                     size="sm"
@@ -479,7 +473,7 @@ export default function AprobarSolicitudesClient({
                                     Rechazar
                                   </Button>
                                 </>
-                              )}
+                              ) : null}
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
@@ -543,7 +537,7 @@ export default function AprobarSolicitudesClient({
                         </div>
 
                         <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-                          {esEstadoAccionable(sol.estado) && (
+                          {puedeAccionar(sol.estado) ? (
                             <>
                               <Button
                                 size="sm"
@@ -567,7 +561,7 @@ export default function AprobarSolicitudesClient({
                                 Rechazar
                               </Button>
                             </>
-                          )}
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="icon-sm"

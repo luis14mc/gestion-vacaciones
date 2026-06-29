@@ -18,6 +18,14 @@ import { CumpleanosSection } from './solicitudes/CumpleanosSection';
 import { BalanceViewer } from './solicitudes/BalanceViewer';
 import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 
+const TIPO_DIA_CUMPLEANOS = {
+  id: 'dia_cumpleanos',
+  nombre: 'Día libre por cumpleaños',
+  tipo: 'dia_cumpleanos',
+  activo: true,
+  permiteHoras: false,
+} as const;
+
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -40,7 +48,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
   // Initializing React Query Hooks
   const { data: tiposAusencia = [], isLoading: loadingTipos } = useTiposAusencia();
-  const { data: balances = [], isLoading: loadingBalances } = useBalances(usuarioId);
+  const { data: balances = [] } = useBalances(usuarioId);
 
   // Initializing Form
   const form = useForm<SolicitudFormData>({
@@ -75,18 +83,11 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
 
   const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica', 'dia_cumpleanos'];
   const tiposFiltradosBase = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
-  const tiposFiltrados = tiposFiltradosBase.some((t: any) => t.tipo === 'dia_cumpleanos')
-    ? tiposFiltradosBase
-    : [
-        ...tiposFiltradosBase,
-        {
-          id: 'dia_cumpleanos',
-          nombre: 'Día libre por cumpleaños',
-          tipo: 'dia_cumpleanos',
-          activo: true,
-          permiteHoras: false,
-        },
-      ];
+  const tipoCumpleanosApi = tiposFiltradosBase.find((t: any) => t.tipo === 'dia_cumpleanos');
+  const tiposFiltrados = [
+    ...tiposFiltradosBase.filter((t: any) => t.tipo !== 'dia_cumpleanos'),
+    tipoCumpleanosApi ?? TIPO_DIA_CUMPLEANOS,
+  ];
 
   // Balance & Days Calculators
   const { diasLaborables } = useLaborDays(fechaInicio, fechaFin);
@@ -113,7 +114,13 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       const esVacacionesTemp = tipoSeleccionado.tipo === 'vacaciones';
       const esPermisoTemp = tipoSeleccionado.permiteHoras;
       const esCumpleanosTemp = tipoSeleccionado.tipo === 'dia_cumpleanos';
-      form.setValue('requiereMotivo', (esPermisoTemp || (!esVacacionesTemp && !esCumpleanosTemp)));
+      form.setValue('requiereMotivo', esPermisoTemp || (!esVacacionesTemp && !esCumpleanosTemp));
+
+      if (esCumpleanosTemp) {
+        form.setValue('motivo', '');
+        form.setValue('fechaFin', form.getValues('fechaInicio') || '');
+        setArchivoBase64(null);
+      }
     }
   }, [tipoSeleccionado, form]);
 
@@ -211,7 +218,7 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
     }
   };
 
-  if (loadingTipos || loadingBalances) {
+  if (loadingTipos) {
     return (
       <div className="flex justify-center items-center p-12">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -276,14 +283,14 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
               />
             )}
 
-            {tipoAusenciaId && (
+            {tipoAusenciaId && !esCumpleanos && (
               <FormField
                 control={form.control as any}
                 name="motivo"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="font-semibold">
-                      Motivo / Justificación {esPermiso || (!esVacaciones && !esCumpleanos) ? '*' : '(Opcional)'}
+                      Motivo / Justificación {esPermiso || !esVacaciones ? '*' : '(Opcional)'}
                     </FormLabel>
                     <FormControl>
                       <Textarea
@@ -381,7 +388,12 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         <div className="w-full p-2 text-xs text-muted-foreground">
           <p className="font-semibold mb-2">Proceso de aprobación:</p>
           <ul className="list-disc list-inside space-y-1">
-            {esDirector ? (
+            {esCumpleanos ? (
+              <>
+                <li>1. Aprobación de Jefe Inmediato / Director de Área</li>
+                <li>2. Revisión y aprobación de Recursos Humanos</li>
+              </>
+            ) : esDirector ? (
               <>
                 <li>1. VoBo Ministro (Mediante documento adjunto)</li>
                 <li>2. Revisión y validación de Recursos Humanos</li>

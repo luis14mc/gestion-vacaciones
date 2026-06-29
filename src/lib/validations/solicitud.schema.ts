@@ -18,6 +18,8 @@ export const solicitudSchema = z.object({
     observaciones: z.string().optional(),
     requiereMotivo: z.boolean().optional().default(false),
 }).superRefine((data, ctx) => {
+    const esCumpleanos = data.tipoAusenciaId === 'dia_cumpleanos';
+
     if (data.unidad === 'horas') {
         if (!data.fechaInicio) {
             ctx.addIssue({
@@ -77,6 +79,11 @@ export const solicitudSchema = z.object({
                 path: ['fechaInicio'],
             });
         }
+
+        if (esCumpleanos) {
+            return;
+        }
+
         if (!data.fechaFin) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,

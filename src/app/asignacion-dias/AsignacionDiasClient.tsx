@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { mapBalanceRegistro, formatDias } from '@/lib/domain/balance-display';
 
 interface Usuario {
   id: number;
@@ -52,6 +53,7 @@ interface Balance {
   usuarioId: number;
   tipoAusencia: string;
   cantidadInicial: string;
+  cantidadAcumulada: string;
   cantidadUsada: string;
   cantidadPendiente: string;
   cantidadDisponible: string;
@@ -144,6 +146,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
           usuarioId: Number(b.usuarioId),
           tipoAusencia: b.tipoAusencia,
           cantidadInicial: b.cantidadInicial ?? '0',
+          cantidadAcumulada: b.cantidadAcumulada ?? '0',
           cantidadUsada: b.cantidadUsada ?? '0',
           cantidadPendiente: b.cantidadPendiente ?? '0',
           cantidadDisponible: b.cantidadDisponible ?? '0',
@@ -484,15 +487,19 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                   <TableRow>
                     <TableHead>Empleado</TableHead>
                     <TableHead>Departamento</TableHead>
-                    <TableHead className="text-center">Días Asignados</TableHead>
-                    <TableHead className="text-center">Días Disponibles</TableHead>
+                    <TableHead className="text-center">Días vencidos</TableHead>
+                    <TableHead className="text-center">Días proporcionales</TableHead>
+                    <TableHead className="text-center">Días asignados</TableHead>
+                    <TableHead className="text-center">Días usados</TableHead>
+                    <TableHead className="text-center">Días pendientes</TableHead>
+                    <TableHead className="text-center">Días disponibles</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {usuariosFiltrados.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">
+                      <TableCell colSpan={9} className="text-center py-8">
                         <div className="flex flex-col items-center gap-2">
                           <Users className="w-12 h-12 text-muted-foreground/30" />
                           <p className="text-muted-foreground">No hay usuarios para mostrar</p>
@@ -502,6 +509,9 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                   ) : (
                     usuariosFiltrados.map((usuario) => {
                       const balanceVacaciones = getBalanceUsuario(usuario.id, 'vacaciones');
+                      const saldo = balanceVacaciones
+                        ? mapBalanceRegistro(balanceVacaciones)
+                        : mapBalanceRegistro({});
 
                       return (
                         <TableRow key={usuario.id}>
@@ -516,23 +526,23 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                               {usuario.departamento?.nombre || "Sin departamento"}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-center">
-                            {balanceVacaciones ? (
-                              <span className="font-semibold text-lg text-primary">
-                                {Number.parseFloat(balanceVacaciones.cantidadInicial).toFixed(1)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">0.0</span>
-                            )}
+                          <TableCell className="text-center tabular-nums">
+                            {formatDias(saldo.diasVencidos)}
                           </TableCell>
-                          <TableCell className="text-center">
-                            {balanceVacaciones ? (
-                              <span className="font-semibold text-lg text-green-500">
-                                {Number.parseFloat(balanceVacaciones.cantidadDisponible).toFixed(1)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">0.0</span>
-                            )}
+                          <TableCell className="text-center tabular-nums">
+                            {formatDias(saldo.diasProporcionales)}
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums font-semibold text-primary">
+                            {formatDias(saldo.diasAsignados)}
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums">
+                            {formatDias(saldo.diasUsados)}
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums">
+                            {formatDias(saldo.diasPendientes)}
+                          </TableCell>
+                          <TableCell className="text-center tabular-nums font-semibold text-green-600 dark:text-green-400">
+                            {formatDias(saldo.diasDisponibles)}
                           </TableCell>
                           <TableCell className="text-center">
                             <Button

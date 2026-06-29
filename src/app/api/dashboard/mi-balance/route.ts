@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balances, solicitudes, anosLaborales, usuarios } from "@/lib/db/schema";
-import { mapBalanceToFila } from "@/lib/domain/balance-display";
-import {
-  calcularConsumoBalance,
-  calcularDisponibleBalance,
-} from "@/lib/domain/balance-consumo";
+import { mapBalanceRegistro, mapBalanceToFila } from "@/lib/domain/balance-display";
 import { desc, eq, and, isNull, sql } from "drizzle-orm";
 
 const balanceSelect = {
@@ -24,7 +20,6 @@ const balanceSelect = {
 
 export async function GET() {
   try {
-    // 1. Verificar autenticación
     const session = await getSession();
 
     if (!session?.id) {
@@ -34,8 +29,6 @@ export async function GET() {
       );
     }
 
-    // 2. Este endpoint SIEMPRE retorna el balance del usuario actual (propio)
-    // No necesita permiso especial, todos pueden ver su propio balance
     const usuarioId = session.id;
     const anioActual = new Date().getFullYear();
 
@@ -49,7 +42,6 @@ export async function GET() {
       .where(eq(usuarios.id, usuarioId))
       .limit(1);
 
-    // Obtener año laboral activo
     const [anoLaboralActivo] = await db
       .select({ id: anosLaborales.id, ano: anosLaborales.ano })
       .from(anosLaborales)
@@ -62,13 +54,19 @@ export async function GET() {
       .where(eq(anosLaborales.ano, anioActual))
       .limit(1);
 
-    // Obtener balance activo del usuario para el año actual
     const anosCandidatos = [
       anoLaboralActivo?.id,
       anoLaboralActual?.id,
     ].filter((id, index, ids): id is number => Boolean(id) && ids.indexOf(id) === index);
 
-    let balance: any = null;
+    let balance: {
+      cantidadInicial: string | null;
+      cantidadAcumulada: string | null;
+      cantidadUsada: string | null;
+      cantidadPendiente: string | null;
+      cantidadDisponible: string | null;
+      anoLaboralId: number;
+    } | null = null;
     for (const anoLaboralId of anosCandidatos) {
       const [balanceDelAno] = await db
         .select(balanceSelect)
@@ -109,6 +107,8 @@ export async function GET() {
             fechaIngreso: usuario.fechaIngreso,
             cantidadInicial: 0,
             cantidadAcumulada: 0,
+            cantidadUsada: 0,
+            cantidadPendiente: 0,
             cantidadDisponible: 0,
           })
         : null;
@@ -117,50 +117,18 @@ export async function GET() {
         success: true,
         data: {
           tieneBalance: false,
-          diasAsignados: 0,
-          diasAcumulados: 0,
-          diasUsados: 0,
-          diasPendientes: 0,
-          diasDisponibles: 0,
-          diasVencidos: 0,
-          diasProporcionales: 0,
+          ...mapBalanceRegistro({}),
           balanceDetalle: balanceDetalleSinBalance,
           anoLaboral: anoLaboral?.ano ?? anioActual,
           solicitudesPendientes: 0,
           solicitudesAprobadas: 0,
           solicitudesRechazadas: 0,
-          enVacaciones: false
-        }
+          enVacaciones: false,
+        },
       });
     }
 
-    const diasAsignados = Number(balance.cantidadInicial || 0);
-    const diasAcumulados = Number(balance.cantidadAcumulada || 0);
-    const baseBalance = diasAsignados + diasAcumulados;
-
-    const solicitudesConsumo = await db
-      .select({
-        estado: solicitudes.estado,
-        diasSolicitados: solicitudes.diasSolicitados,
-        tipo: solicitudes.tipo,
-        duracionPermiso: solicitudes.duracionPermiso,
-      })
-      .from(solicitudes)
-      .where(
-        and(
-          eq(solicitudes.usuarioId, usuarioId),
-          eq(solicitudes.anoLaboralId, balance.anoLaboralId),
-          isNull(solicitudes.deletedAt)
-        )
-      );
-
-    const { usada: diasUsados, pendiente: diasPendientes } =
-      calcularConsumoBalance(solicitudesConsumo);
-    const diasDisponibles = calcularDisponibleBalance(
-      baseBalance,
-      diasUsados,
-      diasPendientes
-    );
+    const saldo = mapBalanceRegistro(balance);
 
     const balanceDetalle = usuario
       ? mapBalanceToFila({
@@ -169,11 +137,12 @@ export async function GET() {
           fechaIngreso: usuario.fechaIngreso,
           cantidadInicial: balance.cantidadInicial,
           cantidadAcumulada: balance.cantidadAcumulada,
-          cantidadDisponible: diasDisponibles,
+          cantidadUsada: balance.cantidadUsada,
+          cantidadPendiente: balance.cantidadPendiente,
+          cantidadDisponible: balance.cantidadDisponible,
         })
       : null;
 
-    // Obtener solicitudes pendientes
     const [pendientes] = await db
       .select({ count: sql<number>`count(*)` })
       .from(solicitudes)
@@ -185,7 +154,6 @@ export async function GET() {
         )
       );
 
-    // Obtener solicitudes aprobadas (este año)
     const inicioAnio = `${anioActual}-01-01`;
     const [aprobadas] = await db
       .select({ count: sql<number>`count(*)` })
@@ -199,7 +167,6 @@ export async function GET() {
         )
       );
 
-    // Obtener solicitudes rechazadas (este año)
     const [rechazadas] = await db
       .select({ count: sql<number>`count(*)` })
       .from(solicitudes)
@@ -212,7 +179,6 @@ export async function GET() {
         )
       );
 
-    // Verificar si está en vacaciones actualmente
     const hoy = new Date().toISOString().split('T')[0];
     const enVacacionesData = await db
       .select({ id: solicitudes.id })
@@ -232,20 +198,14 @@ export async function GET() {
       success: true,
       data: {
         tieneBalance: true,
-        diasAsignados: baseBalance,
-        diasAcumulados,
-        diasUsados,
-        diasPendientes,
-        diasDisponibles,
-        diasVencidos: diasAsignados,
-        diasProporcionales: diasAcumulados,
+        ...saldo,
         balanceDetalle,
         anoLaboral: anoLaboral?.ano ?? anioActual,
         solicitudesPendientes: Number(pendientes?.count || 0),
         solicitudesAprobadas: Number(aprobadas?.count || 0),
         solicitudesRechazadas: Number(rechazadas?.count || 0),
-        enVacaciones: enVacacionesData.length > 0
-      }
+        enVacaciones: enVacacionesData.length > 0,
+      },
     });
   } catch (error) {
     console.error("Error obteniendo balance personal:", error);

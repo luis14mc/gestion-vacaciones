@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
         anoLaboralId: balances.anoLaboralId,
         tipoAusencia: balances.tipoAusencia,
         cantidadInicial: balances.cantidadInicial,
+        cantidadAcumulada: balances.cantidadAcumulada,
         cantidadUsada: balances.cantidadUsada,
         cantidadPendiente: balances.cantidadPendiente,
         cantidadDisponible: balances.cantidadDisponible,

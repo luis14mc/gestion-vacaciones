@@ -16,6 +16,7 @@ export const COLUMNAS_REPORTE: Record<TipoReporteCNI, ColumnaReporte[]> = {
     { key: 'ano_laboral', header: 'Año laboral' },
     { key: 'dias_vencidos', header: 'Días vencidos' },
     { key: 'dias_proporcionales', header: 'Días proporcionales' },
+    { key: 'dias_asignados', header: 'Días asignados' },
     { key: 'dias_usados', header: 'Días usados' },
     { key: 'dias_pendientes', header: 'Días pendientes' },
     { key: 'dias_disponibles', header: 'Días disponibles' },

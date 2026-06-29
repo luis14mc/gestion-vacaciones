@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { COLUMNAS_REPORTE, filasACsv } from '@/lib/domain/reportes/columns';
 
 describe('reportes columns', () => {
-  it('balance usa columnas vencidos/proporcionales/usados/pendientes/disponibles', () => {
+  it('balance usa columnas institucionales completas', () => {
     const keys = COLUMNAS_REPORTE.balances.map((c) => c.key);
     expect(keys).toContain('dias_vencidos');
     expect(keys).toContain('dias_proporcionales');
+    expect(keys).toContain('dias_asignados');
     expect(keys).toContain('dias_usados');
     expect(keys).toContain('dias_pendientes');
     expect(keys).toContain('dias_disponibles');
-    expect(keys).not.toContain('asignados');
   });
 
   it('csv incluye encabezados alineados con pantalla', () => {

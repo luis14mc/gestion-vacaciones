@@ -16,16 +16,34 @@ interface BalanceDiasTableProps {
   loading?: boolean;
   anoLaboral?: number | null;
   emptyMessage?: string;
+  /** Si false, oculta columnas intermedias y muestra solo vencidos/proporcionales/disponibles. */
+  compacto?: boolean;
 }
 
 const DEFAULT_EMPTY_MESSAGE = 'No hay datos de balance disponibles.';
+
+const COLUMNAS_COMPLETAS = [
+  { key: 'vencidos', label: 'Días vencidos' },
+  { key: 'proporcionales', label: 'Días proporcionales' },
+  { key: 'asignados', label: 'Días asignados' },
+  { key: 'usados', label: 'Días usados' },
+  { key: 'pendientes', label: 'Días pendientes' },
+  { key: 'disponibles', label: 'Días disponibles' },
+] as const;
 
 export function BalanceDiasTable({
   filas,
   loading,
   anoLaboral,
   emptyMessage = DEFAULT_EMPTY_MESSAGE,
+  compacto = false,
 }: BalanceDiasTableProps) {
+  const columnas = compacto
+    ? COLUMNAS_COMPLETAS.filter((c) =>
+        ['vencidos', 'proporcionales', 'disponibles'].includes(c.key)
+      )
+    : COLUMNAS_COMPLETAS;
+
   if (loading) {
     return (
       <div className="rounded-xl border bg-card overflow-hidden">
@@ -38,6 +56,23 @@ export function BalanceDiasTable({
         </div>
       </div>
     );
+  }
+
+  function valorCelda(fila: BalanceDiasFila, key: (typeof COLUMNAS_COMPLETAS)[number]['key']) {
+    switch (key) {
+      case 'vencidos':
+        return formatDias(fila.diasVencidos);
+      case 'proporcionales':
+        return formatDias(fila.diasProporcionales);
+      case 'asignados':
+        return formatDias(fila.diasAsignados);
+      case 'usados':
+        return formatDias(fila.diasUsados);
+      case 'pendientes':
+        return formatDias(fila.diasPendientes);
+      case 'disponibles':
+        return formatDias(fila.diasDisponibles);
+    }
   }
 
   return (
@@ -59,21 +94,23 @@ export function BalanceDiasTable({
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-foreground whitespace-nowrap">
                 Fecha de ingreso
               </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-foreground text-right whitespace-nowrap">
-                Días vencidos
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-foreground text-right whitespace-nowrap">
-                Días proporcionales
-              </TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-foreground text-right whitespace-nowrap">
-                Días disponibles
-              </TableHead>
+              {columnas.map((col) => (
+                <TableHead
+                  key={col.key}
+                  className="text-xs font-semibold uppercase tracking-wide text-foreground text-right whitespace-nowrap"
+                >
+                  {col.label}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                <TableCell
+                  colSpan={2 + columnas.length}
+                  className="text-center text-sm text-muted-foreground py-8"
+                >
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -86,21 +123,20 @@ export function BalanceDiasTable({
                   <TableCell className="text-sm whitespace-nowrap tabular-nums">
                     {fila.fechaIngreso}
                   </TableCell>
-                  <TableCell
-                    className={`text-sm text-right tabular-nums ${
-                      fila.diasVencidos > 0
-                        ? 'bg-emerald-50/80 dark:bg-emerald-950/30'
-                        : ''
-                    }`}
-                  >
-                    {formatDias(fila.diasVencidos)}
-                  </TableCell>
-                  <TableCell className="text-sm text-right tabular-nums">
-                    {formatDias(fila.diasProporcionales)}
-                  </TableCell>
-                  <TableCell className="text-sm text-right font-bold tabular-nums">
-                    {formatDias(fila.diasDisponibles)}
-                  </TableCell>
+                  {columnas.map((col) => (
+                    <TableCell
+                      key={col.key}
+                      className={`text-sm text-right tabular-nums ${
+                        col.key === 'vencidos' && fila.diasVencidos > 0
+                          ? 'bg-emerald-50/80 dark:bg-emerald-950/30'
+                          : col.key === 'disponibles'
+                            ? 'font-bold'
+                            : ''
+                      }`}
+                    >
+                      {valorCelda(fila, col.key)}
+                    </TableCell>
+                  ))}
                 </TableRow>
               ))
             )}
@@ -109,7 +145,7 @@ export function BalanceDiasTable({
       </div>
 
       <div className="px-4 py-3 border-t bg-muted/30 text-xs text-muted-foreground">
-        Los días disponibles reflejan su saldo neto después de solicitudes usadas o pendientes de aprobación.
+        Los días disponibles = días vencidos + días proporcionales − días usados − días pendientes.
       </div>
     </div>
   );

@@ -45,6 +45,8 @@ const meses = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
+import type { BalanceHistorialUsuario } from '@/lib/domain/balance-display';
+
 interface ReporteDepartamento {
   totalColaboradores: number;
   colaboradoresActivos: number;
@@ -52,8 +54,11 @@ interface ReporteDepartamento {
   solicitudesPendientes: number;
   solicitudesAprobadas: number;
   solicitudesRechazadas: number;
+  diasTotalesVencidos: number;
+  diasTotalesProporcionales: number;
   diasTotalesAsignados: number;
   diasTotalesUsados: number;
+  diasTotalesPendientes: number;
   diasTotalesDisponibles: number;
   promedioUsoPorPersona: number;
   proximasVacaciones: Array<{
@@ -62,13 +67,7 @@ interface ReporteDepartamento {
     fechaFin: string;
     dias: number;
   }>;
-  topUsuarios: Array<{
-    usuario: string;
-    diasAsignados: number;
-    diasUsados: number;
-    diasPendientes: number;
-    diasDisponibles: number;
-  }>;
+  topUsuarios: BalanceHistorialUsuario[];
 }
 
 const reporteVacio: ReporteDepartamento = {
@@ -78,8 +77,11 @@ const reporteVacio: ReporteDepartamento = {
   solicitudesPendientes: 0,
   solicitudesAprobadas: 0,
   solicitudesRechazadas: 0,
+  diasTotalesVencidos: 0,
+  diasTotalesProporcionales: 0,
   diasTotalesAsignados: 0,
   diasTotalesUsados: 0,
+  diasTotalesPendientes: 0,
   diasTotalesDisponibles: 0,
   promedioUsoPorPersona: 0,
   proximasVacaciones: [],
@@ -99,14 +101,19 @@ function normalizarReporte(payload: any): ReporteDepartamento {
     solicitudesPendientes: Number(solicitudes.pendientes ?? raw.solicitudesPendientes ?? 0),
     solicitudesAprobadas: Number(solicitudes.aprobadas ?? raw.solicitudesAprobadas ?? 0),
     solicitudesRechazadas: Number(solicitudes.rechazadas ?? raw.solicitudesRechazadas ?? 0),
+    diasTotalesVencidos: Number(resumen.diasTotalesVencidos ?? 0),
+    diasTotalesProporcionales: Number(resumen.diasTotalesProporcionales ?? 0),
     diasTotalesAsignados: Number(resumen.diasTotalesAsignados ?? 0),
     diasTotalesUsados: Number(resumen.diasTotalesUsados ?? 0),
+    diasTotalesPendientes: Number(resumen.diasTotalesPendientes ?? 0),
     diasTotalesDisponibles: Number(resumen.diasTotalesDisponibles ?? 0),
     promedioUsoPorPersona: Number(resumen.promedioUsoPorPersona ?? 0),
     proximasVacaciones: Array.isArray(raw.proximasVacaciones) ? raw.proximasVacaciones : [],
     topUsuarios: Array.isArray(topUsuarios)
       ? topUsuarios.map((usuario: any) => ({
         usuario: String(usuario.usuario ?? usuario.nombre ?? 'Usuario sin nombre'),
+        diasVencidos: Number(usuario.diasVencidos ?? 0),
+        diasProporcionales: Number(usuario.diasProporcionales ?? 0),
         diasAsignados: Number(usuario.diasAsignados ?? usuario.asignados ?? 0),
         diasUsados: Number(usuario.diasUsados ?? usuario.usados ?? 0),
         diasPendientes: Number(usuario.diasPendientes ?? usuario.pendientes ?? 0),
@@ -180,9 +187,12 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
           { concepto: 'Solicitudes Pendientes', valor: reporte.solicitudesPendientes },
           { concepto: 'Solicitudes Aprobadas', valor: reporte.solicitudesAprobadas },
           { concepto: 'Solicitudes Rechazadas', valor: reporte.solicitudesRechazadas },
-          { concepto: 'Días Totales Asignados', valor: reporte.diasTotalesAsignados },
-          { concepto: 'Días Totales Usados', valor: reporte.diasTotalesUsados },
-          { concepto: 'Días Totales Disponibles', valor: reporte.diasTotalesDisponibles },
+          { concepto: 'Días totales vencidos', valor: reporte.diasTotalesVencidos },
+          { concepto: 'Días totales proporcionales', valor: reporte.diasTotalesProporcionales },
+          { concepto: 'Días totales asignados', valor: reporte.diasTotalesAsignados },
+          { concepto: 'Días totales usados', valor: reporte.diasTotalesUsados },
+          { concepto: 'Días totales pendientes', valor: reporte.diasTotalesPendientes },
+          { concepto: 'Días totales disponibles', valor: reporte.diasTotalesDisponibles },
           { concepto: 'Promedio Uso por Persona', valor: reporte.promedioUsoPorPersona.toFixed(1) },
         ];
 
@@ -221,9 +231,11 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
           doc.text('Historial de Dias', doc.internal.pageSize.width / 2, 15, { align: 'center' });
 
           autoTable(doc, {
-            head: [['Colaborador', 'Dias Asignados', 'Dias Usados', 'Dias Pendientes', 'Dias Disponibles']],
+            head: [['Colaborador', 'Días vencidos', 'Días proporcionales', 'Días asignados', 'Días usados', 'Días pendientes', 'Días disponibles']],
             body: topUsuarios.map(u => [
               u.usuario,
+              u.diasVencidos,
+              u.diasProporcionales,
               u.diasAsignados,
               u.diasUsados,
               u.diasPendientes,
@@ -457,7 +469,19 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                 <CardContent className="space-y-4">
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium">Asignados</span>
+                      <span className="text-sm font-medium">Días vencidos</span>
+                      <span className="text-lg font-semibold tracking-tight">{reporte.diasTotalesVencidos}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Días proporcionales</span>
+                      <span className="text-lg font-semibold tracking-tight">{reporte.diasTotalesProporcionales}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Días asignados</span>
                       <span className="text-lg font-semibold tracking-tight text-primary">{reporte.diasTotalesAsignados}</span>
                     </div>
                     <Progress value={100} />
@@ -465,7 +489,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
 
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium">Usados</span>
+                      <span className="text-sm font-medium">Días usados</span>
                       <span className="text-lg font-semibold tracking-tight text-destructive">{reporte.diasTotalesUsados}</span>
                     </div>
                     <Progress
@@ -479,7 +503,14 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
 
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium">Disponibles</span>
+                      <span className="text-sm font-medium">Días pendientes</span>
+                      <span className="text-lg font-semibold tracking-tight text-amber-600 dark:text-amber-400">{reporte.diasTotalesPendientes}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Días disponibles</span>
                       <span className="text-lg font-semibold tracking-tight text-emerald-600 dark:text-emerald-400">{reporte.diasTotalesDisponibles}</span>
                     </div>
                     <Progress
@@ -626,10 +657,15 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                             <Badge variant="secondary">{i + 1}</Badge>
                             <span className="font-medium text-sm md:text-base">{usuario.usuario}</span>
                           </div>
-                          <div className="text-left sm:text-right">
-                            <p className="font-semibold text-primary text-[13px]">{usuario.diasAsignados} asignados</p>
+                          <div className="text-left sm:text-right space-y-0.5">
+                            <p className="font-semibold text-primary text-[13px]">
+                              {usuario.diasAsignados} asignados
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              {usuario.diasUsados} usados / {usuario.diasPendientes} pendientes / {usuario.diasDisponibles} disponibles
+                              {usuario.diasVencidos} vencidos · {usuario.diasProporcionales} proporcionales
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {usuario.diasUsados} usados · {usuario.diasPendientes} pendientes · {usuario.diasDisponibles} disponibles
                             </p>
                           </div>
                         </div>

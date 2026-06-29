@@ -4,8 +4,26 @@ import { getSession, tienePermiso } from "@/lib/auth";
 import { usuarios, balances, solicitudes, anosLaborales } from "@/lib/db/schema";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
+import {
+  buildHistorialDesdeBalances,
+  mapSaldosAResumenDepartamento,
+  sumarSaldos,
+} from "@/lib/domain/balance-display";
 
 export const runtime = 'nodejs';
+
+const RESUMEN_VACIO = {
+  totalColaboradores: 0,
+  colaboradoresActivos: 0,
+  enVacacionesHoy: 0,
+  diasTotalesVencidos: 0,
+  diasTotalesProporcionales: 0,
+  diasTotalesAsignados: 0,
+  diasTotalesUsados: 0,
+  diasTotalesPendientes: 0,
+  diasTotalesDisponibles: 0,
+  promedioUsoPorPersona: 0,
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +46,6 @@ export async function GET(request: NextRequest) {
     const mes = parseInt(searchParams.get("mes") || String(new Date().getMonth() + 1));
     const anio = parseInt(searchParams.get("anio") || String(new Date().getFullYear()));
 
-    // Filtro contextual: jefe/director ven su equipo (jefeSuperiorId), no todo el departamento
     let usuariosDept: Array<typeof usuarios.$inferSelect> = [];
 
     if (esDirectorOJefe && !esAdminORrhh) {
@@ -43,15 +60,7 @@ export async function GET(request: NextRequest) {
           success: true,
           data: {
             periodo: { mes, anio },
-            resumen: {
-              totalColaboradores: 0,
-              colaboradoresActivos: 0,
-              enVacacionesHoy: 0,
-              diasTotalesAsignados: 0,
-              diasTotalesUsados: 0,
-              diasTotalesDisponibles: 0,
-              promedioUsoPorPersona: 0,
-            },
+            resumen: RESUMEN_VACIO,
             solicitudes: { total: 0, aprobadas: 0, pendientes: 0, rechazadas: 0 },
             proximasVacaciones: [],
             topUsuarios: [],
@@ -74,16 +83,12 @@ export async function GET(request: NextRequest) {
     const totalColaboradores = usuariosDept.length;
     const colaboradoresActivos = usuariosDept.filter(u => u.activo).length;
 
-    // Obtener año laboral activo
     const anoLaboral = await db.query.anosLaborales.findFirst({
       where: eq(anosLaborales.ano, anio)
     });
 
-    // Balances de días
-    let diasTotalesAsignados = 0;
-    let diasTotalesUsados = 0;
-    let diasTotalesDisponibles = 0;
     let balancesData: Array<typeof balances.$inferSelect> = [];
+    let totalesSaldos = sumarSaldos([]);
 
     if (anoLaboral && usuariosIds.length > 0) {
       balancesData = await db.query.balances.findMany({
@@ -94,16 +99,14 @@ export async function GET(request: NextRequest) {
         )
       });
 
-      diasTotalesAsignados = balancesData.reduce((sum, b) => sum + Number(b.cantidadInicial) + Number(b.cantidadAcumulada), 0);
-      diasTotalesUsados = balancesData.reduce((sum, b) => sum + Number(b.cantidadUsada), 0);
-      diasTotalesDisponibles = balancesData.reduce((sum, b) => sum + Number(b.cantidadDisponible), 0);
+      totalesSaldos = sumarSaldos(balancesData);
     }
 
-    const promedioUsoPorPersona = totalColaboradores > 0 && diasTotalesAsignados > 0
-      ? Math.round((diasTotalesUsados / diasTotalesAsignados) * 100)
+    const totalesResumen = mapSaldosAResumenDepartamento(totalesSaldos);
+    const promedioUsoPorPersona = totalColaboradores > 0 && totalesResumen.diasTotalesAsignados > 0
+      ? Math.round((totalesResumen.diasTotalesUsados / totalesResumen.diasTotalesAsignados) * 100)
       : 0;
 
-    // Solicitudes del período
     const primerDia = new Date(anio, mes - 1, 1).toISOString().slice(0, 10);
     const ultimoDia = new Date(anio, mes, 0).toISOString().slice(0, 10);
 
@@ -145,25 +148,7 @@ export async function GET(request: NextRequest) {
       ])
     );
 
-    const topUsuarios = balancesData
-      .map((balance) => ({
-        usuario: usuariosMap.get(balance.usuarioId) || 'Usuario sin nombre',
-        diasAsignados: Number(balance.cantidadInicial) + Number(balance.cantidadAcumulada),
-        diasUsados: Number(balance.cantidadUsada),
-        diasPendientes: Number(balance.cantidadPendiente),
-        diasDisponibles: Number(balance.cantidadDisponible),
-      }))
-      .filter((usuario) =>
-        usuario.diasAsignados > 0 ||
-        usuario.diasUsados > 0 ||
-        usuario.diasPendientes > 0 ||
-        usuario.diasDisponibles > 0
-      )
-      .sort((a, b) =>
-        b.diasUsados - a.diasUsados ||
-        b.diasAsignados - a.diasAsignados ||
-        a.usuario.localeCompare(b.usuario)
-      );
+    const historialDias = buildHistorialDesdeBalances(balancesData, usuariosMap);
 
     const hoy = new Date().toISOString().slice(0, 10);
     const enVacacionesHoy = solicitudesDept.filter(
@@ -198,9 +183,7 @@ export async function GET(request: NextRequest) {
           totalColaboradores,
           colaboradoresActivos,
           enVacacionesHoy,
-          diasTotalesAsignados,
-          diasTotalesUsados,
-          diasTotalesDisponibles,
+          ...totalesResumen,
           promedioUsoPorPersona,
         },
         solicitudes: {
@@ -210,8 +193,8 @@ export async function GET(request: NextRequest) {
           rechazadas: solicitudesRechazadas,
         },
         proximasVacaciones,
-        topUsuarios,
-        historialDias: topUsuarios,
+        topUsuarios: historialDias,
+        historialDias,
         detalle: solicitudesDept,
       },
     });

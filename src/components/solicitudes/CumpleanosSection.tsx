@@ -12,6 +12,9 @@ interface Props {
 }
 
 export function CumpleanosSection({ form, elegibilidad }: Props) {
+  const min = elegibilidad?.fechaMinimaPermitida ?? undefined;
+  const max = elegibilidad?.fechaMaximaPermitida ?? undefined;
+
   return (
     <div className="border border-pink-200 bg-pink-50/50 dark:bg-pink-950/20 dark:border-pink-900 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 space-y-4">
       <h3 className="text-sm font-semibold text-pink-700 dark:text-pink-300 flex items-center">
@@ -26,6 +29,12 @@ export function CumpleanosSection({ form, elegibilidad }: Props) {
         </AlertDescription>
       </Alert>
 
+      {elegibilidad?.fechaMinimaPermitida && elegibilidad?.fechaMaximaPermitida && (
+        <p className="text-xs text-muted-foreground">
+          Rango permitido: {elegibilidad.fechaMinimaPermitida} al {elegibilidad.fechaMaximaPermitida}.
+        </p>
+      )}
+
       <FormField
         control={form.control}
         name="fechaInicio"
@@ -35,6 +44,8 @@ export function CumpleanosSection({ form, elegibilidad }: Props) {
             <FormControl>
               <Input
                 type="date"
+                min={min}
+                max={max}
                 disabled={!elegibilidad?.puedeSolicitar}
                 {...field}
                 onChange={(event) => {

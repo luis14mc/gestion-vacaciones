@@ -20,6 +20,13 @@ function parseFechaLocal(fecha: string): Date {
   return new Date(`${soloFecha}T12:00:00`);
 }
 
+function formatearFechaISO(fecha: Date): string {
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, '0');
+  const day = String(fecha.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function nombreMes(mes: number): string {
   return MESES_ES[mes - 1] ?? String(mes);
 }
@@ -30,6 +37,21 @@ export function obtenerMesCumpleanos(fechaNacimiento: string): number {
 
 export function obtenerDiaCumpleanos(fechaNacimiento: string): number {
   return parseFechaLocal(fechaNacimiento).getDate();
+}
+
+export function obtenerRangoMesCumpleanos(
+  fechaNacimiento: string,
+  referencia: Date = new Date()
+): { fechaMinimaPermitida: string; fechaMaximaPermitida: string } {
+  const anio = referencia.getFullYear();
+  const mesIndex = obtenerMesCumpleanos(fechaNacimiento) - 1;
+  const inicio = new Date(anio, mesIndex, 1, 12, 0, 0, 0);
+  const fin = new Date(anio, mesIndex + 1, 0, 12, 0, 0, 0);
+
+  return {
+    fechaMinimaPermitida: formatearFechaISO(inicio),
+    fechaMaximaPermitida: formatearFechaISO(fin),
+  };
 }
 
 export function esMesCumpleanos(
@@ -80,6 +102,8 @@ export interface ElegibilidadCumpleanos {
   yaTomado: boolean;
   puedeSolicitar: boolean;
   mensaje: string;
+  fechaMinimaPermitida: string | null;
+  fechaMaximaPermitida: string | null;
 }
 
 export function calcularElegibilidadCumpleanos(input: {
@@ -98,10 +122,13 @@ export function calcularElegibilidadCumpleanos(input: {
       yaTomado: false,
       puedeSolicitar: false,
       mensaje: 'Registre su fecha de nacimiento con RRHH para habilitar el día libre por cumpleaños.',
+      fechaMinimaPermitida: null,
+      fechaMaximaPermitida: null,
     };
   }
 
   const mes = obtenerMesCumpleanos(input.fechaNacimiento);
+  const rango = obtenerRangoMesCumpleanos(input.fechaNacimiento, referencia);
   const esMesActual = esMesCumpleanos(input.fechaNacimiento, referencia);
 
   if (input.yaTomado) {
@@ -113,6 +140,7 @@ export function calcularElegibilidadCumpleanos(input: {
       yaTomado: true,
       puedeSolicitar: false,
       mensaje: `Ya utilizó su día libre por cumpleaños en ${referencia.getFullYear()}.`,
+      ...rango,
     };
   }
 
@@ -125,6 +153,7 @@ export function calcularElegibilidadCumpleanos(input: {
       yaTomado: false,
       puedeSolicitar: false,
       mensaje: `Su día libre por cumpleaños solo puede tomarse en ${nombreMes(mes)}.`,
+      ...rango,
     };
   }
 
@@ -136,5 +165,6 @@ export function calcularElegibilidadCumpleanos(input: {
     yaTomado: false,
     puedeSolicitar: true,
     mensaje: 'Tiene derecho a 1 día libre por cumpleaños este mes. Solo puede usarlo una vez al año.',
+    ...rango,
   };
 }

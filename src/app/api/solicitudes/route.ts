@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray, ne, or, type SQL } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
@@ -60,51 +60,73 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const page = Number.parseInt(searchParams.get('page') || searchParams.get('pagina') || '1');
   const pageSize = Number.parseInt(searchParams.get('pageSize') || searchParams.get('limite') || '20');
 
-  const esAdmin = sessionUser.roles?.some(r => r.codigo === 'ADMIN') || false;
-  const esRrhh = sessionUser.roles?.some(r => r.codigo === 'RRHH') || false;
+  const esAdmin = sessionUser.esAdmin || sessionUser.roles?.some(r => r.codigo === 'ADMIN') || false;
+  const esRrhh = sessionUser.esRrhh || sessionUser.roles?.some(r => r.codigo === 'RRHH') || false;
   const esDirector = sessionUser.esDirector || false;
   const esJefe = sessionUser.esJefe || false;
 
-  const conditions = [isNull(solicitudes.deletedAt)];
-  
-  if (puedeVerTodas) {
+  const conditions: SQL[] = [isNull(solicitudes.deletedAt)];
+  let inboxConditions: SQL[] | null = null;
+
+  if (paraAprobar) {
+    const approvalScopes: SQL[] = [];
+
+    if (esAdmin) {
+      approvalScopes.push(inArray(solicitudes.estado, ['pendiente_jefe', 'aprobada_jefe']));
+    } else {
+      if (esRrhh) {
+        approvalScopes.push(eq(solicitudes.estado, 'aprobada_jefe'));
+      }
+
+      if (esJefe || esDirector) {
+        const subordinadosDirectos = await db
+          .select({ id: usuarios.id })
+          .from(usuarios)
+          .where(and(
+            eq(usuarios.jefeSuperiorId, sessionUser.id),
+            eq(usuarios.activo, true),
+            isNull(usuarios.deletedAt)
+          ));
+
+        let subordinadoIds = subordinadosDirectos.map(usuario => usuario.id);
+
+        if (esDirector && subordinadoIds.length === 0 && sessionUser.departamentoId != null) {
+          const subordinadosDepartamento = await db
+            .select({ id: usuarios.id })
+            .from(usuarios)
+            .where(and(
+              eq(usuarios.departamentoId, sessionUser.departamentoId),
+              ne(usuarios.id, sessionUser.id),
+              eq(usuarios.activo, true),
+              isNull(usuarios.deletedAt)
+            ));
+
+          subordinadoIds = subordinadosDepartamento.map(usuario => usuario.id);
+        }
+
+        if (subordinadoIds.length > 0) {
+          const scopeJefe = and(
+            eq(solicitudes.estado, 'pendiente_jefe'),
+            inArray(solicitudes.usuarioId, subordinadoIds)
+          );
+          if (scopeJefe) approvalScopes.push(scopeJefe);
+        }
+      }
+    }
+
+    const roleScope = approvalScopes.length > 0 ? or(...approvalScopes) : sql`false`;
+    inboxConditions = [
+      isNull(solicitudes.deletedAt),
+      ne(solicitudes.usuarioId, sessionUser.id),
+      roleScope!,
+    ];
+    conditions.splice(0, conditions.length, ...inboxConditions);
+  } else if (puedeVerTodas) {
     if (usuarioIdParam) {
       conditions.push(eq(solicitudes.usuarioId, Number.parseInt(usuarioIdParam)));
     }
-    
-    if (paraAprobar && !estado) {
-      if (esAdmin) {
-        conditions.push(sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`);
-      } else if (esRrhh) {
-        conditions.push(eq(solicitudes.estado, 'aprobada_jefe'));
-      }
-    }
   } else if (puedeVerPropias) {
-    if (paraAprobar && (esDirector || esJefe)) {
-      const subordinadosQuery = await db
-        .select({ id: usuarios.id })
-        .from(usuarios)
-        .where(
-          and(
-            eq(usuarios.jefeSuperiorId, sessionUser.id),
-            isNull(usuarios.deletedAt)
-          )
-        );
-      
-      const subordinadoIds = subordinadosQuery.map(u => u.id);
-      
-      if (subordinadoIds.length > 0) {
-        conditions.push(inArray(solicitudes.usuarioId, subordinadoIds));
-      } else {
-        conditions.push(sql`false`);
-      }
-      
-      if (!estado) {
-        conditions.push(eq(solicitudes.estado, 'pendiente_jefe'));
-      }
-    } else {
-      conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
-    }
+    conditions.push(eq(solicitudes.usuarioId, sessionUser.id));
   }
 
   // Filtros adicionales
@@ -132,15 +154,88 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     .where(and(...conditions));
   const count = Number(countResult[0]?.count ?? 0);
 
-  // Calcular estadísticas para el frontend
-  const [stats] = await db
-    .select({
-      pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe'))::int`,
-      aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada'))::int`,
-      rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh'))::int`,
-    })
-    .from(solicitudes)
-    .where(and(...conditions));
+  let statsResponse: {
+    pendientes: number;
+    aprobadas: number;
+    rechazadas: number;
+    aprobadas_hoy: number;
+    rechazadas_hoy: number;
+  };
+
+  if (paraAprobar && inboxConditions) {
+    const fechaLocalEsHoy = (campo: { getSQL(): SQL }) =>
+      sql`${campo} IS NOT NULL AND (${campo} AT TIME ZONE 'America/Tegucigalpa')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Tegucigalpa')::date`;
+    const aprobadasHoyScopes: SQL[] = [];
+    const rechazadasHoyScopes: SQL[] = [];
+
+    if (esAdmin || esJefe || esDirector) {
+      const aprobadasJefe = and(
+        eq(solicitudes.aprobadaJefePor, sessionUser.id),
+        fechaLocalEsHoy(solicitudes.aprobadaJefeFecha)
+      );
+      const rechazadasJefe = and(
+        eq(solicitudes.estado, 'rechazada_jefe'),
+        eq(solicitudes.rechazadaPor, sessionUser.id),
+        fechaLocalEsHoy(solicitudes.rechazadaFecha)
+      );
+      if (aprobadasJefe) aprobadasHoyScopes.push(aprobadasJefe);
+      if (rechazadasJefe) rechazadasHoyScopes.push(rechazadasJefe);
+    }
+
+    if (esAdmin || esRrhh) {
+      const aprobadasRrhh = and(
+        eq(solicitudes.aprobadaRrhhPor, sessionUser.id),
+        fechaLocalEsHoy(solicitudes.aprobadaRrhhFecha)
+      );
+      const rechazadasRrhh = and(
+        eq(solicitudes.estado, 'rechazada_rrhh'),
+        eq(solicitudes.rechazadaPor, sessionUser.id),
+        fechaLocalEsHoy(solicitudes.rechazadaFecha)
+      );
+      if (aprobadasRrhh) aprobadasHoyScopes.push(aprobadasRrhh);
+      if (rechazadasRrhh) rechazadasHoyScopes.push(rechazadasRrhh);
+    }
+
+    const [inboxStats] = await db
+      .select({ pendientes: sql<number>`count(*)::int` })
+      .from(solicitudes)
+      .where(and(...inboxConditions));
+
+    const aprobadasHoyFilter = or(...aprobadasHoyScopes) ?? sql`false`;
+    const rechazadasHoyFilter = or(...rechazadasHoyScopes) ?? sql`false`;
+    const [procesadasHoy] = await db
+      .select({
+        aprobadas_hoy: sql<number>`count(*) FILTER (WHERE ${aprobadasHoyFilter})::int`,
+        rechazadas_hoy: sql<number>`count(*) FILTER (WHERE ${rechazadasHoyFilter})::int`,
+      })
+      .from(solicitudes)
+      .where(isNull(solicitudes.deletedAt));
+
+    statsResponse = {
+      pendientes: inboxStats?.pendientes || 0,
+      aprobadas: procesadasHoy?.aprobadas_hoy || 0,
+      rechazadas: procesadasHoy?.rechazadas_hoy || 0,
+      aprobadas_hoy: procesadasHoy?.aprobadas_hoy || 0,
+      rechazadas_hoy: procesadasHoy?.rechazadas_hoy || 0,
+    };
+  } else {
+    const [stats] = await db
+      .select({
+        pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe'))::int`,
+        aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada'))::int`,
+        rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh'))::int`,
+      })
+      .from(solicitudes)
+      .where(and(...conditions));
+
+    statsResponse = {
+      pendientes: stats?.pendientes || 0,
+      aprobadas: stats?.aprobadas || 0,
+      rechazadas: stats?.rechazadas || 0,
+      aprobadas_hoy: 0,
+      rechazadas_hoy: 0,
+    };
+  }
 
   const tiposMap: Record<string, string> = {
     vacaciones: 'Vacaciones',
@@ -194,11 +289,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     success: true,
     solicitudes: solicitudesListado,
     total: count,
-    stats: {
-      pendientes: stats?.pendientes || 0,
-      aprobadas: stats?.aprobadas || 0,
-      rechazadas: stats?.rechazadas || 0,
-    },
+    stats: { ...statsResponse },
     data: solicitudesDetalle,
     page,
     pageSize,

@@ -28,6 +28,8 @@ export interface TransicionContexto {
   // Departamentos para validar alcance de aprobación (regla CNI: mismo depto)
   departamentoAprobador?: number | null;
   departamentoSolicitante?: number | null;
+  esSubordinadoDirecto?: boolean;
+  directorSinSubordinadosDirectos?: boolean;
   // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
   solicitanteEsJefe?: boolean;
   // Acción ejecutada por el sistema (cron/jobs), no por un usuario
@@ -79,9 +81,9 @@ const guardPropietarioOAdmin: Guard = (ctx) => {
 };
 
 const guardJefe: Guard = (ctx) => {
-  if (ctx.esAdmin) return null;
-  if (!ctx.esJefe && !ctx.esDirector) return 'Solo un Jefe o Director puede realizar esta acción';
+  if (!ctx.esAdmin && !ctx.esJefe && !ctx.esDirector) return 'Solo un Jefe o Director puede realizar esta acción';
   if (ctx.usuarioId === ctx.solicitanteId) return 'No puede aprobar/rechazar su propia solicitud';
+  if (ctx.esAdmin) return null;
   // Regla CNI: el jefe/director solo aprueba a empleados de su MISMO departamento.
   // Cierra la escalada horizontal (un jefe del depto A aprobando al depto B).
   // Default seguro: si falta el dato de departamento, se deniega.
@@ -91,6 +93,10 @@ const guardJefe: Guard = (ctx) => {
     ctx.departamentoAprobador !== ctx.departamentoSolicitante
   ) {
     return 'Solo puede aprobar solicitudes de empleados de su mismo departamento';
+  }
+  const usaFallbackDirector = ctx.esDirector && ctx.directorSinSubordinadosDirectos === true;
+  if (ctx.esSubordinadoDirecto !== true && !usaFallbackDirector) {
+    return 'Solo puede aprobar solicitudes de su equipo directo';
   }
   // Jerarquía CNI (2 niveles): el Director está por encima de los Jefes.
   // La solicitud de un Jefe SOLO puede aprobarla el Director del depto;
@@ -102,8 +108,9 @@ const guardJefe: Guard = (ctx) => {
 };
 
 const guardRrhh: Guard = (ctx) => {
-  if (ctx.esAdmin || ctx.esRrhh) return null;
-  return 'Solo RRHH puede realizar esta acción';
+  if (!ctx.esAdmin && !ctx.esRrhh) return 'Solo RRHH puede realizar esta acción';
+  if (ctx.usuarioId === ctx.solicitanteId) return 'No puede aprobar/rechazar su propia solicitud';
+  return null;
 };
 
 const guardCancelar: Guard = (ctx) => {

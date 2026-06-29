@@ -89,6 +89,11 @@ interface AprobarSolicitudesClientProps {
   session: Session;
 }
 
+const ESTADOS_ACCIONABLES = ["pendiente_jefe", "aprobada_jefe"];
+
+const esEstadoAccionable = (estado: string) =>
+  ESTADOS_ACCIONABLES.includes(estado);
+
 export default function AprobarSolicitudesClient({
   session,
 }: AprobarSolicitudesClientProps) {
@@ -131,12 +136,16 @@ export default function AprobarSolicitudesClient({
       const data = await response.json();
 
       if (data.success) {
-        setSolicitudes(data.data || []);
+        setSolicitudes(
+          (data.data || []).filter((solicitud: Solicitud) =>
+            esEstadoAccionable(solicitud.estado)
+          )
+        );
         setStats({
           total: data.total || 0,
-          pendientes: data.total || 0,
-          aprobadas_hoy: 0,
-          rechazadas_hoy: 0,
+          pendientes: data.stats?.pendientes || 0,
+          aprobadas_hoy: data.stats?.aprobadas_hoy || 0,
+          rechazadas_hoy: data.stats?.rechazadas_hoy || 0,
         });
         setTotalPaginas(data.totalPages || 1);
       } else {
@@ -156,6 +165,10 @@ export default function AprobarSolicitudesClient({
     solicitud: Solicitud,
     accionSeleccionada: "aprobar" | "rechazar"
   ) => {
+    if (!esEstadoAccionable(solicitud.estado)) {
+      notify.warning("La solicitud ya no está pendiente de aprobación");
+      return;
+    }
     setSolicitudSeleccionada(solicitud);
     setAccion(accionSeleccionada);
     setComentarios("");
@@ -175,11 +188,11 @@ export default function AprobarSolicitudesClient({
     if (tipoAccion === "rechazar") {
       if (estadoSolicitud === "pendiente_jefe") return "rechazar_jefe";
       if (estadoSolicitud === "aprobada_jefe") return "rechazar_rrhh";
-      return "rechazar";
+      throw new Error("La solicitud ya no está pendiente de aprobación");
     }
     if (estadoSolicitud === "pendiente_jefe") return "aprobar_jefe";
     if (estadoSolicitud === "aprobada_jefe") return "aprobar_rrhh";
-    return "aprobar_jefe";
+    throw new Error("La solicitud ya no está pendiente de aprobación");
   };
 
   const getEtiquetaBoton = (estado: string): string => {
@@ -246,7 +259,9 @@ export default function AprobarSolicitudesClient({
     } catch (error) {
       console.error("Error al procesar solicitud:", error);
       notify.error(
-        "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo."
+        error instanceof Error
+          ? error.message
+          : "No se pudo procesar la solicitud. Intenta de nuevo."
       );
     }
   };
@@ -439,28 +454,32 @@ export default function AprobarSolicitudesClient({
                           </TableCell>
                           <TableCell>
                             <div className="flex justify-center gap-2">
-                              <Button
-                                size="sm"
-                                className="bg-green-600 text-white hover:bg-green-700"
-                                onClick={() =>
-                                  abrirModalAprobacion(sol, "aprobar")
-                                }
-                                title="Aprobar"
-                              >
-                                <Check className="h-4 w-4" />
-                                {getEtiquetaBoton(sol.estado)}
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() =>
-                                  abrirModalAprobacion(sol, "rechazar")
-                                }
-                                title="Rechazar"
-                              >
-                                <X className="h-4 w-4" />
-                                Rechazar
-                              </Button>
+                              {esEstadoAccionable(sol.estado) && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 text-white hover:bg-green-700"
+                                    onClick={() =>
+                                      abrirModalAprobacion(sol, "aprobar")
+                                    }
+                                    title="Aprobar"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                    {getEtiquetaBoton(sol.estado)}
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() =>
+                                      abrirModalAprobacion(sol, "rechazar")
+                                    }
+                                    title="Rechazar"
+                                  >
+                                    <X className="h-4 w-4" />
+                                    Rechazar
+                                  </Button>
+                                </>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
@@ -524,27 +543,31 @@ export default function AprobarSolicitudesClient({
                         </div>
 
                         <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-green-600 text-white hover:bg-green-700"
-                            onClick={() =>
-                              abrirModalAprobacion(sol, "aprobar")
-                            }
-                          >
-                            <Check className="h-4 w-4" />
-                            {getEtiquetaBoton(sol.estado)}
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() =>
-                              abrirModalAprobacion(sol, "rechazar")
-                            }
-                          >
-                            <X className="h-4 w-4" />
-                            Rechazar
-                          </Button>
+                          {esEstadoAccionable(sol.estado) && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="flex-1 bg-green-600 text-white hover:bg-green-700"
+                                onClick={() =>
+                                  abrirModalAprobacion(sol, "aprobar")
+                                }
+                              >
+                                <Check className="h-4 w-4" />
+                                {getEtiquetaBoton(sol.estado)}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="flex-1"
+                                onClick={() =>
+                                  abrirModalAprobacion(sol, "rechazar")
+                                }
+                              >
+                                <X className="h-4 w-4" />
+                                Rechazar
+                              </Button>
+                            </>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon-sm"

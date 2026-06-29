@@ -42,6 +42,7 @@ const director: TransicionContexto = {
   // Mismo departamento que el solicitante (regla CNI de alcance)
   departamentoAprobador: 1,
   departamentoSolicitante: 1,
+  esSubordinadoDirecto: true,
 };
 
 const jefe: TransicionContexto = {
@@ -55,6 +56,7 @@ const jefe: TransicionContexto = {
   // Mismo departamento que el solicitante (regla CNI de alcance)
   departamentoAprobador: 1,
   departamentoSolicitante: 1,
+  esSubordinadoDirecto: true,
 };
 
 const rrhh: TransicionContexto = {
@@ -205,6 +207,7 @@ describe('State Machine - Solicitudes', () => {
         esAdmin: false,
         departamentoAprobador: 2,
         departamentoSolicitante: 1,
+        esSubordinadoDirecto: true,
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeOtroDepto, 5);
       expect(resultado.exito).toBe(false);
@@ -219,6 +222,7 @@ describe('State Machine - Solicitudes', () => {
         esJefe: true,
         esRrhh: false,
         esAdmin: false,
+        esSubordinadoDirecto: true,
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeSinDepto, 5);
       expect(resultado.exito).toBe(false);
@@ -235,6 +239,7 @@ describe('State Machine - Solicitudes', () => {
         esAdmin: false,
         departamentoAprobador: 1,
         departamentoSolicitante: 1,
+        esSubordinadoDirecto: true,
         solicitanteEsJefe: true,
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeAprobador, 5);
@@ -252,6 +257,7 @@ describe('State Machine - Solicitudes', () => {
         esAdmin: false,
         departamentoAprobador: 1,
         departamentoSolicitante: 1,
+        esSubordinadoDirecto: true,
         solicitanteEsJefe: true,
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorAprobador, 5);
@@ -269,6 +275,7 @@ describe('State Machine - Solicitudes', () => {
         esAdmin: false,
         departamentoAprobador: 1,
         departamentoSolicitante: 1,
+        esSubordinadoDirecto: true,
         solicitanteEsJefe: false,
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefeAprobador, 5);
@@ -287,6 +294,42 @@ describe('State Machine - Solicitudes', () => {
     it('admin puede hacer cualquier acción', () => {
       expect(transicionar('pendiente_jefe', 'aprobar_jefe', admin, 5).exito).toBe(true);
       expect(transicionar('aprobada_jefe', 'aprobar_rrhh', admin, 5).exito).toBe(true);
+    });
+
+    it('jefe NO puede aprobar a alguien que no es subordinado directo', () => {
+      const resultado = transicionar(
+        'pendiente_jefe',
+        'aprobar_jefe',
+        { ...jefe, esSubordinadoDirecto: false },
+        5
+      );
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toContain('equipo directo');
+    });
+
+    it('director sin subordinados directos puede usar fallback de departamento', () => {
+      const resultado = transicionar(
+        'pendiente_jefe',
+        'aprobar_jefe',
+        { ...director, esSubordinadoDirecto: false, directorSinSubordinadosDirectos: true },
+        5
+      );
+      expect(resultado.exito).toBe(true);
+    });
+
+    it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
+      const dobleRol: TransicionContexto = {
+        usuarioId: 40,
+        solicitanteId: 40,
+        esDirector: false,
+        esJefe: true,
+        esRrhh: true,
+        esAdmin: false,
+        departamentoAprobador: 1,
+        departamentoSolicitante: 1,
+      };
+      expect(transicionar('pendiente_jefe', 'aprobar_jefe', dobleRol, 5).exito).toBe(false);
+      expect(transicionar('aprobada_jefe', 'aprobar_rrhh', dobleRol, 5).exito).toBe(false);
     });
   });
 

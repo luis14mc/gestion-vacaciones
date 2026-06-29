@@ -64,10 +64,27 @@ export async function obtenerAccionesParaSolicitud(
 
   // Departamento y nivel del solicitante para validar alcance y jerarquía
   const [solicitanteInfo] = await db
-    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
+    .select({
+      departamentoId: usuarios.departamentoId,
+      esJefe: usuarios.esJefe,
+      jefeSuperiorId: usuarios.jefeSuperiorId,
+    })
     .from(usuarios)
     .where(eq(usuarios.id, solicitud.usuarioId))
     .limit(1);
+
+  let directorSinSubordinadosDirectos = false;
+  if (usuario.esDirector) {
+    const [jerarquia] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usuarios)
+      .where(and(
+        eq(usuarios.jefeSuperiorId, usuario.id),
+        eq(usuarios.activo, true),
+        isNull(usuarios.deletedAt)
+      ));
+    directorSinSubordinadosDirectos = (jerarquia?.count || 0) === 0;
+  }
 
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const acciones = obtenerAccionesDisponibles(estadoActual);
@@ -91,6 +108,8 @@ export async function obtenerAccionesParaSolicitud(
     esAdmin: usuario.esAdmin,
     departamentoAprobador: usuario.departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    esSubordinadoDirecto: solicitanteInfo?.jefeSuperiorId === usuario.id,
+    directorSinSubordinadosDirectos,
     solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   };
 
@@ -120,10 +139,27 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
 
   // Departamento y nivel del solicitante para validar alcance y jerarquía
   const [solicitanteInfo] = await db
-    .select({ departamentoId: usuarios.departamentoId, esJefe: usuarios.esJefe })
+    .select({
+      departamentoId: usuarios.departamentoId,
+      esJefe: usuarios.esJefe,
+      jefeSuperiorId: usuarios.jefeSuperiorId,
+    })
     .from(usuarios)
     .where(eq(usuarios.id, solicitud.usuarioId))
     .limit(1);
+
+  let directorSinSubordinadosDirectos = false;
+  if (esDirector) {
+    const [jerarquia] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(usuarios)
+      .where(and(
+        eq(usuarios.jefeSuperiorId, usuarioId),
+        eq(usuarios.activo, true),
+        isNull(usuarios.deletedAt)
+      ));
+    directorSinSubordinadosDirectos = (jerarquia?.count || 0) === 0;
+  }
 
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const dias = Number(solicitud.diasSolicitados ?? 0);
@@ -137,6 +173,8 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     esAdmin,
     departamentoAprobador: departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
+    esSubordinadoDirecto: solicitanteInfo?.jefeSuperiorId === usuarioId,
+    directorSinSubordinadosDirectos,
     solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
   }, dias);
 

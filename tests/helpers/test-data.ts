@@ -126,6 +126,7 @@ export async function crearDatosBaseTest() {
   const rolEmpleado = await crearRolTest('EMPLEADO', 'Rol de empleado', ['ver_perfil', 'crear_solicitud'])
   const rolJefe = await crearRolTest('JEFE', 'Rol de jefe de departamento', ['aprobar_solicitud_jefe', 'ver_equipo'])
   const rolRRHH = await crearRolTest('RRHH', 'Rol de recursos humanos', ['aprobar_solicitud_rrhh', 'ver_reportes', 'gestionar_usuarios'])
+  const rolAdmin = await crearRolTest('ADMIN', 'Administrador del sistema', ['administrar_sistema'])
 
   const departamento = await crearDepartamentoTest('Tecnología', 'TEC')
   const anoLaboral = await crearAnoLaboralTest(2026)
@@ -135,6 +136,7 @@ export async function crearDatosBaseTest() {
       empleado: rolEmpleado,
       jefe: rolJefe,
       rrhh: rolRRHH,
+      admin: rolAdmin,
     },
     departamento,
     anoLaboral,

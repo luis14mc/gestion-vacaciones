@@ -324,7 +324,7 @@ Validación en `crearSolicitud()` (`solicitudes.service.ts`): fecha de nacimient
 ### `solicitudes.service.ts`
 
 - `crearSolicitud()` — transacción con validación de balance, reglas de cumpleaños y código
-- Funciones legacy (`aprobarSolicitudJefe`, etc.) — usadas por tests de integración; deprecadas para API
+- Aprobaciones y cancelaciones: `workflow.service.ts` → `ejecutarAccion` (ruta `/api/solicitudes/[id]/accion`)
 
 ### `email.service.ts`
 

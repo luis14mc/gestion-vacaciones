@@ -1,13 +1,22 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypeScript from "eslint-config-next/typescript";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default defineConfig([
   ...nextVitals,
   ...nextTypeScript,
   {
-    // Deuda tecnica existente: mantener visible sin bloquear la adopcion
-    // inicial de ESLint en Next.js 16.
+    plugins: {
+      react,
+      "react-hooks": reactHooks,
+    },
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "prefer-const": "warn",
@@ -22,5 +31,11 @@ export default defineConfig([
     "next-env.d.ts",
     "coverage/**",
     ".claude/**",
+    ".agents/**",
+    "scripts/**",
+    "database/**",
+    "drizzle/**",
+    "postman/**",
+    "thunder-tests/**",
   ]),
 ]);

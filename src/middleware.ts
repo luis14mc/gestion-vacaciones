@@ -88,6 +88,8 @@ export const config = {
     '/reportes-departamento/:path*',
     '/mi-perfil/:path*',
     '/mi-equipo/:path*',
+    '/mi-balance/:path*',
+    '/cambiar-password/:path*',
     '/aprobar-solicitudes/:path*',
     '/asignacion-dias/:path*',
     '/configuracion/:path*',

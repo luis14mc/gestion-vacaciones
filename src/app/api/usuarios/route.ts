@@ -300,6 +300,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   const { id, ...dataToUpdate } = body;
   const shouldUpdateJefeSuperior = Object.prototype.hasOwnProperty.call(dataToUpdate, 'jefeSuperiorId');
+  const shouldUpdateFechaNacimiento = Object.prototype.hasOwnProperty.call(dataToUpdate, 'fechaNacimiento');
 
   if (!id) {
     return NextResponse.json({ success: false, error: 'ID de usuario requerido' }, { status: 400 });
@@ -307,6 +308,13 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
 
   // Usamos el partial del esquema para permitir actualizaciones parciales
   const validatedData = usuarioApiSchema.partial().parse(dataToUpdate);
+
+  const usuarioAnterior = await db.query.usuarios.findFirst({
+    where: and(eq(usuarios.id, Number(id)), isNull(usuarios.deletedAt)),
+  });
+  if (!usuarioAnterior) {
+    return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
+  }
 
   const camposPermitidos: Record<string, any> = {};
   if (validatedData.nombre !== undefined) camposPermitidos.nombre = validatedData.nombre;
@@ -316,10 +324,8 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (validatedData.departamentoId !== undefined) camposPermitidos.departamentoId = Number(validatedData.departamentoId);
   if (validatedData.activo !== undefined) camposPermitidos.activo = validatedData.activo;
   if (validatedData.fechaIngreso !== undefined) camposPermitidos.fechaIngreso = validatedData.fechaIngreso;
-  if (validatedData.fechaNacimiento !== undefined) {
-    camposPermitidos.fechaNacimiento = validatedData.fechaNacimiento
-      ? validatedData.fechaNacimiento.slice(0, 10)
-      : null;
+  if (shouldUpdateFechaNacimiento) {
+    camposPermitidos.fechaNacimiento = validatedData.fechaNacimiento ?? null;
   }
   if (shouldUpdateJefeSuperior) {
     camposPermitidos.jefeSuperiorId = validatedData.jefeSuperiorId
@@ -406,7 +412,16 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
     accion: 'actualizar',
     tablaAfectada: 'usuarios',
     registroId: Number(id),
-    detalles: { camposModificados: Object.keys(camposPermitidos) },
+    detalles: {
+      camposModificados: Object.keys(camposPermitidos),
+      ...(shouldUpdateFechaNacimiento && usuarioAnterior.fechaNacimiento !== usuarioActualizado?.fechaNacimiento
+        ? {
+            evento: 'cambio_fecha_nacimiento',
+            fechaNacimientoAnterior: usuarioAnterior.fechaNacimiento,
+            fechaNacimientoNueva: usuarioActualizado?.fechaNacimiento ?? null,
+          }
+        : {}),
+    },
     ipAddress,
     userAgent,
   });

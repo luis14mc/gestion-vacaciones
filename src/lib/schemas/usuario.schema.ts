@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizarFechaNacimiento } from "@/lib/domain/fecha-nacimiento";
 
 const emptyToUndefined = (value: unknown) => {
     if (value === null || value === undefined) return undefined;
@@ -7,6 +8,17 @@ const emptyToUndefined = (value: unknown) => {
 };
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
+
+const optionalFechaNacimiento = z.preprocess(
+    emptyToUndefined,
+    z.string()
+        .superRefine((value, ctx) => {
+            const result = normalizarFechaNacimiento(value);
+            if (result.error) ctx.addIssue({ code: "custom", message: result.error });
+        })
+        .transform((value) => normalizarFechaNacimiento(value).fecha!)
+        .optional()
+);
 
 const isPositiveIntegerString = (value: string) => {
     const numericValue = Number(value);
@@ -35,7 +47,7 @@ export const usuarioSchema = z.object({
     departamentoId: z.string().min(1, "Debe seleccionar un departamento"),
     cargo: z.string().optional(),
     fechaIngreso: z.string().optional(),
-    fechaNacimiento: z.string().optional(),
+    fechaNacimiento: optionalFechaNacimiento,
     esAdmin: z.boolean(),
     esRrhh: z.boolean(),
     esDirector: z.boolean(),
@@ -55,7 +67,7 @@ export const usuarioApiSchema = z.object({
     departamentoId: requiredIdString,
     cargo: optionalString,
     fechaIngreso: optionalString,
-    fechaNacimiento: optionalString,
+    fechaNacimiento: optionalFechaNacimiento,
     esAdmin: z.boolean(),
     esRrhh: z.boolean(),
     esDirector: z.boolean(),

@@ -106,6 +106,28 @@ export async function GET() {
         )
       );
 
+    const mesActual = new Date().getMonth() + 1;
+    const anioActual = new Date().getFullYear();
+    const [cumpleanos] = await db
+      .select({
+        delMes: sql<number>`count(*) FILTER (WHERE ${usuarios.fechaNacimiento} IS NOT NULL AND EXTRACT(MONTH FROM ${usuarios.fechaNacimiento}) = ${mesActual})::int`,
+        sinFecha: sql<number>`count(*) FILTER (WHERE ${usuarios.fechaNacimiento} IS NULL)::int`,
+        elegiblesPendientes: sql<number>`count(*) FILTER (
+          WHERE ${usuarios.fechaNacimiento} IS NOT NULL
+            AND EXTRACT(MONTH FROM ${usuarios.fechaNacimiento}) = ${mesActual}
+            AND NOT EXISTS (
+              SELECT 1 FROM ${solicitudes} s
+              WHERE s.usuario_id = ${usuarios.id}
+                AND s.tipo = 'dia_cumpleanos'
+                AND s.estado IN ('pendiente_jefe', 'aprobada_jefe', 'pendiente_rrhh', 'aprobada_rrhh', 'finalizada')
+                AND s.deleted_at IS NULL
+                AND EXTRACT(YEAR FROM s.fecha_inicio) = ${anioActual}
+            )
+        )::int`,
+      })
+      .from(usuarios)
+      .where(and(eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
+
     const metricas = {
       usuarios_totales: Number(totalUsuarios?.count || 0),
       usuarios_activos: Number(usuariosActivos?.count || 0),
@@ -114,6 +136,9 @@ export async function GET() {
       nuevos_este_mes: Number(nuevosEsteMes?.count || 0),
       aprobadas_hoy: Number(aprobadasHoy?.count || 0),
       rechazadas_hoy: Number(rechazadasHoy?.count || 0),
+      cumpleanos_del_mes: Number(cumpleanos?.delMes || 0),
+      cumpleanos_elegibles_pendientes: Number(cumpleanos?.elegiblesPendientes || 0),
+      usuarios_sin_fecha_nacimiento: Number(cumpleanos?.sinFecha || 0),
     };
 
     return NextResponse.json({

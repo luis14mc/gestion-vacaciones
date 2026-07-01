@@ -32,4 +32,16 @@ describe('reportes filters', () => {
     expect(esTipoReporteValido('cumpleanos')).toBe(true);
     expect(esTipoReporteValido('permisos_salida')).toBe(true);
   });
+
+  it('parsea filtros específicos del reporte de cumpleaños', () => {
+    const filtros = parseFiltrosReporte(new URLSearchParams({
+      tipo: 'cumpleanos',
+      mes: '6',
+      beneficioUsado: 'false',
+      sinFechaNacimiento: 'true',
+    }));
+    expect(filtros.mes).toBe(6);
+    expect(filtros.beneficioUsado).toBe(false);
+    expect(filtros.sinFechaNacimiento).toBe(true);
+  });
 });

@@ -15,6 +15,7 @@ import { contarDiasHabiles } from '@/lib/domain/labor-days';
 import { reservarBalanceVacaciones } from '@/lib/domain/balance-effects';
 import {
   ESTADOS_DIA_CUMPLEANOS_ACTIVOS,
+  validarEstructuraSolicitudCumpleanos,
   validarFechaSolicitudCumpleanos,
 } from '@/lib/domain/cumpleanos';
 import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
@@ -80,11 +81,16 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     let fechaFinFinal = fechaFin;
 
     if (tipo === 'dia_cumpleanos') {
-      if (!fechaInicio) {
-        throw new Error('Debe seleccionar la fecha del día libre por cumpleaños');
+      const estructura = validarEstructuraSolicitudCumpleanos({
+        fechaInicio,
+        fechaFin,
+        diasSolicitados,
+      });
+      if (!estructura.valido) {
+        throw new Error(estructura.error);
       }
-      fechaInicioFinal = fechaInicio.slice(0, 10);
-      fechaFinFinal = fechaInicioFinal;
+      fechaInicioFinal = fechaInicio!.slice(0, 10);
+      fechaFinFinal = fechaFin!.slice(0, 10);
       diasParaSolicitud = 1;
     } else if (tipo === 'permiso_salida') {
       diasParaSolicitud = duracionPermiso === 'dia_completo' ? 1 : Number(diasSolicitados || 0);
@@ -175,6 +181,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       }
 
       const anioActual = new Date().getFullYear();
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${usuarioId}, ${anioActual})`);
       const [solicitudExistente] = await tx
         .select({ id: solicitudes.id })
         .from(solicitudes)

@@ -5,6 +5,8 @@ import {
   varchar,
   text,
   timestamp,
+  integer,
+  unique,
   index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
@@ -41,3 +43,36 @@ export const registrosAuditoriaRelations = relations(registrosAuditoria, ({ one 
     references: [usuarios.id],
   }),
 }));
+
+export const notificacionesCumpleanosMensuales = pgTable(
+  'notificaciones_cumpleanos_mensuales',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    usuarioId: bigint('usuario_id', { mode: 'number' })
+      .notNull()
+      .references(() => usuarios.id, { onDelete: 'cascade' }),
+    anio: integer('anio').notNull(),
+    mes: integer('mes').notNull(),
+    enviadaAt: timestamp('enviada_at', { withTimezone: true, mode: 'string' })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    uqUsuarioPeriodo: unique('uq_notificacion_cumpleanos_usuario_periodo').on(
+      table.usuarioId,
+      table.anio,
+      table.mes
+    ),
+    idxPeriodo: index('idx_notificaciones_cumpleanos_periodo').on(table.anio, table.mes),
+  })
+);
+
+export const notificacionesCumpleanosMensualesRelations = relations(
+  notificacionesCumpleanosMensuales,
+  ({ one }) => ({
+    usuario: one(usuarios, {
+      fields: [notificacionesCumpleanosMensuales.usuarioId],
+      references: [usuarios.id],
+    }),
+  })
+);

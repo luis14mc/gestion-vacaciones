@@ -225,6 +225,31 @@ export async function notificarNuevaSolicitudAJefe(
   });
 }
 
+export async function notificarMesCumpleanos(
+  empleadoEmail: string,
+  empleadoNombre: string,
+  nombreMes: string
+) {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
+      <h2 style="color: #182243;">Tu dia libre por cumpleanos esta disponible</h2>
+      <p>Hola <strong>${escapeHtml(empleadoNombre)}</strong>,</p>
+      <p>Durante ${escapeHtml(nombreMes)} puedes solicitar tu dia libre por cumpleanos.</p>
+      <p>Recuerda que el beneficio es de un dia, no descuenta vacaciones y debe completar el flujo normal de aprobacion.</p>
+      <br>
+      <a href="https://vacaciones.cni.hn/solicitudes/nueva" style="background-color: #00B5E2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Solicitar dia</a>
+      <hr style="margin-top: 30px; border: none; border-top: 1px solid #eaeaeb;">
+      <p style="font-size: 12px; color: #666;">Este es un mensaje automatico. Por favor, no respondas a este correo.</p>
+    </div>
+  `;
+
+  return enviarEmail({
+    to: empleadoEmail,
+    subject: '[CNI Vacaciones] Este mes puedes solicitar tu dia libre por cumpleanos',
+    html,
+  });
+}
+
 export async function notificarAprobacionJefeARRHH(
   rrhhEmail: string,
   solicitanteNombre: string,

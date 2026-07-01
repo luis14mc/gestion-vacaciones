@@ -8,6 +8,7 @@ import { crearUsuario } from '@/services/usuarios.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { generarPasswordTemporal } from '@/lib/security/password';
 import { obtenerConfigs, asNumber } from '@/lib/config/service';
+import { normalizarFechaNacimiento } from '@/lib/domain/fecha-nacimiento';
 
 export const runtime = 'nodejs';
 
@@ -23,6 +24,7 @@ type FilaImportacion = {
   departamentoId: number | null;
   cargo: string;
   fechaIngreso: string;
+  fechaNacimiento: string | null;
   esJefe: boolean;
   esDirector: boolean;
   emailJefeSuperior: string | null;
@@ -63,6 +65,11 @@ function getCellText(row: ExcelJS.Row, columnMap: Record<string, number>, colKey
   if (!colNum) return '';
   const cell = row.getCell(colNum);
   return cell ? cell.text.trim() : '';
+}
+
+function getCellValue(row: ExcelJS.Row, columnMap: Record<string, number>, colKey: string) {
+  const colNum = columnMap[colKey];
+  return colNum ? row.getCell(colNum).value : null;
 }
 
 export async function POST(request: NextRequest) {
@@ -124,6 +131,10 @@ export async function POST(request: NextRequest) {
       else if (headerText.includes('departamento') || headerText.includes('area') || headerText.includes('direccion') || headerText.includes('unidad') || headerText.includes('gerencia')) columnMap.departamento = colNumber;
       else if (headerText.includes('cargo') || headerText.includes('puesto')) columnMap.cargo = colNumber;
       else if (headerText.includes('fecha') && headerText.includes('ingreso')) columnMap.fechaIngreso = colNumber;
+      else if (
+        (headerText.includes('fecha') && headerText.includes('nacimiento')) ||
+        headerText === 'fechanacimiento'
+      ) columnMap.fechaNacimiento = colNumber;
       else if (headerText.includes('director')) columnMap.esDirector = colNumber;
       else if (headerText.includes('jefe') && !isEmailHeader && !isSuperiorHeader) columnMap.esJefe = colNumber;
     });
@@ -164,6 +175,9 @@ export async function POST(request: NextRequest) {
       const deptoNombre = getCellText(row, columnMap, 'departamento');
       const cargo = getCellText(row, columnMap, 'cargo');
       const fechaIngresoStr = getCellText(row, columnMap, 'fechaIngreso');
+      const fechaNacimientoResult = normalizarFechaNacimiento(
+        getCellValue(row, columnMap, 'fechaNacimiento')
+      );
       const esJefe = parseBooleanCell(getCellText(row, columnMap, 'esJefe'));
       const esDirector = parseBooleanCell(getCellText(row, columnMap, 'esDirector'));
       const emailJefeSuperior = normalizeEmail(getCellText(row, columnMap, 'emailJefeSuperior'));
@@ -193,6 +207,10 @@ export async function POST(request: NextRequest) {
         erroresFila.push('Email Jefe Superior invalido');
       }
 
+      if (fechaNacimientoResult.error && columnMap.fechaNacimiento) {
+        erroresFila.push(fechaNacimientoResult.error);
+      }
+
       let fechaIngresoParsed = new Date();
       if (fechaIngresoStr) {
         const parsedDate = new Date(fechaIngresoStr);
@@ -211,6 +229,7 @@ export async function POST(request: NextRequest) {
         departamentoId: deptoId,
         cargo,
         fechaIngreso: fechaIngresoParsed.toISOString(),
+        fechaNacimiento: fechaNacimientoResult.fecha,
         esJefe,
         esDirector,
         emailJefeSuperior: emailJefeSuperior || null,
@@ -293,6 +312,7 @@ export async function POST(request: NextRequest) {
             departamentoId: userData.departamentoId!,
             cargo: userData.cargo,
             fechaIngreso: userData.fechaIngreso,
+            fechaNacimiento: userData.fechaNacimiento || undefined,
             esAdmin: false,
             esRrhh: false,
             esDirector: userData.esDirector,

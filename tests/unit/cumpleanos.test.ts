@@ -3,7 +3,9 @@ import {
   calcularElegibilidadCumpleanos,
   esMesCumpleanos,
   nombreMes,
+  obtenerLimitesMesCumpleanos,
   obtenerMesCumpleanos,
+  validarEstructuraSolicitudCumpleanos,
   validarFechaSolicitudCumpleanos,
 } from '@/lib/domain/cumpleanos';
 
@@ -26,7 +28,11 @@ describe('cumpleanos', () => {
   });
 
   it('rechaza solicitudes de otro año', () => {
-    const result = validarFechaSolicitudCumpleanos('1990-06-15', '2025-06-10');
+    const result = validarFechaSolicitudCumpleanos(
+      '1990-06-15',
+      '2025-06-10',
+      new Date('2026-06-10T12:00:00')
+    );
     expect(result.valido).toBe(false);
     expect(result.error).toContain('año en curso');
   });
@@ -87,5 +93,49 @@ describe('cumpleanos', () => {
 
     expect(elegibilidad.puedeSolicitar).toBe(false);
     expect(elegibilidad.esMesActual).toBe(false);
+  });
+
+  it('devuelve el rango completo del mes de cumpleaños', () => {
+    expect(obtenerLimitesMesCumpleanos(2, 2024)).toEqual({
+      fechaMinimaPermitida: '2024-02-01',
+      fechaMaximaPermitida: '2024-02-29',
+    });
+    const elegibilidad = calcularElegibilidadCumpleanos({
+      fechaNacimiento: '1990-06-15',
+      yaTomado: false,
+      referencia: new Date('2026-06-10T12:00:00'),
+    });
+    expect(elegibilidad.fechaNacimiento).toBe('1990-06-15');
+    expect(elegibilidad.anio).toBe(2026);
+    expect(elegibilidad.fechaMinimaPermitida).toBe('2026-06-01');
+    expect(elegibilidad.fechaMaximaPermitida).toBe('2026-06-30');
+  });
+
+  it('exige exactamente un día y la misma fecha de inicio y fin', () => {
+    expect(validarEstructuraSolicitudCumpleanos({
+      fechaInicio: '2026-06-10',
+      fechaFin: '2026-06-11',
+      diasSolicitados: 1,
+    }).valido).toBe(false);
+    expect(validarEstructuraSolicitudCumpleanos({
+      fechaInicio: '2026-06-10',
+      fechaFin: '2026-06-10',
+      diasSolicitados: 2,
+    }).valido).toBe(false);
+    expect(validarEstructuraSolicitudCumpleanos({
+      fechaInicio: '2026-06-10',
+      fechaFin: '2026-06-10',
+      diasSolicitados: 1,
+    }).valido).toBe(true);
+  });
+
+  it('no permite solicitar anticipadamente desde otro mes', () => {
+    const result = validarFechaSolicitudCumpleanos(
+      '1990-06-15',
+      '2026-06-20',
+      new Date('2026-05-20T12:00:00')
+    );
+    expect(result.valido).toBe(false);
+    expect(result.error).toContain('junio');
   });
 });

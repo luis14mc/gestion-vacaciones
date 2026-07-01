@@ -54,6 +54,19 @@ export function obtenerRangoMesCumpleanos(
   };
 }
 
+export function obtenerLimitesMesCumpleanos(
+  mes: number,
+  anio: number
+): { fechaMinimaPermitida: string; fechaMaximaPermitida: string } {
+  const inicio = new Date(anio, mes - 1, 1, 12, 0, 0, 0);
+  const fin = new Date(anio, mes, 0, 12, 0, 0, 0);
+
+  return {
+    fechaMinimaPermitida: formatearFechaISO(inicio),
+    fechaMaximaPermitida: formatearFechaISO(fin),
+  };
+}
+
 export function esMesCumpleanos(
   fechaNacimiento: string,
   referencia: Date = new Date()
@@ -63,7 +76,8 @@ export function esMesCumpleanos(
 
 export function validarFechaSolicitudCumpleanos(
   fechaNacimiento: string,
-  fechaSolicitud: string
+  fechaSolicitud: string,
+  referencia: Date = new Date()
 ): { valido: boolean; error?: string } {
   if (!fechaNacimiento) {
     return {
@@ -73,6 +87,14 @@ export function validarFechaSolicitudCumpleanos(
   }
 
   const mesNacimiento = obtenerMesCumpleanos(fechaNacimiento);
+
+  if (referencia.getMonth() + 1 !== mesNacimiento) {
+    return {
+      valido: false,
+      error: `El día libre por cumpleaños solo puede solicitarse durante ${nombreMes(mesNacimiento)}.`,
+    };
+  }
+
   const mesSolicitud = parseFechaLocal(fechaSolicitud).getMonth() + 1;
 
   if (mesSolicitud !== mesNacimiento) {
@@ -83,7 +105,7 @@ export function validarFechaSolicitudCumpleanos(
   }
 
   const anioSolicitud = parseFechaLocal(fechaSolicitud).getFullYear();
-  const anioActual = new Date().getFullYear();
+  const anioActual = referencia.getFullYear();
   if (anioSolicitud !== anioActual) {
     return {
       valido: false,
@@ -94,7 +116,33 @@ export function validarFechaSolicitudCumpleanos(
   return { valido: true };
 }
 
+export function validarEstructuraSolicitudCumpleanos(input: {
+  fechaInicio?: string;
+  fechaFin?: string;
+  diasSolicitados?: number;
+}): { valido: boolean; error?: string } {
+  const fechaInicio = input.fechaInicio?.slice(0, 10);
+  const fechaFin = input.fechaFin?.slice(0, 10);
+  const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!fechaInicio || !fechaFin || !formatoFecha.test(fechaInicio) || !formatoFecha.test(fechaFin)) {
+    return { valido: false, error: 'Debe seleccionar la fecha del día libre por cumpleaños.' };
+  }
+
+  if (fechaInicio !== fechaFin) {
+    return { valido: false, error: 'El día libre por cumpleaños debe iniciar y finalizar en la misma fecha.' };
+  }
+
+  if (input.diasSolicitados !== 1) {
+    return { valido: false, error: 'El beneficio de cumpleaños corresponde exactamente a 1 día.' };
+  }
+
+  return { valido: true };
+}
+
 export interface ElegibilidadCumpleanos {
+  fechaNacimiento: string | null;
+  anio: number;
   tieneFechaNacimiento: boolean;
   mesCumpleanos: number | null;
   nombreMesCumpleanos: string | null;
@@ -115,6 +163,8 @@ export function calcularElegibilidadCumpleanos(input: {
 
   if (!input.fechaNacimiento) {
     return {
+      fechaNacimiento: null,
+      anio: referencia.getFullYear(),
       tieneFechaNacimiento: false,
       mesCumpleanos: null,
       nombreMesCumpleanos: null,
@@ -133,6 +183,8 @@ export function calcularElegibilidadCumpleanos(input: {
 
   if (input.yaTomado) {
     return {
+      fechaNacimiento: input.fechaNacimiento,
+      anio: referencia.getFullYear(),
       tieneFechaNacimiento: true,
       mesCumpleanos: mes,
       nombreMesCumpleanos: nombreMes(mes),
@@ -146,6 +198,8 @@ export function calcularElegibilidadCumpleanos(input: {
 
   if (!esMesActual) {
     return {
+      fechaNacimiento: input.fechaNacimiento,
+      anio: referencia.getFullYear(),
       tieneFechaNacimiento: true,
       mesCumpleanos: mes,
       nombreMesCumpleanos: nombreMes(mes),
@@ -158,6 +212,8 @@ export function calcularElegibilidadCumpleanos(input: {
   }
 
   return {
+    fechaNacimiento: input.fechaNacimiento,
+    anio: referencia.getFullYear(),
     tieneFechaNacimiento: true,
     mesCumpleanos: mes,
     nombreMesCumpleanos: nombreMes(mes),

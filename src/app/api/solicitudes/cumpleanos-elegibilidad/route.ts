@@ -43,11 +43,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: {
-        ...elegibilidad,
-        fechaNacimiento: usuario?.fechaNacimiento ?? null,
-        anio: anioActual,
-      },
+      data: elegibilidad,
     });
   } catch (error) {
     console.error('Error consultando elegibilidad de cumpleaños:', error);

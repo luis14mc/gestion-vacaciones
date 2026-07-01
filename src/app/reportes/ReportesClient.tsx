@@ -130,6 +130,9 @@ export default function ReportesClient({ session }: ReportesClientProps) {
   const [departamentoId, setDepartamentoId] = useState('');
   const [tipoSolicitud, setTipoSolicitud] = useState('');
   const [estado, setEstado] = useState('');
+  const [mesCumpleanos, setMesCumpleanos] = useState('');
+  const [beneficioUsado, setBeneficioUsado] = useState('');
+  const [sinFechaNacimiento, setSinFechaNacimiento] = useState('');
 
   const filtrosParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -140,8 +143,11 @@ export default function ReportesClient({ session }: ReportesClientProps) {
     if (departamentoId) params.set('departamentoId', departamentoId);
     if (tipoSolicitud) params.set('tipoSolicitud', tipoSolicitud);
     if (estado) params.set('estado', estado);
+    if (mesCumpleanos) params.set('mes', mesCumpleanos);
+    if (beneficioUsado) params.set('beneficioUsado', beneficioUsado);
+    if (sinFechaNacimiento) params.set('sinFechaNacimiento', sinFechaNacimiento);
     return params;
-  }, [reporteSeleccionado, anio, fechaInicio, fechaFin, departamentoId, tipoSolicitud, estado]);
+  }, [reporteSeleccionado, anio, fechaInicio, fechaFin, departamentoId, tipoSolicitud, estado, mesCumpleanos, beneficioUsado, sinFechaNacimiento]);
 
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -174,6 +180,9 @@ export default function ReportesClient({ session }: ReportesClientProps) {
     setDepartamentoId('');
     setTipoSolicitud('');
     setEstado('');
+    setMesCumpleanos('');
+    setBeneficioUsado('');
+    setSinFechaNacimiento('');
     setDatosReporte(null);
     setMeta(null);
   };
@@ -410,6 +419,45 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                 </SelectContent>
               </Select>
             </div>
+          ) : null}
+
+          {reporteSeleccionado === 'cumpleanos' ? (
+            <>
+              <div className="space-y-2">
+                <Label>Mes de cumpleaños</Label>
+                <Select value={mesCumpleanos || 'all'} onValueChange={(v) => setMesCumpleanos(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los meses</SelectItem>
+                    {['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'].map((nombre, index) => (
+                      <SelectItem key={nombre} value={String(index + 1)}>{nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Ya utilizó beneficio</Label>
+                <Select value={beneficioUsado || 'all'} onValueChange={(v) => setBeneficioUsado(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="true">Sí</SelectItem>
+                    <SelectItem value="false">No</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fecha de nacimiento</Label>
+                <Select value={sinFechaNacimiento || 'all'} onValueChange={(v) => setSinFechaNacimiento(v === 'all' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="true">Sin fecha registrada</SelectItem>
+                    <SelectItem value="false">Con fecha registrada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           ) : null}
 
           <div className="flex items-end gap-2 md:col-span-2 lg:col-span-4">

@@ -13,6 +13,7 @@ import { eq, and, or, sql, ilike, isNull } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { validarPasswordPolitica } from '@/lib/config/password-policy';
 import { metadataConPasswordActualizada } from '@/lib/config/password-expiry';
+import { normalizarFechaNacimiento } from '@/lib/domain/fecha-nacimiento';
 
 // =====================================================
 // TIPOS
@@ -26,7 +27,7 @@ export interface CrearUsuarioParams {
   departamentoId?: number;
   cargo?: string;
   fechaIngreso?: string;
-  fechaNacimiento?: string;
+  fechaNacimiento?: string | null;
   activo?: boolean;
   esAdmin?: boolean;
   esRrhh?: boolean;
@@ -46,7 +47,7 @@ export interface ActualizarUsuarioParams {
   departamentoId?: number;
   cargo?: string;
   fechaIngreso?: string;
-  fechaNacimiento?: string;
+  fechaNacimiento?: string | null;
   activo?: boolean;
   numeroEmpleado?: string;
   telefono?: string;
@@ -93,6 +94,11 @@ export async function crearUsuario(params: CrearUsuarioParams) {
       throw new Error(errorPassword);
     }
 
+    const fechaNacimientoNormalizada = normalizarFechaNacimiento(fechaNacimiento);
+    if (fechaNacimientoNormalizada.error) {
+      throw new Error(fechaNacimientoNormalizada.error);
+    }
+
     // Validar email único
     const existente = await tx.query.usuarios.findFirst({
       where: eq(usuarios.email, email.toLowerCase()),
@@ -115,7 +121,7 @@ export async function crearUsuario(params: CrearUsuarioParams) {
         departamentoId,
         cargo,
         fechaIngreso,
-        fechaNacimiento: fechaNacimiento?.slice(0, 10),
+        fechaNacimiento: fechaNacimientoNormalizada.fecha,
         activo,
         esAdmin,
         esRrhh,
@@ -213,9 +219,9 @@ export async function actualizarUsuario(id: number, params: ActualizarUsuarioPar
   if (params.cargo !== undefined) updateData.cargo = params.cargo;
   if (params.fechaIngreso !== undefined) updateData.fechaIngreso = params.fechaIngreso;
   if (params.fechaNacimiento !== undefined) {
-    updateData.fechaNacimiento = params.fechaNacimiento
-      ? params.fechaNacimiento.slice(0, 10)
-      : null;
+    const fechaNacimiento = normalizarFechaNacimiento(params.fechaNacimiento);
+    if (fechaNacimiento.error) throw new Error(fechaNacimiento.error);
+    updateData.fechaNacimiento = fechaNacimiento.fecha;
   }
   if (params.activo !== undefined) updateData.activo = params.activo;
 

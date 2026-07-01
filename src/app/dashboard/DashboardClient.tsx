@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Users, CheckCircle, Hourglass, Car, Shield,
-  FileText, Briefcase, UsersRound, Clock, X, User, RefreshCw, Calendar,
+  FileText, Briefcase, UsersRound, Clock, X, User, RefreshCw, Calendar, Cake,
 } from 'lucide-react';
+import Link from 'next/link';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
@@ -12,6 +13,7 @@ import { CalendarView } from '@/components/dashboard/CalendarView';
 import { BalanceDiasTable } from '@/components/balance/BalanceDiasTable';
 import type { BalanceDiasFila } from '@/lib/domain/balance-display';
 import type { Session } from 'next-auth';
+import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface Metrics {
@@ -22,6 +24,9 @@ interface Metrics {
   nuevos_este_mes?: number;
   aprobadas_hoy?: number;
   rechazadas_hoy?: number;
+  cumpleanos_del_mes?: number;
+  cumpleanos_elegibles_pendientes?: number;
+  usuarios_sin_fecha_nacimiento?: number;
 }
 
 interface BalancePersonal {
@@ -74,6 +79,7 @@ export default function DashboardClient({ session }: { session: Session }) {
   const [balance, setBalance] = useState<BalancePersonal | null>(null);
   const [actividades, setActividades] = useState<Actividad[]>([]);
   const [calendario, setCalendario] = useState<CalendarioData | null>(null);
+  const [cumpleanos, setCumpleanos] = useState<ElegibilidadCumpleanos | null>(null);
   const [loading, setLoading] = useState(true);
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [anio, setAnio] = useState(new Date().getFullYear());
@@ -98,11 +104,14 @@ export default function DashboardClient({ session }: { session: Session }) {
         return json;
       };
 
-      const [metricsRes, actividadRes, calendarioRes, balanceRes] = await Promise.all([
+      const [metricsRes, actividadRes, calendarioRes, balanceRes, cumpleanosRes] = await Promise.all([
         metricsUrl ? fetchJson(metricsUrl) : Promise.resolve({ success: false }),
         fetchJson('/api/dashboard/actividad'),
         fetchJson(`/api/dashboard/calendario?mes=${mes}&anio=${anio}`),
         fetchJson('/api/dashboard/mi-balance'),
+        isEmpleado
+          ? fetchJson('/api/solicitudes/cumpleanos-elegibilidad')
+          : Promise.resolve({ success: false }),
       ]);
 
       if (!isEmpleado) {
@@ -121,6 +130,7 @@ export default function DashboardClient({ session }: { session: Session }) {
 
       if (actividadRes.success) setActividades(actividadRes.data);
       if (calendarioRes.success) setCalendario(calendarioRes.data);
+      if (cumpleanosRes.success) setCumpleanos(cumpleanosRes.data);
     } catch (error) {
       console.error('Error cargando datos:', error);
       if (!isEmpleado) {
@@ -221,6 +231,30 @@ export default function DashboardClient({ session }: { session: Session }) {
         </div>
       )}
 
+      {isEmpleado && cumpleanos?.puedeSolicitar && (
+        <div className="flex flex-col gap-3 rounded-xl border border-pink-200 bg-pink-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-pink-900 dark:bg-pink-950/20">
+          <div className="flex items-start gap-3">
+            <Cake className="mt-0.5 h-5 w-5 shrink-0 text-pink-600" />
+            <div>
+              <p className="text-sm font-semibold">Este mes puede solicitar su día libre por cumpleaños.</p>
+              <p className="text-xs text-muted-foreground">El beneficio no descuenta su balance de vacaciones.</p>
+            </div>
+          </div>
+          <Link href="/solicitudes/nueva" className="text-sm font-semibold text-pink-700 hover:underline dark:text-pink-300">
+            Solicitar día
+          </Link>
+        </div>
+      )}
+
+      {isEmpleado && cumpleanos && !cumpleanos.tieneFechaNacimiento && (
+        <div className="flex items-start gap-3 rounded-xl border bg-muted/30 px-5 py-4">
+          <Cake className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            No tiene registrada su fecha de nacimiento. Solicítelo a RRHH para habilitar este beneficio.
+          </p>
+        </div>
+      )}
+
       {/* Metric Cards */}
       {loading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -285,6 +319,9 @@ export default function DashboardClient({ session }: { session: Session }) {
               <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
               <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
               <MetricCard title="Total Usuarios" value={metrics.usuarios_totales || 0} subtitle={metrics.nuevos_este_mes ? `+${metrics.nuevos_este_mes} este mes` : undefined} icon={Users} color="primary" />
+              <MetricCard title="Cumpleaños del mes" value={metrics.cumpleanos_del_mes || 0} icon={Cake} color="accent" />
+              <MetricCard title="Elegibles pendientes" value={metrics.cumpleanos_elegibles_pendientes || 0} icon={Calendar} color="info" />
+              <MetricCard title="Sin fecha de nacimiento" value={metrics.usuarios_sin_fecha_nacimiento || 0} icon={User} color="warning" />
             </div>
           )}
 

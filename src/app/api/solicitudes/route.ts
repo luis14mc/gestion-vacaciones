@@ -14,6 +14,7 @@ import {
   calcularStatsBandejaAprobacion,
 } from '@/lib/domain/aprobacion-inbox-queries';
 import { puedeAccederBandejaAprobacion } from '@/lib/domain/aprobacion-inbox';
+import { validarEstructuraSolicitudCumpleanos } from '@/lib/domain/cumpleanos';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -285,6 +286,23 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const fechaFin = validatedData.fechaFin || fechaInicio;
   const motivoNormalizado = motivo?.trim() || '';
 
+  if (tipo === 'dia_cumpleanos') {
+    const estructura = validarEstructuraSolicitudCumpleanos({
+      fechaInicio,
+      fechaFin: validatedData.fechaFin,
+      diasSolicitados,
+    });
+    if (!estructura.valido) {
+      await registrarAuditoria({
+        usuarioId: sessionUser.id,
+        accion: 'validacion_rechazada',
+        tablaAfectada: 'solicitudes',
+        detalles: { tipo, motivo: estructura.error },
+      });
+      return NextResponse.json({ success: false, error: estructura.error }, { status: 400 });
+    }
+  }
+
   if (tipo === 'permiso_salida' && motivoNormalizado.length < 5) {
     return NextResponse.json(
       { success: false, error: 'Para permisos de salida es obligatorio indicar un motivo de al menos 5 caracteres.' },
@@ -335,20 +353,34 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   // 4. USAR SERVICIO PARA CREAR SOLICITUD
-  const solicitudCreada: any = await crearSolicitud({
-    usuarioId,
-    tipo,
-    fechaInicio,
-    fechaFin,
-    diasSolicitados: diasSolicitados || 0,
-    duracionPermiso,
-    horaSalida,
-    horaRegreso,
-    motivo: motivoNormalizado,
-    comentarioEmpleado: observaciones || undefined,
-    esDirector: sessionUser.esDirector || false,
-    documentosAdjuntos
-  });
+  let solicitudCreada: any;
+  try {
+    solicitudCreada = await crearSolicitud({
+      usuarioId,
+      tipo,
+      fechaInicio,
+      fechaFin,
+      diasSolicitados,
+      duracionPermiso,
+      horaSalida,
+      horaRegreso,
+      motivo: motivoNormalizado,
+      comentarioEmpleado: observaciones || undefined,
+      esDirector: sessionUser.esDirector || false,
+      documentosAdjuntos
+    });
+  } catch (error) {
+    if (tipo === 'dia_cumpleanos' && error instanceof Error) {
+      await registrarAuditoria({
+        usuarioId: sessionUser.id,
+        accion: 'validacion_rechazada',
+        tablaAfectada: 'solicitudes',
+        detalles: { tipo, motivo: error.message },
+      });
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
 
   // 5. Obtener solicitud completa con relaciones para respuesta
   if (!solicitudCreada || !solicitudCreada.id) {

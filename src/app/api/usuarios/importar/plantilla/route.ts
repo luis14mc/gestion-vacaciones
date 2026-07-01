@@ -25,6 +25,7 @@ export async function GET() {
       { header: 'Departamento', key: 'departamento', width: 28 },
       { header: 'Cargo', key: 'cargo', width: 25 },
       { header: 'Fecha Ingreso', key: 'fechaIngreso', width: 15 },
+      { header: 'Fecha Nacimiento', key: 'fechaNacimiento', width: 18 },
       { header: 'Es Jefe', key: 'esJefe', width: 10 },
       { header: 'Es Director', key: 'esDirector', width: 12 },
       { header: 'Email Jefe Superior', key: 'emailJefeSuperior', width: 30 },
@@ -39,9 +40,10 @@ export async function GET() {
     };
 
     worksheet.getCell('E1').note = 'Puede llamarse Departamento, Direccion, Area, Unidad o Gerencia. Debe coincidir con una unidad registrada.';
-    worksheet.getCell('H1').note = 'Si indica Si, este usuario queda como jefe de la unidad indicada cuando no haya director para esa misma unidad.';
-    worksheet.getCell('I1').note = 'Si indica Si, este usuario queda como director/jefe principal de la unidad indicada.';
-    worksheet.getCell('J1').note = 'Opcional para todos. Puede referenciar un correo existente o un usuario incluido en este mismo Excel.';
+    worksheet.getCell('H1').note = 'Opcional. Formatos aceptados: YYYY-MM-DD o DD/MM/YYYY.';
+    worksheet.getCell('I1').note = 'Si indica Si, este usuario queda como jefe de la unidad indicada cuando no haya director para esa misma unidad.';
+    worksheet.getCell('J1').note = 'Si indica Si, este usuario queda como director/jefe principal de la unidad indicada.';
+    worksheet.getCell('K1').note = 'Opcional para todos. Puede referenciar un correo existente o un usuario incluido en este mismo Excel.';
 
     worksheet.addRow({
       email: 'directora@cni.hn',
@@ -51,6 +53,7 @@ export async function GET() {
       departamento: 'Direccion Ejecutiva',
       cargo: 'Directora',
       fechaIngreso: '2025-01-15',
+      fechaNacimiento: '1985-06-12',
       esJefe: 'No',
       esDirector: 'Si',
       emailJefeSuperior: '',
@@ -64,6 +67,7 @@ export async function GET() {
       departamento: 'Recursos Humanos',
       cargo: 'Jefe de Recursos Humanos',
       fechaIngreso: '2025-01-15',
+      fechaNacimiento: '1990-03-20',
       esJefe: 'Si',
       esDirector: 'No',
       emailJefeSuperior: 'directora@cni.hn',
@@ -77,6 +81,7 @@ export async function GET() {
       departamento: 'Recursos Humanos',
       cargo: 'Analista',
       fechaIngreso: '2025-01-15',
+      fechaNacimiento: '1995-11-08',
       esJefe: 'No',
       esDirector: 'No',
       emailJefeSuperior: 'jefe@cni.hn',

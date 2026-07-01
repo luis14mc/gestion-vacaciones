@@ -20,6 +20,9 @@ export interface FiltrosReporte {
   tipoSolicitud: string | null;
   estado: string | null;
   usuarioId: number | null;
+  mes: number | null;
+  beneficioUsado: boolean | null;
+  sinFechaNacimiento: boolean | null;
 }
 
 export function esTipoReporteValido(value: string | null): value is TipoReporteCNI {
@@ -52,6 +55,12 @@ export function parseFiltrosReporte(searchParams: URLSearchParams): FiltrosRepor
     tipoSolicitudParam && tipoSolicitudParam !== 'all' ? tipoSolicitudParam : null;
 
   const estadoRaw = searchParams.get('estado');
+  const parseOptionalBoolean = (key: string): boolean | null => {
+    const raw = searchParams.get(key);
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    return null;
+  };
 
   return {
     tipo,
@@ -63,6 +72,9 @@ export function parseFiltrosReporte(searchParams: URLSearchParams): FiltrosRepor
     tipoSolicitud: tipoSolicitud && tipoSolicitud !== 'all' ? tipoSolicitud : null,
     estado: estadoRaw && estadoRaw !== 'all' ? estadoRaw : null,
     usuarioId: parseOptionalInt('usuarioId'),
+    mes: parseOptionalInt('mes'),
+    beneficioUsado: parseOptionalBoolean('beneficioUsado'),
+    sinFechaNacimiento: parseOptionalBoolean('sinFechaNacimiento'),
   };
 }
 

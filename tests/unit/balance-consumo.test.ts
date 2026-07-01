@@ -14,6 +14,7 @@ describe('balance-consumo', () => {
     expect(
       solicitudConsumeBalance({ tipo: 'permiso_salida', duracionPermiso: 'medio_dia' })
     ).toBe(false);
+    expect(solicitudConsumeBalance({ tipo: 'dia_cumpleanos' })).toBe(false);
   });
 
   it('suma días usados y pendientes por estado', () => {

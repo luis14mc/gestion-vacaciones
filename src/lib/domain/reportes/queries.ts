@@ -303,7 +303,7 @@ export async function generarReporteCumpleanos(filtros: FiltrosReporte, scope: R
       EXTRACT(MONTH FROM u.fecha_nacimiento::date)::int AS mes_cumpleanos,
       s.fecha_inicio AS fecha_solicitada,
       s.estado,
-      al.ano,
+      COALESCE(EXTRACT(YEAR FROM s.fecha_inicio)::int, ${filtros.anio}) AS ano,
       CASE
         WHEN s.estado IN ('aprobada_rrhh', 'finalizada') THEN true
         ELSE false
@@ -313,20 +313,28 @@ export async function generarReporteCumpleanos(filtros: FiltrosReporte, scope: R
       s.codigo
     FROM usuarios u
     LEFT JOIN departamentos dep ON dep.id = u.departamento_id
-    LEFT JOIN solicitudes s ON s.usuario_id = u.id
-      AND s.tipo = 'dia_cumpleanos'
-      AND s.deleted_at IS NULL
-      ${filtros.anoLaboralId
-        ? sql`AND s.ano_laboral_id = ${filtros.anoLaboralId}`
-        : sql`AND s.ano_laboral_id = (SELECT id FROM anos_laborales WHERE ano = ${filtros.anio} LIMIT 1)`}
-    LEFT JOIN anos_laborales al ON al.id = s.ano_laboral_id
+    LEFT JOIN LATERAL (
+      SELECT sc.*
+      FROM solicitudes sc
+      WHERE sc.usuario_id = u.id
+        AND sc.tipo = 'dia_cumpleanos'
+        AND sc.deleted_at IS NULL
+        AND EXTRACT(YEAR FROM sc.fecha_inicio) = ${filtros.anio}
+      ORDER BY sc.created_at DESC
+      LIMIT 1
+    ) s ON true
     LEFT JOIN usuarios j ON j.id = s.aprobada_jefe_por
     LEFT JOIN usuarios r ON r.id = s.aprobada_rrhh_por
     WHERE u.activo = true
       AND u.deleted_at IS NULL
-      AND u.fecha_nacimiento IS NOT NULL
+      ${filtros.mes ? sql`AND EXTRACT(MONTH FROM u.fecha_nacimiento) = ${filtros.mes}` : sql``}
+      ${filtros.estado ? sql`AND s.estado = ${filtros.estado}` : sql``}
+      ${filtros.beneficioUsado === true ? sql`AND s.estado IN ('aprobada_rrhh', 'finalizada')` : sql``}
+      ${filtros.beneficioUsado === false ? sql`AND (s.id IS NULL OR s.estado NOT IN ('aprobada_rrhh', 'finalizada'))` : sql``}
+      ${filtros.sinFechaNacimiento === true ? sql`AND u.fecha_nacimiento IS NULL` : sql``}
+      ${filtros.sinFechaNacimiento === false ? sql`AND u.fecha_nacimiento IS NOT NULL` : sql``}
       ${sqlFiltroUsuarios(scope)}
-    ORDER BY mes_cumpleanos, u.apellido, u.nombre
+    ORDER BY mes_cumpleanos NULLS LAST, u.apellido, u.nombre
   `);
 
   const filas = [...result];

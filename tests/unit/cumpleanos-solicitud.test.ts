@@ -21,7 +21,7 @@ describe('dia_cumpleanos - elegibilidad', () => {
 
     expect(elegibilidad.puedeSolicitar).toBe(true);
     expect(
-      validarFechaSolicitudCumpleanos('1990-06-15', '2026-06-20').valido
+      validarFechaSolicitudCumpleanos('1990-06-15', '2026-06-20', referencia).valido
     ).toBe(true);
   });
 

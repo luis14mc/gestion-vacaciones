@@ -94,6 +94,7 @@ export async function POST(
       registroId: solicitudId,
       detalles: {
         evento: accion,
+        tipoSolicitud: resultado.solicitud?.tipo,
         estadoAnterior: resultado.transicion?.estadoAnterior,
         estadoNuevo: resultado.transicion?.estadoNuevo,
       },

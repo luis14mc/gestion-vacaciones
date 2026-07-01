@@ -164,7 +164,9 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
 
             if (values.cargo) body.cargo = values.cargo;
             if (values.fechaIngreso) body.fechaIngreso = new Date(values.fechaIngreso).toISOString();
-            if (values.fechaNacimiento) body.fechaNacimiento = values.fechaNacimiento.slice(0, 10);
+            body.fechaNacimiento = values.fechaNacimiento
+                ? values.fechaNacimiento.slice(0, 10)
+                : null;
             if (values.password) body.password = values.password;
             if (isEditing) body.id = usuario.id;
 
@@ -390,7 +392,15 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Fecha de Nacimiento</FormLabel>
-                                        <FormControl><Input type="date" {...field} value={field.value || ""} /></FormControl>
+                                        <FormControl>
+                                            <Input
+                                                type="date"
+                                                min="1900-01-01"
+                                                max={new Date().toLocaleDateString("en-CA")}
+                                                {...field}
+                                                value={field.value || ""}
+                                            />
+                                        </FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}

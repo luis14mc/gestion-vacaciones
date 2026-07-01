@@ -16,9 +16,28 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('Limpieza bloqueada en producción');
+}
+
+if (process.env.CONFIRM_CLEAN_TEST_USERS !== 'YES') {
+  throw new Error('Define CONFIRM_CLEAN_TEST_USERS=YES para confirmar la limpieza de pruebas');
+}
+
+if (!DATABASE_URL.includes('neon.tech')) {
+  throw new Error('Limpieza bloqueada: DATABASE_URL no corresponde a Neon de pruebas');
+}
+
+const dbHost = new URL(DATABASE_URL).hostname;
+const isLocalDb = ['localhost', '127.0.0.1', '::1', 'postgres', 'cni-postgres'].includes(dbHost);
+const useSsl = process.env.DATABASE_SSL
+  ? process.env.DATABASE_SSL === 'true'
+  : !isLocalDb;
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
+
 const client = postgres(DATABASE_URL, {
   max: 1,
-  ssl: { rejectUnauthorized: false },
+  ssl: useSsl ? { rejectUnauthorized } : false,
 });
 
 async function limpiar() {

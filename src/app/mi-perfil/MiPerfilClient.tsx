@@ -89,11 +89,7 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
     confirm: false,
   });
 
-  useEffect(() => {
-    cargarPerfil();
-  }, []);
-
-  const cargarPerfil = async () => {
+  async function cargarPerfil() {
     try {
       setLoading(true);
       const response = await fetch("/api/usuarios/me");
@@ -115,6 +111,10 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    cargarPerfil();
+  }, []);
 
   const handleSaveProfile = async () => {
     try {

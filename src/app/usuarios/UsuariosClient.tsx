@@ -85,7 +85,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     cargarDepartamentos();
   }, []);
 
-  const cargarDepartamentos = async () => {
+  async function cargarDepartamentos() {
     try {
       const res = await fetch("/api/departamentos");
       if (res.ok) {
@@ -100,7 +100,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     }
   };
 
-  const cargarUsuarios = async () => {
+  async function cargarUsuarios() {
     try {
       setLoading(true);
       const res = await fetch("/api/usuarios");

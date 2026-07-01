@@ -89,7 +89,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
     cargarDatos();
   }, []);
 
-  const cargarDatos = async () => {
+  async function cargarDatos() {
     setLoading(true);
     await Promise.all([cargarDepartamentos(), cargarUsuarios()]);
     setLoading(false);

@@ -7,9 +7,14 @@ dotenv.config({ path: '.env.local', override: true });
 const DATABASE_URL = process.env.DATABASE_URL;
 const preserveEmail = (process.env.ADMIN_EMAIL || 'soporteit@cni.hn').toLowerCase();
 const confirm = process.env.CONFIRM_CLEAN_TEST_USERS;
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 if (!DATABASE_URL) {
   throw new Error('DATABASE_URL no esta configurada en .env/.env.local');
+}
+
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('Limpieza bloqueada en producción');
 }
 
 if (confirm !== 'YES') {
@@ -22,7 +27,7 @@ if (!DATABASE_URL.includes('neon.tech')) {
 
 const sql = postgres(DATABASE_URL, {
   max: 1,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized },
 });
 
 const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;

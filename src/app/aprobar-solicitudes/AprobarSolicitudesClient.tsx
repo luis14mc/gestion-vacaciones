@@ -121,7 +121,7 @@ export default function AprobarSolicitudesClient({
     cargarSolicitudes();
   }, [paginaActual]);
 
-  const cargarSolicitudes = async () => {
+  async function cargarSolicitudes() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -268,8 +268,10 @@ export default function AprobarSolicitudesClient({
     });
   };
 
+  const [ahora] = useState(() => Date.now());
+
   const calcularDiasDesde = (fecha: string) => {
-    const diff = Date.now() - new Date(fecha).getTime();
+    const diff = ahora - new Date(fecha).getTime();
     const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (dias === 0) return "Hoy";
     if (dias === 1) return "Hace 1 día";

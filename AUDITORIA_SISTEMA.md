@@ -1,308 +1,187 @@
-# Auditoría Exhaustiva — Sistema Gestión de Vacaciones CNI
+# Auditoría integral del sistema - Gestión de Vacaciones CNI
 
-**Fecha:** 2026-06-30  
-**Evalúa:** Senior QA + Senior PM  
-**Versión:** 0.1.0 | Next.js 16 + React 19 + PostgreSQL 16 + Drizzle ORM
+**Fecha de revisión:** 2026-07-01
 
----
+**Alcance:** arquitectura, backend, frontend, QA, DevOps, OWASP Top 10 e ISO/IEC 12207
 
-## 1. BUILD & LINT — Estado
+**Stack observado:** Next.js 16.2.6, React 19.2, PostgreSQL 16, Drizzle ORM, pnpm y Docker Compose
 
-| Check | Estado | Detalle |
-|-------|--------|---------|
-| `pnpm test:run` | **PASS** | 23 archivos, 143 tests, 0 fallos (2.07s) |
-| `pnpm lint` | **PASS** | 0 errores; warnings legacy en deuda técnica (`--max-warnings 500`) |
-| `pnpm build` | **PASS** | Verificado 2026-06-19 (Next.js 16, sin DB en build) |
+## 1. Resumen ejecutivo
 
-### Problema Crítico: ESLint roto — **RESUELTO (2026-06-19)**
-- **Archivo:** `eslint.config.mjs`
-- **Causa original:** Reglas `react/*` sin plugin registrado en flat config.
-- **Fix aplicado:** `eslint-plugin-react` + `eslint-plugin-react-hooks` registrados; ignores para `.agents/` y scripts auxiliares.
+El sistema tiene una base funcional sólida: autenticación, RBAC, flujo de solicitudes, balances, importación masiva, auditoría, reportes, SMTP configurable y despliegue Docker. El código separa dominio, servicios, API y UI de forma razonable.
 
----
+El estado actual es **apto para continuar pruebas controladas**, pero no debe considerarse completamente cerrado para producción hasta completar los puntos P0/P1 de este documento. Los riesgos principales son la activación del cron de cumpleaños en EC2, pruebas de API/E2E insuficientes, CSP permisiva y observabilidad limitada.
 
-## 2. SEGURIDAD — Análisis
+### Inventario verificado
 
-### 2.1 Autenticación
+| Elemento | Cantidad observada |
+|---|---:|
+| Páginas `page.tsx` | 18 |
+| Rutas API `route.ts` | 35 |
+| Archivos de pruebas unitarias | 24 |
+| Archivos de pruebas de integración | 3 |
+| Migraciones Drizzle | 8 (`0000` a `0007`) |
 
-| Aspecto | Estado | Detalle |
-|---------|--------|---------|
-| Provider | Credentials + JWT | `src/auth.ts:14-121` |
-| Password hashing | bcryptjs (cost 10) | `src/services/usuarios.service.ts:106` |
-| Rate limiting | Postgres-backed, fail-open | `src/lib/rate-limiter.ts` |
-| Session expiry | Configurable via `seguridad.sesion_duracion_horas` | `src/auth.ts:128-132` |
-| Audit login/logout | Implementado | `src/auth.ts:50-76, 177-189` |
-| CSRF | NextAuth v5 (built-in) | Configurado |
-| Password policy | Implementada | `src/lib/config/password-policy.ts` |
+Estas cantidades describen archivos presentes; el número de tests ejecutados se registra únicamente después de una corrida exitosa.
 
-### 2.2 Autorización (RBAC)
+## 2. Estado de verificación
 
-| Aspecto | Estado | Detalle |
-|---------|--------|---------|
-| Modelo RBAC completo | Roles → Permisos (N:M) | `src/lib/db/schema/auth.ts:93-190` |
-| Roles base | ADMIN, RRHH, DIRECTOR, JEFE, EMPLEADO | `src/services/rbac.service.ts:312-317` |
-| Flags legacy sincronizados | `syncUserRoles` / `syncFlagsFromRoles` | `src/services/rbac.service.ts:339-444` |
-| Middleware | Solo autenticación (no RBAC) | `src/middleware.ts` — correcto, RBAC en API |
-| Guards por endpoint | State machine con guards | `src/lib/domain/state-machine.ts:78-125` |
+| Comando | Estado de esta revisión | Observación |
+|---|---|---|
+| `pnpm test:run` | **PASS** | 24 archivos, 150 tests aprobados, 0 fallos (2026-07-01). |
+| `pnpm lint` | **PASS** | 0 errores; 206 warnings legacy dentro del límite temporal configurado. |
+| `pnpm build` | **PASS** | Build Next.js 16.2.6 con Webpack, TypeScript y generación de 50 rutas completados. |
+| Integración con PostgreSQL | No ejecutada | Requiere una BD de prueba aislada. |
+| Pruebas visuales responsive | Pendiente | Requieren recorrido real desktop/móvil. |
 
-### 2.3 Seguridad de Infraestructura
+## 3. Hallazgos priorizados
 
-| Aspecto | Estado | Detalle |
-|---------|--------|---------|
-| Security headers | OWASP-completos | CSP, HSTS, X-Frame-Options DENY, etc. |
-| Docker | Multi-stage build, ~150MB | `Dockerfile` |
-| Services binding | 127.0.0.1 only | `docker-compose.yml` |
-| SSL en DB | Auto-detecta local vs remote | `src/lib/db/index.ts:24-26` |
-| Cron secret | Configurable | `CRON_SECRET` en `.env` |
+| ID | Prioridad | Estado | Hallazgo / acción requerida |
+|---|---|---|---|
+| OPS-01 | **P0** | Mitigado en instalador; pendiente despliegue | `scripts/setup-ec2.sh` ya programa cumpleaños en EC2. Aplicar/verificar el crontab del servidor existente. |
+| DB-01 | **P0** | Pendiente despliegue | Aplicar `drizzle/0007_notificaciones_cumpleanos.sql` mediante `pnpm run db:setup` y verificar la tabla `notificaciones_cumpleanos_mensuales`. |
+| DB-02 | **P1** | Corregido en código | `0005_balance_trigger.sql` no figuraba en el journal Drizzle y podía omitirse con `db:migrate`. Se agregó la entrada faltante. |
+| DB-03 | **P0** | Corregido en código | `db:install` ejecuta `DROP SCHEMA public CASCADE`. Ahora se bloquea en producción y exige `ALLOW_DATABASE_RESET=YES` en entornos descartables. |
+| DB-04 | **P0** | Corregido en código | `limpiar-usuarios.ts` podía borrar usuarios sin confirmación. Ahora se limita a Neon de pruebas, exige confirmación y bloquea producción. |
+| QA-01 | **P1** | Pendiente | Faltan pruebas de contrato/API para creación y acción de solicitudes, autorización por rol y respuestas 400/401/403/409. |
+| QA-02 | **P1** | Pendiente | Falta E2E del flujo empleado -> jefe/director -> RRHH, incluyendo doble rol, autoaprobación y estados finales. |
+| SEC-01 | **P1** | Pendiente | CSP permite `unsafe-inline` y `unsafe-eval` en scripts. Migrar gradualmente a nonce/hash y retirar `X-XSS-Protection`, que es obsoleto. |
+| OPS-02 | **P1** | Pendiente | No hay logging estructurado, correlación de requests, métricas ni alertas externas. |
+| SEC-02 | **P1** | Mitigado en código | PostgreSQL remoto verificaba certificados con `rejectUnauthorized: false`. Ahora verifica por defecto; la excepción requiere `DATABASE_SSL_REJECT_UNAUTHORIZED=false`. |
+| SEC-03 | **P1** | Mitigado en código | `.env.example` contenía contraseñas/secretos de ejemplo utilizables. `ADMIN_PASSWORD` y `CRON_SECRET` quedan vacíos. |
+| AUTH-01 | **P2** | Pendiente | `next-auth@5.0.0-beta.30` sigue siendo beta. Mantener versión exacta, revisar avisos de seguridad y planificar actualización probada. |
+| QA-03 | **P2** | Pendiente | Faltan tests con SMTP simulado y pruebas de sincronización de roles/flags RBAC. |
+| DATA-01 | **P2** | Pendiente | El modelo mantiene flags de rol y tablas RBAC. Documentar fuente de verdad y añadir reconciliación/alerta de divergencias. |
+| DATA-02 | **P3** | Pendiente de decisión | La tabla `sessions` existe, pero la estrategia actual usa JWT. Documentar su reserva o retirarla con migración segura. |
 
-### 2.4 Hallazgos de Seguridad
+## 4. Correcciones realizadas durante esta revisión
 
-| # | Severidad | Hallazgo | Ubicación |
-|---|-----------|----------|-----------|
-| S1 | **MEDIA** | ~~`AUTH_SECRET=cambiar-en-desarrollo` en `.env.example`~~ — **Mitigado:** valor vacío + instrucción obligatoria | `.env.example` |
-| S2 | **MEDIA** | `rejectUnauthorized: false` en conexión SSL a DB — acepta certificados autofirmados | `src/lib/db/index.ts:33` |
-| S3 | **BAJA** | CSP permite `'unsafe-eval'` y `'unsafe-inline'` en scripts — reduce protección XSS | `next.config.mjs:42-43` |
-| S4 | **BAJA** | Tabla `sessions` definida en schema pero auth usa JWT (no DB sessions) — tabla huérfana | `src/lib/db/schema/auth.ts:195-214` |
-| S5 | **INFO** | Auditoría sanitiza passwords/tokens pero campos como `base64` y `documentos_adjuntos` se enmascaran siempre — puede dificultar debug | `src/lib/domain/auditoria/sanitize.ts:1-15` |
+1. TLS de PostgreSQL endurecido en runtime y scripts operativos.
+2. Compatibilidad preservada con AWS Docker mediante `DATABASE_SSL=false`.
+3. Variable documentada: `DATABASE_SSL_REJECT_UNAUTHORIZED=true` por defecto.
+4. Secretos de ejemplo de administrador y cron eliminados de `.env.example`.
+5. Configuración pnpm obsoleta retirada de `package.json`; `next-auth` continúa fijado directamente.
+6. Hallazgo anterior D4 corregido: `rate_limits` **sí** está declarado en `src/lib/db/schema/auth.ts`, exportado por `schema/index.ts` y creado por `drizzle/0003_rate_limits.sql`.
+7. Integración de cumpleaños reforzada: un solo día, misma fecha de inicio/fin, solo durante el mes correspondiente y con errores de negocio HTTP 400.
+8. Middleware corregido para permitir que `/api/cron/*` llegue a endpoints protegidos por `CRON_SECRET`.
+9. Instalador EC2 actualizado con cron mensual de cumpleaños.
+10. Journal Drizzle reparado para incluir la migración `0005_balance_trigger`.
+11. Reset destructivo `db:install` bloqueado por defecto y prohibido con `NODE_ENV=production`.
+12. Limpieza masiva heredada protegida con entorno y confirmación explícita.
 
----
+## 5. OWASP Top 10
 
-## 3. ARQUITECTURA & DISEÑO
+| Categoría | Estado | Evidencia / brecha |
+|---|---|---|
+| A01 Broken Access Control | Parcialmente cubierto | RBAC, guards y state machine presentes. Faltan pruebas API/E2E sistemáticas por rol. |
+| A02 Cryptographic Failures | Mejorado | bcrypt y HTTPS; TLS de BD verifica certificados por defecto. Rotación de secretos debe quedar en runbook. |
+| A03 Injection | Cubierto con reservas | Drizzle/Zod reducen riesgo. Revisar usos de `sql.unsafe` en scripts y mantenerlos fuera de entradas web. |
+| A04 Insecure Design | Bueno | Reglas de dominio y transacciones existen. Falta trazabilidad formal requisito -> control -> prueba. |
+| A05 Security Misconfiguration | Parcial | Headers, contenedores no root y binding local. CSP aún permisiva; secretos deben validarse al iniciar. |
+| A06 Vulnerable Components | Pendiente continuo | Automatizar `pnpm audit`, Dependabot/Renovate y revisión de NextAuth beta. |
+| A07 Identification/Auth Failures | Bueno con reservas | JWT, expiración, rate limit y política de contraseña. El rate limiter es fail-open ante caída de BD. |
+| A08 Software/Data Integrity | Parcial | Lockfile y migraciones versionadas. Falta CI obligatorio, SBOM y firma/escaneo de imagen. |
+| A09 Logging/Monitoring Failures | Insuficiente | Hay auditoría funcional, pero no logging estructurado ni alertas operativas. |
+| A10 SSRF | Riesgo bajo observado | No se identificó fetch arbitrario controlado por usuario; mantener allowlists si se agregan integraciones. |
 
-### 3.1 Estructura del Código
+Los headers actuales son una **base de hardening**, no deben describirse como “OWASP completos” mientras la CSP incluya directivas inseguras y no haya verificación dinámica.
 
-| Capa | Evaluación |
-|------|------------|
-| Schema Drizzle | **Excelente** — 5 módulos, relations bien definidos, CHECK constraints, índices compuestos |
-| Services | **Buena** — Separación clara: solicitudes, workflow, usuarios, RBAC, email, auditoría |
-| Domain Logic | **Excelente** — State machine pura, balance effects aislados, feriados, cumpleanos |
-| API Routes | **Buena** — RESTful, auth check, auditoría, error handling consistente |
-| Frontend | **Adecuada** — shadcn/ui, componentes client/server separados |
+## 6. ISO/IEC 12207
 
-### 3.2 State Machine
+| Proceso | Madurez | Ajuste requerido |
+|---|---|---|
+| Requisitos | Media | Mantener criterios de aceptación y matriz de trazabilidad para solicitudes, balances, importación y cumpleaños. |
+| Arquitectura/diseño | Media-alta | Las capas están separadas; documentar decisiones (ADR) para RBAC dual, JWT y balances. |
+| Construcción | Media-alta | TypeScript, lint y estructura consistentes; reducir warnings tolerados progresivamente. |
+| Integración | Media | Automatizar BD efímera y pruebas de migraciones en CI. |
+| Verificación | Media-baja | Buena lógica unitaria, cobertura insuficiente en API, UI y E2E. |
+| Validación | Media-baja | Falta matriz UAT por rol y evidencia responsive/accesibilidad. |
+| Transición | Media | Docker y setup existen; agregar checklist de despliegue, rollback y verificación de cron/migraciones. |
+| Operación | Baja-media | Healthcheck disponible; faltan métricas, logs centralizados, alertas, backup y prueba de restauración. |
+| Mantenimiento | Media | Git/migraciones presentes; formalizar gestión de cambios, vulnerabilidades y ventanas de actualización. |
 
-- **Implementación:** `src/lib/domain/state-machine.ts` — Máquina de estados finitos pura
-- **Estados:** 8 (borrador → pendiente_jefe → aprobada_jefe → aprobada_rrhh → finalizada)
-- **Guards:** 4 tipos (propietario, jefe, RRHH, sistema)
-- **Efectos:** RESERVAR_BALANCE, CONFIRMAR_BALANCE, LIBERAR_BALANCE — atómicos dentro de transacción
-- **Evaluación:** **Sólida** — Separación limpia entre definición de transiciones y persistencia
+## 7. Funcionalidad de cumpleaños
 
-### 3.3 Balance Management
+### Implementado en código
 
-- **Triggers DB:** `cantidad_disponible` calculado por trigger en PostgreSQL
-- **Optimistic locking:** Campo `version` en solicitudes y balances
-- **Convención:** pendiente → usada → liberada (flujo correcto)
-- **Evaluación:** **Correcto** — Los efectos de balance ahora se ejecutan atómicamente dentro de la transacción del workflow (`workflow.service.ts:231-244`)
+- Captura y normalización de fecha de nacimiento.
+- Elegibilidad limitada al mes de cumpleaños y una vez por año.
+- Solicitud de exactamente un día, sin consumo de vacaciones.
+- Exclusión de VoBo ministerial para esta modalidad.
+- Auditoría de cambios y validaciones rechazadas.
+- Métricas/reportes y tarjeta de dashboard.
+- Notificación mensual idempotente mediante tabla con restricción única.
+- Ruta protegida por `CRON_SECRET`: `/api/cron/cumpleanos`.
 
-### 3.4 Deuda Técnica Identificada
+### Pendiente en AWS EC2
 
-| # | Impacto | Descripción |
-|---|---------|-------------|
-| D1 | **MEDIO** | ~~Funciones deprecated en `solicitudes.service.ts`~~ — **Eliminadas**; workflow vía `ejecutarAccion` | Resuelto 2026-06-19 |
-| D2 | **MEDIO** | RBAC dual: flags booleanos en `usuarios` + tabla `usuarios_roles` — `syncUserRoles`/`syncFlagsFromRoles` mitigan pero aumentan complejidad |
-| D3 | **BAJO** | `sessions` table definida pero auth es JWT-only — tabla sin uso |
-| D4 | **BAJO** | `rate_limits` es postgres-backed (correcto para multi-instancia) pero el esquema Drizzle no lo exporta — se usa raw SQL |
+1. Ejecutar `docker compose --profile setup run --rm db-setup`.
+2. Verificar migración: `SELECT to_regclass('public.notificaciones_cumpleanos_mensuales');`.
+3. Programar cron mensual del host. Ejemplo operativo a adaptar al manejo seguro del secreto:
 
----
+```cron
+0 12 1 * * curl --fail --silent --show-error -X POST https://vacaciones.cni.hn/api/cron/cumpleanos -H "Authorization: Bearer <CRON_SECRET>"
+```
 
-## 4. TESTING
+4. Ejecutar una prueba controlada y verificar envío SMTP, fila idempotente y registro de error sin exponer credenciales.
 
-### 4.1 Cobertura
+## 8. Frontend y accesibilidad
 
-| Tipo | Archivos | Tests | Estado |
-|------|----------|-------|--------|
-| Unit | 23 | 143 | **Todos pasan** |
-| Integration | 1 | — | Requiere DB real |
-| **Total** | **24** | **143** | **100% pass** |
+La UI usa componentes reutilizables y breakpoints responsive, pero el cumplimiento no está demostrado solo por inspección estática. Debe ejecutarse una matriz visual mínima en 360x800, 768x1024, 1366x768 y 1920x1080 sobre páginas, tablas, formularios y modales.
 
-### 4.2 Módulos Cubiertos
+Pendientes concretos:
 
-| Módulo | Tests | Evaluación |
-|--------|-------|------------|
-| State machine | 39 tests | **Completa** — todos los caminos |
-| Balance display/consumo | 12 tests | **Buena** |
-| Cumpleaños | 17 tests | **Exhaustiva** |
-| Adjuntos | 7 tests | **Buena** |
-| Auditoría | 8 tests | **Buena** |
-| Reportes | 13 tests | **Buena** |
-| Exportación | 7 tests | **Buena** |
-| Feriados | 5 tests | **Buena** |
-| Password | 4 tests | **Adecuada** |
-| Config catalog | 11 tests | **Buena** |
-| Services (solicitudes, usuarios) | 6 tests | **Mínima** — solo happy path |
+- Validar navegación por teclado, foco visible, cierre de modales y mensajes de error asociados al campo.
+- Evitar tablas desbordadas sin estrategia de scroll/columnas responsivas.
+- Verificar textos largos, nombres compuestos y zoom del navegador al 200%.
+- Añadir pruebas de componentes para estados loading, vacío, error y permisos insuficientes.
 
-### 4.3 Brechas de Testing
+## 9. DevOps y producción
 
-| # | Severidad | Brecha |
-|---|-----------|--------|
-| T1 | **ALTA** | ~~Sin tests de integración para `workflow.service.ts`~~ — **Parcial:** suite dedicada + tests existentes en `solicitudes.service.integration.test.ts` |
-| T2 | **ALTA** | Sin tests para API routes (endpoints) — solo tests unitarios de lógica |
-| T3 | **MEDIA** | Sin tests para `email.service.ts` (mockear SMTP) |
-| T4 | **MEDIA** | Sin tests para `rbac.service.ts` (asignación/sync de roles) |
-| T5 | **BAJA** | Sin tests de componentes React (solo unitarios de lógica pura) |
+Fortalezas observadas:
 
----
+- Docker multi-stage y proceso Node no root.
+- PostgreSQL y app publicados solo en `127.0.0.1`; Nginx expone 80/443.
+- Healthchecks y límites de recursos presentes.
+- Setup de BD versionado e idempotente por intención.
 
-## 5. DEPENDENCIAS & CONFIGURACIÓN
+Validaciones obligatorias antes de declarar producción lista:
 
-### 5.1 Stack Tecnológico
+- Backup automático y restauración probada de PostgreSQL.
+- Renovación automática de Let's Encrypt y alerta previa a expiración.
+- `docker compose config` sin secretos impresos en logs compartidos.
+- Escaneo de imagen y dependencias en CI.
+- Rollback documentado de aplicación y migraciones compatibles hacia atrás.
+- Cron de transiciones y cumpleaños instalado y monitorizado en EC2.
+- Medición real del tamaño de imagen; no conservar estimaciones como evidencia.
 
-| Dependencia | Versión | Evaluación |
-|-------------|---------|------------|
-| Next.js | 16.2.6 | Última stable |
-| React | 19.2.0 | Última stable |
-| TypeScript | 5.9.3 | Última |
-| Drizzle ORM | 0.44.7 | Estable |
-| NextAuth | 5.0.0-beta.30 | **BETA** — override en pnpm |
-| PostgreSQL | 16 | LTS |
-| Tailwind CSS | 4.1.17 | Última |
-| Vitest | 4.0.17 | Última |
+## 10. Plan de acción
 
-### 5.2 Alertas de Dependencias
+### Fase 1 - Bloqueos de producción
 
-| # | Severidad | Detalle |
-|---|-----------|---------|
-| P1 | **ALTA** | `next-auth@5.0.0-beta.30` es beta — forzado con `pnpm.overrides`. Riesgo de breaking changes sin fix upstream |
-| P2 | **BAJA** | `sileo@0.1.5` — paquete desconocido, verificar si es necesario |
-| P3 | **INFO** | `@types/pg` en devDeps pero el proyecto usa `postgres` (postgres.js), no `pg` |
+1. Aplicar y verificar migración `0007`.
+2. Configurar y probar cron mensual de cumpleaños en EC2.
+3. ~~Completar `pnpm test:run`, `pnpm lint` y `pnpm build`~~ - **Completado 2026-07-01**.
+4. Ejecutar smoke test por cada rol contra una BD de staging.
 
----
+### Fase 2 - Seguridad y calidad
 
-## 6. RUTAS & COBERTURA DE FUNCIONALIDADES
+1. Añadir tests API/E2E del workflow y autorización.
+2. Endurecer CSP con nonce/hash.
+3. Añadir validación de secretos obligatorios al arranque.
+4. Automatizar auditoría de dependencias, SBOM y escaneo de contenedor.
 
-### 6.1 Páginas (16 rutas)
+### Fase 3 - Operación y mantenibilidad
 
-| Ruta | Módulo | Estado |
-|------|--------|--------|
-| `/login` | Auth | OK |
-| `/dashboard` | Métricas | OK |
-| `/solicitudes` | Bandeja | OK |
-| `/solicitudes/nueva` | Crear | OK |
-| `/aprobar-solicitudes` | Jefe/RRHH | OK |
-| `/mi-balance` | Balance | OK |
-| `/mi-equipo` | Equipo | OK |
-| `/mi-perfil` | Perfil | OK |
-| `/usuarios` | CRUD Admin | OK |
-| `/departamentos` | CRUD Admin | OK |
-| `/auditoria` | Log Admin | OK |
-| `/reportes` | Reportes | OK |
-| `/reportes-departamento` | Reportes depto | OK |
-| `/exportar` | Exportación | OK |
-| `/configuracion` | Config Admin | OK |
-| `/asignacion-dias` | Asignación Admin | OK |
+1. Implementar logging JSON con request/correlation ID.
+2. Centralizar logs y configurar alertas de health, cron, SMTP y errores 5xx.
+3. Formalizar UAT, trazabilidad ISO/IEC 12207 y registro de decisiones técnicas.
+4. Resolver la estrategia definitiva de RBAC dual y tabla `sessions`.
 
-### 6.2 APIs (28+ rutas)
+## 11. Criterio de cierre
 
-Todas las rutas críticas implementadas: auth, CRUD usuarios, solicitudes, balances, dashboard, auditoría, reportes, exportación, configuración, cron.
-
-### 6.3 Rutas no cubiertas por Middleware
-
-| Ruta | Protegida por middleware | Protegida por API auth |
-|------|--------------------------|------------------------|
-| `/cambiar-password` | **Sí** (matcher) | Sí (API interna) |
-| `/mi-balance` | **Sí** (matcher) | Sí |
-
-**Riesgo bajo** — estas rutas usan `getSession()` internamente, pero el middleware no las protege a nivel de redirect.
+El release puede marcarse listo cuando no existan P0 abiertos, lint/tests/build estén verdes en CI, las migraciones se hayan probado sobre copia de staging, el flujo completo por rol tenga evidencia y exista rollback/backup verificado.
 
 ---
 
-## 7. RENDIMIENTO & OBSERVABILIDAD
-
-| Aspecto | Estado | Detalle |
-|---------|--------|---------|
-| Health check | Implementado | `GET /api/health` — verifica DB |
-| DB pooling | Configurado | `max: 10, idle_timeout: 20s` |
-| PostgreSQL tuning | Optimizado para t3.medium | shared_buffers=256MB, max_connections=50 |
-| Memory limits | Docker limits configurados | App: 896MB, DB: 640MB, Nginx: 64MB |
-| Logging | Solo `console.error` | Sin sistema estructurado (winston/pino) |
-| Métricas | Dashboard interno | Métricas por rol (admin/rrhh/jefe) |
-
----
-
-## 8. RESUMEN EJECUTIVO
-
-### Fortalezas
-
-1. **State machine robusta** — Guards granulares, efectos atómicos, transiciones bien definidas
-2. **RBAC completo** — Roles, permisos, sincronización flags↔RBAC
-3. **Testing unitario sólido** — 143 tests, 100% pass, cobertura de lógica de negocio
-4. **Seguridad perimetral** — Headers OWASP, rate limiting, auditoría, sanitización
-5. **Arquitectura limpia** — Separación schema/services/domain/API bien ejecutada
-6. **Infraestructura Docker** — Multi-stage, optimizada para EC2 t3.medium
-
-### Riesgos Críticos
-
-| # | Área | Riesgo | Impacto |
-|---|------|--------|---------|
-| 1 | **CI/CD** | ~~ESLint roto~~ | **Mitigado** — lint ejecutable en pipeline |
-| 2 | **Testing** | Cobertura integración workflow ampliada; API routes pendientes | Regresiones en endpoints aún posibles |
-| 3 | **Dependencia** | next-auth beta — override forzado | Breaking changes sin workaround |
-
-### Recomendaciones Prioritarias (PM)
-
-1. **Fix ESLint** (1 día) — Desbloquea CI/CD
-2. **Tests integración workflow** (2-3 días) — Cubrir el camino crítico: crear → enviar → aprobar jefe → aprobar RRHH → finalizar
-3. **Evaluar next-auth stable** (1 día) — Verificar si ya hay release stable para v5
-4. **Eliminar código deprecated** (1 día) — `aprobarSolicitudJefe/RRHH/rechazar/cancelar` → deletar o mover a test-only
-5. **Tests API routes** (3-5 días) — Cubrir endpoints críticos con supertest o similar
-
-### Calificación General
-
-| Dimensión | Nota (1-10) |
-|-----------|-------------|
-| Arquitectura | **8.5** |
-| Seguridad | **7.5** |
-| Testing | **7.0** (unit sólido + integración workflow ampliada) |
-| Code Quality | **7.5** (ESLint operativo; legacy deprecated eliminado) |
-| Documentación | **8.0** (AGENTS.md, AUDITORIA.md, schema docs) |
-| Deploy readiness | **7.5** (lint + build + tests verdes) |
-| **Global** | **7.6/10** |
-
----
-
-*Auditoría realizada por opencode (AI Senior QA & PM) — 2026-06-30*
-
----
-
-## 9. Plan de remediación ejecutado (2026-06-19)
-
-**Equipo:** PM + Backend + Frontend + QA
-
-### Decisión de sprint (priorización PM)
-
-| Prioridad | Ítem | Owner | Estado |
-|-----------|------|-------|--------|
-| P0 | ESLint roto (bloquea CI) | Frontend | ✅ Resuelto |
-| P1 | Middleware sin `/mi-balance` y `/cambiar-password` | Backend | ✅ Resuelto |
-| P1 | `AUTH_SECRET` débil en `.env.example` (S1) | Backend | ✅ Resuelto |
-| P2 | Eliminar workflow legacy deprecated (D1) | Backend | ✅ Resuelto |
-| P2 | Tests integración workflow (T1) | QA | ✅ Ampliado |
-| P3 | Tests API routes (T2) | QA | ⏳ Backlog |
-| P3 | Evaluar next-auth stable (P1) | Backend | ⏳ Backlog |
-| P3 | Logging estructurado | Backend | ⏳ Backlog |
-
-### Cambios aplicados
-
-1. **ESLint (`eslint.config.mjs`)** — Registrados `eslint-plugin-react` y `eslint-plugin-react-hooks`; excluidos `.agents/`, `scripts/`, vendor auxiliar. `pnpm lint` termina con **0 errores** (warnings legacy tolerados con `--max-warnings 500`).
-2. **Middleware** — Añadidos `/mi-balance` y `/cambiar-password` al matcher; redirect a login sin sesión.
-3. **Seguridad** — `.env.example`: `AUTH_SECRET` vacío con instrucción obligatoria de generación (`openssl rand -base64 32`).
-4. **Deuda D1** — Eliminadas `aprobarSolicitudJefe`, `aprobarSolicitudRRHH`, `rechazarSolicitud`, `cancelarSolicitud` de `solicitudes.service.ts`. Vía viva: `workflow.service.ts` → `ejecutarAccion`.
-5. **QA** — Nuevo `tests/integration/workflow.service.integration.test.ts`: camino crear → jefe → RRHH → finalizar + cancelación con liberación de balance. Rol `ADMIN` en `test-data` helper.
-6. **Build** — `pnpm build` verificado OK (sin DB en runtime de build).
-
-### Verificación post-remediación
-
-| Check | Resultado |
-|-------|-----------|
-| `pnpm test:run` | 143 tests, 0 fallos |
-| `pnpm lint` | 0 errores, warnings legacy |
-| `pnpm build` | OK |
-
-### Backlog acordado (próximo sprint)
-
-- Tests de integración/API para rutas críticas (`/api/solicitudes`, `/api/solicitudes/[id]/accion`).
-- Revisión de `next-auth@5.0.0-beta.30` cuando exista release stable.
-- Documentar/decidir destino de tabla `sessions` (D3) y exportar schema `rate_limits` en Drizzle (D4).
-- Endurecer CSP (`unsafe-inline` / `unsafe-eval`) cuando el bundle lo permita (S3).
-- Tests `rbac.service` y `email.service` con mocks (T3, T4).
-
+**Documento vivo:** actualizar fecha, evidencia y estado en cada release. No mantener como “PASS” resultados que no se hayan ejecutado sobre el commit auditado.

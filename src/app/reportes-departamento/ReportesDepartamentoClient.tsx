@@ -130,11 +130,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
 
-  useEffect(() => {
-    cargarReporte();
-  }, [mesSeleccionado, anioSeleccionado]);
-
-  const cargarReporte = async () => {
+  async function cargarReporte() {
     try {
       setLoading(true);
       const response = await fetch(`/api/reportes/departamento?mes=${mesSeleccionado}&anio=${anioSeleccionado}`);
@@ -154,6 +150,10 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    cargarReporte();
+  }, [mesSeleccionado, anioSeleccionado]);
 
   const exportarReporte = async (formato: 'csv' | 'pdf' = 'csv') => {
     if (!reporte) {

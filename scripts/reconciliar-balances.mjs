@@ -39,7 +39,16 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { max: 1, ssl: { rejectUnauthorized: false } });
+const dbHost = new URL(url).hostname;
+const isLocalDb = ['localhost', '127.0.0.1', '::1', 'postgres', 'cni-postgres'].includes(dbHost);
+const useSsl = process.env.DATABASE_SSL
+  ? process.env.DATABASE_SSL === 'true'
+  : !isLocalDb;
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
+const sql = postgres(url, {
+  max: 1,
+  ssl: useSsl ? { rejectUnauthorized } : false,
+});
 
 // CTE que calcula los valores correctos por balance y los compara con los actuales.
 const calculoCte = sql`

@@ -16,6 +16,7 @@ import * as schema from './schema';
 // ============================================================
 const connectionString = process.env.DATABASE_URL;
 const databaseSsl = process.env.DATABASE_SSL;
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 if (!connectionString) {
   throw new Error('DATABASE_URL no está configurada');
@@ -30,7 +31,7 @@ export const client = postgres(connectionString, {
   max: 10,
   idle_timeout: 20,
   connect_timeout: 10,
-  ssl: useSsl ? { rejectUnauthorized: false } : false
+  ssl: useSsl ? { rejectUnauthorized } : false
 });
 
 // Cliente Drizzle ORM

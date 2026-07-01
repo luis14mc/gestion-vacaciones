@@ -25,8 +25,9 @@ export default auth((req) => {
   }
   
   // 2️⃣ Permitir rutas públicas (login y auth)
-  const RUTAS_PUBLICAS = ['/login', '/api/auth'];
-  if (RUTAS_PUBLICAS.some(ruta => pathname === ruta || pathname.startsWith(ruta))) {
+  // Los cron no usan cookie de sesión: cada endpoint valida CRON_SECRET.
+  const RUTAS_PUBLICAS = ['/login', '/api/auth', '/api/cron'];
+  if (RUTAS_PUBLICAS.some(ruta => pathname === ruta || pathname.startsWith(`${ruta}/`))) {
     return NextResponse.next();
   }
   

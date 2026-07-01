@@ -80,10 +80,5 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
   },
-  "browserslist": "> 1%",
-  "pnpm": {
-    "overrides": {
-      "next-auth": "5.0.0-beta.30"
-    }
-  }
+  "browserslist": "> 1%"
 }

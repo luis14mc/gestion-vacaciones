@@ -20,6 +20,14 @@ const optionalFechaNacimiento = z.preprocess(
         .optional()
 );
 
+const optionalFechaNacimientoFormulario = z.string()
+    .optional()
+    .superRefine((value, ctx) => {
+        if (!value) return;
+        const result = normalizarFechaNacimiento(value);
+        if (result.error) ctx.addIssue({ code: "custom", message: result.error });
+    });
+
 const isPositiveIntegerString = (value: string) => {
     const numericValue = Number(value);
     return Number.isInteger(numericValue) && numericValue > 0;
@@ -47,7 +55,7 @@ export const usuarioSchema = z.object({
     departamentoId: z.string().min(1, "Debe seleccionar un departamento"),
     cargo: z.string().optional(),
     fechaIngreso: z.string().optional(),
-    fechaNacimiento: optionalFechaNacimiento,
+    fechaNacimiento: optionalFechaNacimientoFormulario,
     esAdmin: z.boolean(),
     esRrhh: z.boolean(),
     esDirector: z.boolean(),

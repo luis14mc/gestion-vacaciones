@@ -91,7 +91,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anioSeleccionado]);
 
-  const cargarDatos = async () => {
+  async function cargarDatos() {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
 

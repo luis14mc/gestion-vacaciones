@@ -69,11 +69,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<Usuario | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
 
-  useEffect(() => {
-    cargarEquipo();
-  }, [estadoFiltro]);
-
-  const cargarEquipo = async () => {
+  async function cargarEquipo() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -129,6 +125,10 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    cargarEquipo();
+  }, [estadoFiltro]);
 
   const usuariosFiltrados = usuarios.filter((usuario) => {
     const matchBusqueda =

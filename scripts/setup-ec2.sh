@@ -17,7 +17,7 @@ echo "  CONFIGURACIÓN INICIAL - EC2 Ubuntu para CNI"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
-# ─────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # 1. ACTUALIZAR SISTEMA
 # ─────────────────────────────────────────────────────────
 echo "[1/7] Actualizando sistema operativo..."
@@ -107,19 +107,28 @@ mkdir -p "$APP_DIR/nginx/ssl"
 chown -R ubuntu:ubuntu /opt/vacaciones /opt/apps /opt/backups
 
 # ─────────────────────────────────────────────────────────
-# 7. CONFIGURAR CRON PARA BACKUPS A S3 Y TRANSICIONES
-# ─────────────────────────────────────────────────────────
+# 7. CONFIGURAR CRON PARA BACKUPS, TRANSICIONES Y CUMPLEAÑOS
+# -------------------------------------------------------------
 echo "[7/8] Configurando cron jobs..."
-(crontab -l 2>/dev/null; echo "
+CRON_TMP=$(mktemp)
+crontab -l 2>/dev/null | sed '/# BEGIN VACACIONES_CNI/,/# END VACACIONES_CNI/d' > "$CRON_TMP" || true
+cat >> "$CRON_TMP" <<EOF
+# BEGIN VACACIONES_CNI
 # Backup diario de PostgreSQL a S3 a las 2:00 AM
 0 2 * * * ${APP_DIR}/scripts/backup-s3.sh >> /var/log/backup-s3.log 2>&1
 
 # Transiciones automáticas de solicitudes a medianoche
-0 0 * * * curl -s -X POST http://localhost:3000/api/cron/transiciones -H 'Authorization: Bearer \$(grep CRON_SECRET ${APP_DIR}/.env.production | cut -d= -f2)' > /dev/null 2>&1
+0 0 * * * curl -s -X POST http://localhost:3000/api/cron/transiciones -H "Authorization: Bearer \$(sed -n 's/^CRON_SECRET=//p' ${APP_DIR}/.env.production | head -n1)" > /dev/null 2>&1
+
+# Notificaciones de cumpleaños el primer día de cada mes a las 6:00 AM (Honduras)
+0 6 1 * * curl -sS --fail -X POST http://localhost:3000/api/cron/cumpleanos -H "Authorization: Bearer \$(sed -n 's/^CRON_SECRET=//p' ${APP_DIR}/.env.production | head -n1)" >> /var/log/cumpleanos-cron.log 2>&1
 
 # Limpiar logs de Docker semanalmente
 0 4 * * 0 docker system prune -f > /dev/null 2>&1
-") | crontab -
+# END VACACIONES_CNI
+EOF
+crontab "$CRON_TMP"
+rm -f "$CRON_TMP"
 
 # ─────────────────────────────────────────────────────────
 # 8. CONFIGURAR CLOUDWATCH BÁSICO (Opcional)

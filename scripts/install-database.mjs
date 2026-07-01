@@ -13,6 +13,16 @@ import { execSync } from 'child_process';
 
 config();
 
+if (process.env.NODE_ENV === 'production') {
+  console.error('ERROR: db:install realiza un reset destructivo y está bloqueado en producción. Use db:setup.');
+  process.exit(1);
+}
+
+if (process.env.ALLOW_DATABASE_RESET !== 'YES') {
+  console.error('ERROR: reset cancelado. Defina ALLOW_DATABASE_RESET=YES solo para una BD local/de prueba descartable.');
+  process.exit(1);
+}
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error('❌ ERROR: DATABASE_URL no configurada en .env');
@@ -20,10 +30,11 @@ if (!DATABASE_URL) {
 }
 
 const useSsl = process.env.DATABASE_SSL === 'true';
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 
 const sql = postgres(DATABASE_URL, {
   max: 1,
-  ssl: useSsl ? { rejectUnauthorized: false } : false,
+  ssl: useSsl ? { rejectUnauthorized } : false,
 });
 
 async function executeSQL(sqlCode, multiStatement = false) {

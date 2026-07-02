@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { departamentos, usuarios } from '@/lib/db/schema';
@@ -72,8 +73,7 @@ function getCellValue(row: ExcelJS.Row, columnMap: Record<string, number>, colKe
   return colNum ? row.getCell(colNum).value : null;
 }
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
 
     if (!session) {
@@ -451,8 +451,4 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: false, error: 'Modo invalido' }, { status: 400 });
-  } catch (error) {
-    console.error('Error procesando importacion:', error);
-    return NextResponse.json({ success: false, error: 'Error procesando el archivo' }, { status: 500 });
-  }
-}
+});

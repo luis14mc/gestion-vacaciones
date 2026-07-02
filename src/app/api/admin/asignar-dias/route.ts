@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { db } from '@/lib/db';
 import { usuarios, balances, anosLaborales } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
@@ -24,8 +25,7 @@ function calcularDiasSegunAntiguedad(fechaIngreso: string): number {
   return 20; // 4 años o más
 }
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session || (!session.esRrhh && !session.esAdmin)) {
       return NextResponse.json({ success: false, error: 'No autorizado. Se requiere rol RRHH o Administrador.' }, { status: 403 });
@@ -129,11 +129,4 @@ export async function POST(request: NextRequest) {
       resultados: { asignados, actualizados, omitidos }
     });
 
-  } catch (error) {
-    console.error('Error al asignar días:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error interno al procesar la asignación de días.' },
-      { status: 500 }
-    );
-  }
-}
+});

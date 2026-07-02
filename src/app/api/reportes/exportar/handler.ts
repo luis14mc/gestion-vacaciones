@@ -77,8 +77,6 @@ export async function handleExportarReporte(
       },
     });
   } catch (error) {
-    console.error('Error exportando reporte:', error);
-
     await registrarEventoAuditoria({
       usuarioId: session.id,
       accion: 'actualizar',
@@ -89,16 +87,13 @@ export async function handleExportarReporte(
       severidad: 'advertencia',
       detalles: {
         formato,
-        error: error instanceof Error ? error.message : 'Error desconocido',
+        error: 'Error al exportar reporte',
         filtros: Object.fromEntries(request.nextUrl.searchParams.entries()),
       },
       ipAddress,
       userAgent,
     }).catch(() => {});
 
-    return NextResponse.json(
-      { success: false, error: 'Error al exportar reporte' },
-      { status: 500 }
-    );
+    throw error;
   }
 }

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { getSession } from '@/lib/auth';
 import { parseFiltrosAuditoria, filtrosAuditoriaToRecord } from '@/lib/domain/auditoria/filters';
 import { listarRegistrosAuditoria } from '@/lib/domain/auditoria/queries';
 import { puedeVerAuditoria } from '@/lib/domain/auditoria/access';
 import { registrarEventoAuditoria, datosPeticion } from '@/services/auditoria.service';
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
 
     if (!session) {
@@ -36,14 +36,9 @@ export async function GET(request: NextRequest) {
         filtros: filtrosAuditoriaToRecord(filtros),
       },
     });
-  } catch (error) {
-    console.error('Error fetching auditoria:', error);
-    return NextResponse.json({ success: false, error: 'Error interno' }, { status: 500 });
-  }
-}
+});
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
 
     if (!session) {
@@ -90,8 +85,4 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, message: 'Evento manual registrado' });
-  } catch (error) {
-    console.error('Error saving auditoria:', error);
-    return NextResponse.json({ success: false, error: 'Error interno' }, { status: 500 });
-  }
-}
+});

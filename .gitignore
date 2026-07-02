@@ -31,7 +31,9 @@ yarn-error.log*
 .env.test
 .env.production
 
-# vercel
+# datos locales / dumps SQL (no versionar)
+/database/
+
 .vercel
 
 # typescript

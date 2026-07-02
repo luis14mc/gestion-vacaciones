@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { getSession } from '@/lib/auth';
 import { parseFiltrosAuditoria, filtrosAuditoriaToRecord } from '@/lib/domain/auditoria/filters';
 import { exportarRegistrosAuditoria } from '@/lib/domain/auditoria/queries';
@@ -17,8 +18,7 @@ function escapeCsv(value: unknown): string {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
@@ -100,8 +100,4 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
-  } catch (error) {
-    console.error('Error exportando auditoría:', error);
-    return NextResponse.json({ success: false, error: 'Error al exportar auditoría' }, { status: 500 });
-  }
-}
+});

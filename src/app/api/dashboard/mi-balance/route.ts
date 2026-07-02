@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withErrorHandler } from "@/lib/api-handler";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balances, solicitudes, anosLaborales, usuarios } from "@/lib/db/schema";
@@ -18,8 +19,7 @@ const balanceSelect = {
   updatedAt: balances.updatedAt,
 };
 
-export async function GET() {
-  try {
+export const GET = withErrorHandler(async () => {
     const session = await getSession();
 
     if (!session?.id) {
@@ -207,11 +207,4 @@ export async function GET() {
         enVacaciones: enVacacionesData.length > 0,
       },
     });
-  } catch (error) {
-    console.error("Error obteniendo balance personal:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al obtener balance" },
-      { status: 500 }
-    );
-  }
-}
+});

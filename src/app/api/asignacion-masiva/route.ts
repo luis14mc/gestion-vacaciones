@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/lib/api-handler";
 import { getSession } from "@/lib/auth";
 import { registrarAuditoria, datosPeticion } from "@/services/auditoria.service";
 import { db } from "@/lib/db";
 import { balances, usuarios, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { asignacionMasivaSchema } from "@/lib/validation/api-schemas";
 
-export async function POST(request: NextRequest) {
-  try {
+class VersionConflictError extends Error {
+  constructor() {
+    super('CONFLICTO_VERSION');
+    this.name = 'VersionConflictError';
+  }
+}
+
+export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ success: false, error: "No autenticado" }, { status: 401 });
@@ -17,22 +25,23 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { departamentoId, tipoAusencia, cantidadAsignada, operacion = "reemplazar" } = body;
-    let anoLaboralId = body.anoLaboralId;
-    const anio = body.anio;
-
-    if (!departamentoId || !tipoAusencia || cantidadAsignada === undefined) {
+    const parsed = asignacionMasivaSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Faltan campos requeridos" },
+        { success: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' },
         { status: 400 }
       );
     }
+
+    const { departamentoId, tipoAusencia, cantidadAsignada, operacion } = parsed.data;
+    let anoLaboralId = parsed.data.anoLaboralId;
+    const anio = parsed.data.anio;
 
     if (!anoLaboralId && anio) {
       const anoResult = await db
         .select({ id: anosLaborales.id })
         .from(anosLaborales)
-        .where(eq(anosLaborales.ano, Number(anio)))
+        .where(eq(anosLaborales.ano, anio))
         .limit(1);
 
       const [anoLaboral] = anoResult;
@@ -67,55 +76,75 @@ export async function POST(request: NextRequest) {
     let usuariosCreados = 0;
     let usuariosActualizados = 0;
 
-    // Atomico: todo el departamento se asigna o nada (sin estado parcial).
-    await db.transaction(async (tx) => {
-      for (const usuario of usuariosDepartamento) {
-        const balanceExistente = await tx.query.balances.findFirst({
-          where: and(
-            eq(balances.usuarioId, usuario.id),
-            eq(balances.tipoAusencia, tipoAusencia as any),
-            eq(balances.anoLaboralId, anoLaboralId)
-          )
-        });
-
-        let cantidadFinal = Number.parseFloat(cantidadAsignada.toString());
-
-        if (balanceExistente) {
-          const balanceActual = balanceExistente;
-
-          if (operacion === "sumar") {
-            cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) + cantidadFinal;
-          } else if (operacion === "restar") {
-            cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) - cantidadFinal;
-            if (cantidadFinal < 0) cantidadFinal = 0;
-          }
-
-          // cantidad_disponible la recalcula el trigger de BD (incluye acumulada).
-          await tx
-            .update(balances)
-            .set({
-              cantidadInicial: cantidadFinal.toFixed(2),
-              version: balanceActual.version + 1,
-              updatedAt: new Date().toISOString()
-            })
-            .where(eq(balances.id, balanceActual.id));
-          usuariosActualizados++;
-        } else {
-          if (operacion === "restar") {
-            continue;
-          }
-
-          const cantidadStr = cantidadFinal.toFixed(2);
-          await tx.insert(balances).values({
-            usuarioId: usuario.id,
-            tipoAusencia: tipoAusencia as any,
-            anoLaboralId,
-            cantidadInicial: cantidadStr,
+    try {
+      await db.transaction(async (tx) => {
+        for (const usuario of usuariosDepartamento) {
+          const balanceExistente = await tx.query.balances.findFirst({
+            where: and(
+              eq(balances.usuarioId, usuario.id),
+              eq(balances.tipoAusencia, tipoAusencia as any),
+              eq(balances.anoLaboralId, anoLaboralId)
+            )
           });
-          usuariosCreados++;
+
+          let cantidadFinal = cantidadAsignada;
+
+          if (balanceExistente) {
+            const balanceActual = balanceExistente;
+
+            if (operacion === "sumar") {
+              cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) + cantidadFinal;
+            } else if (operacion === "restar") {
+              cantidadFinal = Number.parseFloat(balanceActual.cantidadInicial) - cantidadFinal;
+              if (cantidadFinal < 0) cantidadFinal = 0;
+            }
+
+            const updated = await tx
+              .update(balances)
+              .set({
+                cantidadInicial: cantidadFinal.toFixed(2),
+                version: balanceActual.version + 1,
+                updatedAt: new Date().toISOString()
+              })
+              .where(and(
+                eq(balances.id, balanceActual.id),
+                eq(balances.version, balanceActual.version)
+              ))
+              .returning({ id: balances.id });
+
+            if (updated.length === 0) {
+              throw new VersionConflictError();
+            }
+
+            usuariosActualizados++;
+          } else {
+            if (operacion === "restar") {
+              continue;
+            }
+
+            const cantidadStr = cantidadFinal.toFixed(2);
+            await tx.insert(balances).values({
+              usuarioId: usuario.id,
+              tipoAusencia: tipoAusencia as any,
+              anoLaboralId,
+              cantidadInicial: cantidadStr,
+            });
+            usuariosCreados++;
+          }
         }
+      });
+    } catch (error) {
+      if (error instanceof VersionConflictError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Los datos cambiaron mientras procesabas la asignación. Recarga e intenta de nuevo.',
+          },
+          { status: 409 }
+        );
       }
-    });
+      throw error;
+    }
 
     const totalProcesados = usuariosCreados + usuariosActualizados;
 
@@ -144,11 +173,4 @@ export async function POST(request: NextRequest) {
       usuariosCreados,
       usuariosActualizados,
     });
-  } catch (error) {
-    console.error("Error en POST /api/asignacion-masiva:", error);
-    return NextResponse.json(
-      { success: false, error: "Error en la asignación masiva" },
-      { status: 500 }
-    );
-  }
-}
+});

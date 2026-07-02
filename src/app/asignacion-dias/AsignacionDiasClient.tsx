@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Calendar,
   Users,
@@ -86,35 +86,6 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     operacion: "reemplazar", // reemplazar, sumar, restar
   });
 
-  useEffect(() => {
-    cargarDatos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anioSeleccionado]);
-
-  async function cargarDatos() {
-    const requestId = loadRequestRef.current + 1;
-    loadRequestRef.current = requestId;
-
-    try {
-      setLoading(true);
-      const [usuariosData, balancesData] = await Promise.all([
-        cargarUsuarios(),
-        cargarBalances(),
-        cargarDepartamentos(),
-        cargarTiposAusencia(),
-      ]);
-
-      if (loadRequestRef.current !== requestId) return;
-
-      if (usuariosData) setUsuarios(usuariosData);
-      if (balancesData) setBalances(balancesData);
-      setRefreshKey(prev => prev + 1);
-    } finally {
-      if (loadRequestRef.current === requestId) {
-        setLoading(false);
-      }
-    }
-  };
 
   const cargarUsuarios = async () => {
     try {
@@ -187,6 +158,35 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
       console.error("Error cargando tipos de ausencia:", error);
     }
   };
+
+  const cargarDatos = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+
+    try {
+      setLoading(true);
+      const [usuariosData, balancesData] = await Promise.all([
+        cargarUsuarios(),
+        cargarBalances(),
+        cargarDepartamentos(),
+        cargarTiposAusencia(),
+      ]);
+
+      if (loadRequestRef.current !== requestId) return;
+
+      if (usuariosData) setUsuarios(usuariosData);
+      if (balancesData) setBalances(balancesData);
+      setRefreshKey(prev => prev + 1);
+    } finally {
+      if (loadRequestRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  }, [anioSeleccionado]);
+
+  useEffect(() => {
+    void cargarDatos();
+  }, [cargarDatos]);
 
   const abrirModalIndividual = (usuario?: Usuario) => {
     setModoModal("individual");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Users,
   Search,
@@ -79,13 +79,7 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     estaActivo: true,
   });
 
-  // Load users and departments on mount
-  useEffect(() => {
-    cargarUsuarios();
-    cargarDepartamentos();
-  }, []);
-
-  async function cargarDepartamentos() {
+  const cargarDepartamentos = useCallback(async () => {
     try {
       const res = await fetch("/api/departamentos");
       if (res.ok) {
@@ -98,9 +92,9 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     } catch (error) {
       console.error("Error cargando departamentos:", error);
     }
-  };
+  }, []);
 
-  async function cargarUsuarios() {
+  const cargarUsuarios = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/usuarios");
@@ -119,7 +113,12 @@ export default function UsuariosClient({ session }: UsuariosClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void cargarUsuarios();
+    void cargarDepartamentos();
+  }, [cargarUsuarios, cargarDepartamentos]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

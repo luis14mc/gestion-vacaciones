@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   FileText,
   Calendar,
@@ -23,6 +23,7 @@ import {
   etiquetaBotonAprobacion,
   etiquetaEstadoBandeja,
 } from '@/lib/domain/aprobacion-inbox';
+import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import type { Session } from "next-auth";
 
 import { Button } from "@/components/ui/button";
@@ -116,12 +117,9 @@ export default function AprobarSolicitudesClient({
   const [mostrarModal, setMostrarModal] = useState(false);
   const [accion, setAccion] = useState<"aprobar" | "rechazar" | null>(null);
   const [comentarios, setComentarios] = useState("");
+  const [referenciaTiempo, setReferenciaTiempo] = useState(() => Date.now());
 
-  useEffect(() => {
-    cargarSolicitudes();
-  }, [paginaActual]);
-
-  async function cargarSolicitudes() {
+  const cargarSolicitudes = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -148,18 +146,19 @@ export default function AprobarSolicitudesClient({
           rechazadas_hoy: data.stats?.rechazadas_hoy ?? 0,
         });
         setTotalPaginas(data.totalPages || 1);
-      } else {
-        console.error("Error en respuesta:", data.error);
+        setReferenciaTiempo(Date.now());
       }
     } catch (error) {
-      console.error("Error al cargar solicitudes:", error);
-      notify.error(
-        "No se pudieron cargar las solicitudes. Intenta refrescar la página."
-      );
+      console.error("Error cargando solicitudes:", error);
+      notify.error("No se pudieron cargar las solicitudes");
     } finally {
       setLoading(false);
     }
-  };
+  }, [paginaActual, itemsPorPagina]);
+
+  useEffect(() => {
+    void cargarSolicitudes();
+  }, [cargarSolicitudes]);
 
   const abrirModalAprobacion = (
     solicitud: Solicitud,
@@ -268,15 +267,8 @@ export default function AprobarSolicitudesClient({
     });
   };
 
-  const [ahora] = useState(() => Date.now());
-
-  const calcularDiasDesde = (fecha: string) => {
-    const diff = ahora - new Date(fecha).getTime();
-    const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (dias === 0) return "Hoy";
-    if (dias === 1) return "Hace 1 día";
-    return `Hace ${dias} días`;
-  };
+  const tiempoRelativo = (fecha: string) =>
+    calcularTiempoRelativo(fecha, referenciaTiempo);
 
   return (
     <div>
@@ -445,7 +437,7 @@ export default function AprobarSolicitudesClient({
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground">
-                              {calcularDiasDesde(sol.createdAt)}
+                              {tiempoRelativo(sol.createdAt)}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -534,7 +526,7 @@ export default function AprobarSolicitudesClient({
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />
-                            Solicitado {calcularDiasDesde(sol.createdAt)}
+                            Solicitado {tiempoRelativo(sol.createdAt)}
                           </div>
                         </div>
 

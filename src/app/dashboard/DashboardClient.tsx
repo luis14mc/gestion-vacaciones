@@ -212,9 +212,11 @@ export default function DashboardClient({ session }: { session: Session }) {
           <p className="text-[13px] text-muted-foreground mt-0.5">{roleConfig.desc}</p>
         </div>
         <button
+          type="button"
           onClick={cargarDatos}
           className="p-1.5 rounded-xl hover:bg-muted transition-colors"
           title="Recargar"
+          aria-label="Recargar dashboard"
         >
           <RefreshCw className="w-4 h-4 text-muted-foreground" />
         </button>

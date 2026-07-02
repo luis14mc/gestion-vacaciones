@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Session } from "next-auth";
 import type { LucideIcon } from "lucide-react";
@@ -21,6 +21,7 @@ import {
   XCircle,
   Hourglass,
 } from "lucide-react";
+import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import { notify } from "@/lib/swal";
 import {
   Card,
@@ -168,12 +169,9 @@ export default function SolicitudesClient({ session }: Props) {
 
   const [solicitudSeleccionada, setSolicitudSeleccionada] =
     useState<Solicitud | null>(null);
+  const [referenciaTiempo, setReferenciaTiempo] = useState(() => Date.now());
 
-  useEffect(() => {
-    cargarSolicitudes();
-  }, [paginaActual, estadoFiltro, tipoFiltro, fechaInicio, fechaFin]);
-
-  async function cargarSolicitudes() {
+  const cargarSolicitudes = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -198,6 +196,7 @@ export default function SolicitudesClient({ session }: Props) {
           rechazadas: data.stats?.rechazadas || 0,
         });
         setTotalPaginas(Math.ceil(data.total / itemsPorPagina));
+        setReferenciaTiempo(Date.now());
       }
     } catch (error) {
       console.error("Error al cargar solicitudes:", error);
@@ -205,7 +204,11 @@ export default function SolicitudesClient({ session }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [paginaActual, estadoFiltro, tipoFiltro, fechaInicio, fechaFin, itemsPorPagina]);
+
+  useEffect(() => {
+    void cargarSolicitudes();
+  }, [cargarSolicitudes]);
 
   const solicitudesFiltradas = solicitudes || [];
 
@@ -234,18 +237,8 @@ export default function SolicitudesClient({ session }: Props) {
     });
   };
 
-  const [ahora] = useState(() => Date.now());
-
-  const calcularDiasDesde = (fecha: string) => {
-    const diff = ahora - new Date(fecha).getTime();
-    const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (dias === 0) return "Hoy";
-    if (dias === 1) return "Hace 1 día";
-    if (dias < 30) return `Hace ${dias} días`;
-    const meses = Math.floor(dias / 30);
-    if (meses === 1) return "Hace 1 mes";
-    return `Hace ${meses} meses`;
-  };
+  const calcularDiasDesde = (fecha: string) =>
+    calcularTiempoRelativo(fecha, referenciaTiempo);
 
   return (
     <div>

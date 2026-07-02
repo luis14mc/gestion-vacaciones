@@ -30,6 +30,38 @@ function firstRow(result: unknown): any {
   return Array.isArray(rows) ? rows[0] : undefined;
 }
 
+export function rateLimitKeyEmail(email: string): string {
+  return `login:email:${email.toLowerCase()}`;
+}
+
+export function rateLimitKeyIp(ip: string): string {
+  return `login:ip:${ip}`;
+}
+
+/** Rate limit dual: email e IP con contadores independientes. */
+export async function checkDualRateLimit(
+  email: string,
+  ip: string
+): Promise<{ allowed: boolean; remainingMs: number }> {
+  const emailResult = await checkRateLimit(rateLimitKeyEmail(email));
+  if (!emailResult.allowed) {
+    return emailResult;
+  }
+
+  if (ip && ip !== 'unknown') {
+    return checkRateLimit(rateLimitKeyIp(ip));
+  }
+
+  return { allowed: true, remainingMs: 0 };
+}
+
+export async function resetDualRateLimit(email: string, ip: string): Promise<void> {
+  await resetRateLimit(rateLimitKeyEmail(email));
+  if (ip && ip !== 'unknown') {
+    await resetRateLimit(rateLimitKeyIp(ip));
+  }
+}
+
 export async function checkRateLimit(
   identifier: string
 ): Promise<{ allowed: boolean; remainingMs: number }> {

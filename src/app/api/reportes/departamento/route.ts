@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/lib/api-handler";
 import { db } from "@/lib/db";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { usuarios, balances, solicitudes, anosLaborales } from "@/lib/db/schema";
@@ -25,8 +26,7 @@ const RESUMEN_VACIO = {
   promedioUsoPorPersona: 0,
 };
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
@@ -199,11 +199,4 @@ export async function GET(request: NextRequest) {
       },
     });
 
-  } catch (error) {
-    console.error("Error en reporte departamento:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al generar reporte" },
-      { status: 500 }
-    );
-  }
-}
+});

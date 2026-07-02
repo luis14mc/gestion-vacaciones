@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Mail,
@@ -89,7 +89,7 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
     confirm: false,
   });
 
-  async function cargarPerfil() {
+  const cargarPerfil = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch("/api/usuarios/me");
@@ -110,11 +110,11 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    cargarPerfil();
-  }, []);
+    void cargarPerfil();
+  }, [cargarPerfil]);
 
   const handleSaveProfile = async () => {
     try {

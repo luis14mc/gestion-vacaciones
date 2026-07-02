@@ -6,90 +6,75 @@ import { getSession } from "@/lib/auth";
 import { validarPasswordPolitica } from "@/lib/config/password-policy";
 import { metadataConPasswordActualizada } from "@/lib/config/password-expiry";
 import bcrypt from "bcryptjs";
+import { withErrorHandler } from "@/lib/api-handler";
+import { cambiarPasswordSchema } from "@/lib/validation/api-schemas";
 
-// PATCH: Cambiar contraseña del usuario autenticado
-export async function PATCH(request: NextRequest) {
-  try {
-    const session = await getSession();
+export const PATCH = withErrorHandler(async (request: NextRequest) => {
+  const session = await getSession();
 
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: "No autenticado" },
-        { status: 401 }
-      );
-    }
-
-    const userId = session.id;
-    const body = await request.json();
-
-    const { currentPassword, newPassword } = body;
-
-    // Validaciones
-    if (!currentPassword || !newPassword) {
-      return NextResponse.json(
-        { success: false, error: "La contraseña actual y la nueva son obligatorias" },
-        { status: 400 }
-      );
-    }
-
-    const errorPolitica = await validarPasswordPolitica(newPassword);
-    if (errorPolitica) {
-      return NextResponse.json(
-        { success: false, error: errorPolitica },
-        { status: 400 }
-      );
-    }
-
-    // Obtener usuario
-    const usuario = await db.query.usuarios.findFirst({
-      where: eq(usuarios.id, userId),
-    });
-
-    if (!usuario) {
-      return NextResponse.json(
-        { success: false, error: "Usuario no encontrado" },
-        { status: 404 }
-      );
-    }
-
-    // Verificar contraseña actual
-    const passwordMatch = await bcrypt.compare(currentPassword, usuario.passwordHash);
-
-    if (!passwordMatch) {
-      return NextResponse.json(
-        { success: false, error: "La contraseña actual es incorrecta" },
-        { status: 401 }
-      );
-    }
-
-    // Hash de la nueva contraseña
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Actualizar contraseña y limpiar la marca de "debe cambiar password"
-    const metadataActual = (usuario.metadata as Record<string, unknown>) || {};
-
-    await db
-      .update(usuarios)
-      .set({
-        passwordHash: hashedPassword,
-        metadata: metadataConPasswordActualizada(metadataActual, { quitarDebeCambiar: true }),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(usuarios.id, userId));
-
-    return NextResponse.json({
-      success: true,
-      message: "Contraseña actualizada correctamente",
-    });
-  } catch (error) {
-    console.error("Error al cambiar contraseña:", error);
+  if (!session) {
     return NextResponse.json(
-      {
-        success: false,
-        error: "Error al cambiar contraseña",
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 }
+      { success: false, error: "No autenticado" },
+      { status: 401 }
     );
   }
-}
+
+  const userId = session.id;
+  const body = await request.json();
+  const parsed = cambiarPasswordSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" },
+      { status: 400 }
+    );
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+
+  const errorPolitica = await validarPasswordPolitica(newPassword);
+  if (errorPolitica) {
+    return NextResponse.json(
+      { success: false, error: errorPolitica },
+      { status: 400 }
+    );
+  }
+
+  const usuario = await db.query.usuarios.findFirst({
+    where: eq(usuarios.id, userId),
+  });
+
+  if (!usuario) {
+    return NextResponse.json(
+      { success: false, error: "Usuario no encontrado" },
+      { status: 404 }
+    );
+  }
+
+  const passwordMatch = await bcrypt.compare(currentPassword, usuario.passwordHash);
+
+  if (!passwordMatch) {
+    return NextResponse.json(
+      { success: false, error: "La contraseña actual es incorrecta" },
+      { status: 401 }
+    );
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  const metadataActual = (usuario.metadata as Record<string, unknown>) || {};
+
+  await db
+    .update(usuarios)
+    .set({
+      passwordHash: hashedPassword,
+      metadata: metadataConPasswordActualizada(metadataActual, { quitarDebeCambiar: true }),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(usuarios.id, userId));
+
+  return NextResponse.json({
+    success: true,
+    message: "Contraseña actualizada correctamente",
+  });
+});

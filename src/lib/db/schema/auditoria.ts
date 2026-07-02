@@ -31,6 +31,10 @@ export const registrosAuditoria = pgTable(
   },
   (table) => ({
     idxUsuario: index('idx_auditoria_usuario').on(table.usuarioId),
+    idxUsuarioFecha: index('idx_auditoria_usuario_fecha').on(
+      table.usuarioId,
+      table.createdAt
+    ),
     idxAccion: index('idx_auditoria_accion').on(table.accion),
     idxTabla: index('idx_auditoria_tabla').on(table.tablaAfectada),
     idxFecha: index('idx_auditoria_fecha').on(table.createdAt),

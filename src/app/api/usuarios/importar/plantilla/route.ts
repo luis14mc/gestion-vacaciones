@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { getSession } from '@/lib/auth';
 import ExcelJS from 'exceljs';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
-  try {
+export const GET = withErrorHandler(async () => {
     const session = await getSession();
 
     if (!session) {
@@ -99,8 +99,4 @@ export async function GET() {
         'Content-Disposition': 'attachment; filename="Plantilla_Importacion_Empleados.xlsx"',
       },
     });
-  } catch (error) {
-    console.error('Error generando plantilla:', error);
-    return NextResponse.json({ success: false, error: 'Error interno generando plantilla' }, { status: 500 });
-  }
-}
+});

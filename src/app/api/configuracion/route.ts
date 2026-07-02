@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { configuracion } from '@/lib/db/schema';
@@ -24,8 +25,7 @@ import { registrarEventoAuditoria, datosPeticion } from '@/services/auditoria.se
 export const runtime = 'nodejs';
 
 // ─── GET: Obtener configuraciones ─────────────────────
-export async function GET() {
-  try {
+export const GET = withErrorHandler(async () => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json(
@@ -54,19 +54,10 @@ export async function GET() {
     }
 
     return NextResponse.json({ success: true, data: filtrarConfigCatalogo(results) });
-  } catch (error) {
-    // OWASP: No revelar trazas internas al cliente
-    console.error('Error obteniendo configuraciones:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al obtener configuraciones' },
-      { status: 500 }
-    );
-  }
-}
+});
 
 // ─── PATCH: Actualizar configuraciones (individual o batch) ───
-export async function PATCH(request: NextRequest) {
-  try {
+export const PATCH = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session?.esAdmin) {
       return NextResponse.json(
@@ -232,11 +223,4 @@ export async function PATCH(request: NextRequest) {
       data: actualizado,
       message: 'Configuración actualizada',
     });
-  } catch (error) {
-    console.error('Error actualizando configuración:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al actualizar configuración' },
-      { status: 500 }
-    );
-  }
-}
+});

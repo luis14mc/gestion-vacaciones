@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BarChart3,
   Users,
@@ -130,7 +130,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
 
-  async function cargarReporte() {
+  const cargarReporte = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/reportes/departamento?mes=${mesSeleccionado}&anio=${anioSeleccionado}`);
@@ -149,11 +149,11 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
     } finally {
       setLoading(false);
     }
-  };
+  }, [mesSeleccionado, anioSeleccionado]);
 
   useEffect(() => {
-    cargarReporte();
-  }, [mesSeleccionado, anioSeleccionado]);
+    void cargarReporte();
+  }, [cargarReporte]);
 
   const exportarReporte = async (formato: 'csv' | 'pdf' = 'csv') => {
     if (!reporte) {

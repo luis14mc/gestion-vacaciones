@@ -5,7 +5,7 @@ import { usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { obtenerRolesYPermisos } from "@/services/rbac.service";
-import { checkRateLimit, resetRateLimit } from "@/lib/rate-limiter";
+import { checkDualRateLimit, resetDualRateLimit } from "@/lib/rate-limiter";
 import { obtenerConfigs, asNumber } from "@/lib/config/service";
 import { registrarEventoAuditoria, datosPeticion } from "@/services/auditoria.service";
 
@@ -27,8 +27,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           ? datosPeticion(request as unknown as Request)
           : { ipAddress: 'unknown', userAgent: 'unknown' };
 
-        // 🛡️ Rate Limiting (Protección contra fuerza bruta)
-        const rateLimitResult = await checkRateLimit(email.toLowerCase());
+        // 🛡️ Rate Limiting dual (email + IP)
+        const rateLimitResult = await checkDualRateLimit(
+          email.toLowerCase(),
+          datos.ipAddress ?? 'unknown'
+        );
         if (!rateLimitResult.allowed) {
           const waitMinutes = Math.ceil(rateLimitResult.remainingMs / 60000);
           throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${waitMinutes} minutos.`);
@@ -62,8 +65,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        // ✅ Login exitoso: Resetear contador de intentos fallidos
-        await resetRateLimit(email.toLowerCase());
+        // ✅ Login exitoso: Resetear contadores de intentos fallidos
+        await resetDualRateLimit(email.toLowerCase(), datos.ipAddress ?? 'unknown');
 
         await registrarEventoAuditoria({
           usuarioId: usuario.id,

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { sileo } from 'sileo';
-import Swal from 'sweetalert2';
+import { notify } from '@/lib/swal';
 import { Loader2 } from 'lucide-react';
 
 import { solicitudSchema, type SolicitudFormData } from '@/lib/validations/solicitud.schema';
@@ -199,12 +199,10 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         : { success: false, error: 'El servidor no devolvió una respuesta válida.' };
 
       if (result.success) {
-        Swal.fire({
-          title: '¡Solicitud Enviada!',
-          text: 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación por tu jefe inmediato.',
-          icon: 'success',
-          confirmButtonColor: '#3085d6',
-        });
+        notify.success(
+          '¡Solicitud enviada!',
+          'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación por tu jefe inmediato.'
+        );
         form.reset();
         onSuccess?.();
       } else {

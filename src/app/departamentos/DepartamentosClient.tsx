@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Building2,
   Plus,
@@ -85,17 +85,7 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
     jefeId: "",
   });
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
-
-  async function cargarDatos() {
-    setLoading(true);
-    await Promise.all([cargarDepartamentos(), cargarUsuarios()]);
-    setLoading(false);
-  };
-
-  const cargarDepartamentos = async () => {
+  const cargarDepartamentos = useCallback(async () => {
     try {
       const res = await fetch("/api/departamentos");
       const data = await res.json();
@@ -106,9 +96,9 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
       console.error("Error cargando departamentos:", error);
       notify.error("Error al cargar departamentos");
     }
-  };
+  }, []);
 
-  const cargarUsuarios = async () => {
+  const cargarUsuarios = useCallback(async () => {
     try {
       const res = await fetch("/api/usuarios");
       const data = await res.json();
@@ -120,7 +110,17 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
     } catch (error) {
       console.error("Error cargando usuarios:", error);
     }
-  };
+  }, []);
+
+  const cargarDatos = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([cargarDepartamentos(), cargarUsuarios()]);
+    setLoading(false);
+  }, [cargarDepartamentos, cargarUsuarios]);
+
+  useEffect(() => {
+    void cargarDatos();
+  }, [cargarDatos]);
 
   const abrirModalNuevo = () => {
     setEditingDept(null);

@@ -164,6 +164,15 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   const estadoActual = solicitud.estado as EstadoSolicitud;
   const dias = Number(solicitud.diasSolicitados ?? 0);
 
+  if (
+    accion === 'enviar' &&
+    estadoActual === 'borrador' &&
+    solicitudConsumeBalance(solicitud) &&
+    dias <= 0
+  ) {
+    return { exito: false, error: 'Los días solicitados deben ser mayores a cero' };
+  }
+
   const resultado = transicionar(estadoActual, accion, {
     usuarioId,
     solicitanteId: solicitud.usuarioId,

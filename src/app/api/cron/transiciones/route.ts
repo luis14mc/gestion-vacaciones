@@ -15,9 +15,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Configuración del servidor incompleta' }, { status: 500 });
   }
 
-  // Validar autorización
-  const authHeader = req.headers.get('authorization');
-  if (authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (CRON_SECRET.length < 16) {
+    console.error('[CRON Error] CRON_SECRET demasiado corto (mínimo 16 caracteres).');
+    return NextResponse.json({ success: false, error: 'Configuración del servidor incompleta' }, { status: 500 });
+  }
+
+  const authHeader = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${CRON_SECRET}`;
+  if (authHeader !== expected) {
     return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 });
   }
 

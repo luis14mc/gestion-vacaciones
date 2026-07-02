@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withErrorHandler } from '@/lib/api-handler';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { balances, anosLaborales } from '@/lib/db/schema';
@@ -12,8 +13,7 @@ const noStoreHeaders = {
 };
 
 // GET: Obtener balances de un usuario o todos los balances del ano.
-export async function GET(request: NextRequest) {
-  try {
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json(
@@ -76,18 +76,10 @@ export async function GET(request: NextRequest) {
       },
       { headers: noStoreHeaders }
     );
-  } catch (error) {
-    console.error('Error obteniendo balances:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al obtener balances' },
-      { status: 500 }
-    );
-  }
-}
+});
 
 // POST: Crear o actualizar balance de un usuario
-export async function POST(request: NextRequest) {
-  try {
+export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
     if (!session) {
       return NextResponse.json(
@@ -179,11 +171,4 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Balance creado exitosamente',
     });
-  } catch (error) {
-    console.error('Error gestionando balance:', error);
-    return NextResponse.json(
-      { success: false, error: 'Error al gestionar balance' },
-      { status: 500 }
-    );
-  }
-}
+});

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/lib/api-handler";
 import { getSession, tienePermiso } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { solicitudes, usuarios } from "@/lib/db/schema";
 import { eq, and, isNull, gte, lte, or, inArray, sql } from "drizzle-orm";
 import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 
-export async function GET(request: NextRequest) {
-  try {
-    // 1. Verificar autenticación
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
 
     if (!session) {
@@ -148,11 +147,4 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-  } catch (error) {
-    console.error("Error obteniendo calendario:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al obtener calendario" },
-      { status: 500 }
-    );
-  }
-}
+});

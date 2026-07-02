@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandler } from "@/lib/api-handler";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usuarios, solicitudes, balances, departamentos } from "@/lib/db/schema";
 import { eq, isNull, and, gte, lte } from "drizzle-orm";
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();
 
     if (!session) {
@@ -72,14 +72,7 @@ export async function GET(request: NextRequest) {
         "Content-Disposition": `attachment; filename="${nombreArchivo}.json"`,
       },
     });
-  } catch (error) {
-    console.error("Error en exportación:", error);
-    return NextResponse.json(
-      { success: false, error: "Error al exportar datos" },
-      { status: 500 }
-    );
-  }
-}
+});
 
 async function exportarUsuarios(incluirEliminados: boolean) {
   const condiciones = incluirEliminados ? undefined : isNull(usuarios.deletedAt);

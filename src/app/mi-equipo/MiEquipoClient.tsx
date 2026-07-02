@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Users,
@@ -69,7 +69,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<Usuario | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
 
-  async function cargarEquipo() {
+  const cargarEquipo = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -124,11 +124,11 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [estadoFiltro]);
 
   useEffect(() => {
-    cargarEquipo();
-  }, [estadoFiltro]);
+    void cargarEquipo();
+  }, [cargarEquipo]);
 
   const usuariosFiltrados = usuarios.filter((usuario) => {
     const matchBusqueda =

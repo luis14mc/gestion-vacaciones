@@ -111,7 +111,6 @@ const LABELS: Record<string, string> = {
   "vacaciones.dias_minimos_solicitud": "Mínimo de Días por Solicitud",
   "vacaciones.dias_maximos_consecutivos": "Máximo Días Consecutivos",
   "vacaciones.dias_anticipacion": "Días de Anticipación Mínima",
-  "vacaciones.permitir_medio_dia": "Permitir Medio Día",
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
   "notificaciones.email_remitente": "Correo Remitente",
@@ -129,9 +128,7 @@ const LABELS: Record<string, string> = {
   "notificaciones.recordatorio_dias_antes": "Recordatorio (Días Antes)",
 
   "departamentos.max_ausencias_simultaneas": "Máximo Ausencias Simultáneas",
-  "departamentos.porcentaje_max_ausentes": "Porcentaje Máximo de Ausentes (%)",
   "departamentos.validar_conflictos": "Validar Conflictos de Fechas",
-  "departamentos.mostrar_calendario_equipo": "Mostrar Calendario del Equipo",
 
   "seguridad.sesion_duracion_horas": "Duración de Sesión (horas)",
   "seguridad.password_min_length": "Longitud Mínima de Contraseña",
@@ -141,6 +138,12 @@ const LABELS: Record<string, string> = {
   "seguridad.intentos_login_max": "Intentos de Login Máximos",
   "seguridad.bloqueo_duracion_minutos": "Duración de Bloqueo (minutos)",
   "seguridad.forzar_cambio_password_dias": "Forzar Cambio de Contraseña (días)",
+};
+
+// ─── Claves sin efecto real en backend (banner "Próximamente") ───
+const CLAVES_NO_IMPLEMENTADAS: Record<string, string> = {
+  "notificaciones.recordatorio_dias_antes":
+    "No hay cron ni job programado que lea este valor. Se conserva en el catálogo para uso futuro.",
 };
 
 // ─── Grupos temáticos dentro de cada categoría ────────
@@ -181,7 +184,6 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
         "vacaciones.dias_minimos_solicitud",
         "vacaciones.dias_maximos_consecutivos",
         "vacaciones.dias_anticipacion",
-        "vacaciones.permitir_medio_dia",
       ],
     },
   ],
@@ -229,16 +231,14 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
       icon: Users,
       claves: [
         "departamentos.max_ausencias_simultaneas",
-        "departamentos.porcentaje_max_ausentes",
       ],
     },
     {
       titulo: "Reglas de Flujo",
-      descripcion: "Validaciones y permisos de gestión departamental",
+      descripcion: "Validaciones de capacidad y superposición al crear solicitudes",
       icon: Building2,
       claves: [
         "departamentos.validar_conflictos",
-        "departamentos.mostrar_calendario_equipo",
       ],
     },
   ],
@@ -714,6 +714,7 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange, footer }:
                 esNumero={esNumero}
                 esPassword={esPassword}
                 isDirty={isDirty}
+                noImplementada={CLAVES_NO_IMPLEMENTADAS[clave]}
                 onChange={(v) => onValueChange(clave, v)}
               />
             );
@@ -884,6 +885,7 @@ interface ConfigFieldProps {
   esPassword: boolean;
   isDirty: boolean;
   disabled?: boolean;
+  noImplementada?: string;
   onChange: (valor: string) => void;
 }
 
@@ -896,6 +898,7 @@ function ConfigField({
   esPassword,
   isDirty,
   disabled = false,
+  noImplementada,
   onChange,
 }: ConfigFieldProps) {
   const label = LABELS[clave] || clave;
@@ -908,6 +911,11 @@ function ConfigField({
             <Label className="text-[13px] font-medium text-foreground cursor-pointer">
               {label}
             </Label>
+            {noImplementada && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-amber-300 bg-amber-50 text-amber-700">
+                Próximamente
+              </Badge>
+            )}
             {isDirty && (
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
             )}
@@ -915,10 +923,13 @@ function ConfigField({
           {descripcion && (
             <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{descripcion}</p>
           )}
+          {noImplementada && (
+            <p className="text-[11px] text-amber-700 mt-1 leading-relaxed">{noImplementada}</p>
+          )}
         </div>
         <Switch
           checked={valor === "true"}
-          disabled={disabled}
+          disabled={disabled || !!noImplementada}
           onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
         />
       </div>
@@ -931,6 +942,11 @@ function ConfigField({
         <Label htmlFor={`config-${clave}`} className="text-[13px] font-medium text-foreground">
           {label}
         </Label>
+        {noImplementada && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-amber-300 bg-amber-50 text-amber-700">
+            Próximamente
+          </Badge>
+        )}
         {isDirty && (
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
         )}
@@ -938,14 +954,17 @@ function ConfigField({
       {descripcion && (
         <p className="text-[11px] text-muted-foreground leading-relaxed">{descripcion}</p>
       )}
+      {noImplementada && (
+        <p className="text-[11px] text-amber-700 leading-relaxed">{noImplementada}</p>
+      )}
       <Input
         id={`config-${clave}`}
         type={esPassword ? "password" : esNumero ? "number" : "text"}
         value={valor}
-        disabled={disabled}
+        disabled={disabled || !!noImplementada}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full sm:max-w-sm h-9 text-[13px] transition-all duration-200 ${
-          disabled
+          disabled || noImplementada
             ? "opacity-60 cursor-not-allowed bg-muted/40"
             : isDirty
               ? "border-amber-400 ring-1 ring-amber-200 focus:ring-amber-300"

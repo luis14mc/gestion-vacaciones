@@ -98,8 +98,6 @@ const CONFIGURACION_DATA = [
   { clave: 'vacaciones.dias_maximos_consecutivos', valor: '15', descripcion: 'Maximo de dias consecutivos permitidos', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'vacaciones.dias_anticipacion', valor: '5', descripcion: 'Dias de anticipacion minima', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'vacaciones.permitir_medio_dia', valor: 'true', descripcion: 'Permitir medio dia', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
-  { clave: 'vacaciones.acumulacion_habilitada', valor: 'false', descripcion: 'Permitir acumulacion', categoria: 'vacaciones', tipoDato: 'boolean', esPublico: false },
-  { clave: 'vacaciones.max_acumulacion', valor: '5', descripcion: 'Maximo de dias acumulables', categoria: 'vacaciones', tipoDato: 'number', esPublico: false },
   { clave: 'notificaciones.email_habilitado', valor: 'false', descripcion: 'Habilitar notificaciones por correo', categoria: 'notificaciones', tipoDato: 'boolean', esPublico: false },
   { clave: 'notificaciones.email_remitente', valor: 'noreply@cni.hn', descripcion: 'Email remitente', categoria: 'notificaciones', tipoDato: 'string', esPublico: false },
   { clave: 'notificaciones.smtp_host', valor: 'smtp.office365.com', descripcion: 'Servidor SMTP para el envio de notificaciones', categoria: 'notificaciones', tipoDato: 'string', esPublico: false },

@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  next-auth: 5.0.0-beta.30
-
 importers:
 
   .:
@@ -77,9 +74,6 @@ importers:
       sileo:
         specifier: ^0.1.5
         version: 0.1.5(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
-      sweetalert2:
-        specifier: ^11.26.3
-        version: 11.26.3
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
@@ -5160,9 +5154,6 @@ packages:
   svg-pathdata@6.0.3:
     resolution: {integrity: sha512-qsjeeq5YjBZ5eMdFuUa4ZosMLxgr5RZ+F+Y1OrDhuOCEInRMA3x74XdBtggJcj9kOeInz0WE+LgCPDkZFlBYJw==}
     engines: {node: '>=12.0.0'}
-
-  sweetalert2@11.26.3:
-    resolution: {integrity: sha512-VU0hGw/WfI9h7Mh+SCsDlWgtxDwWZ6ccqS7QcO8zEeWnwplN1GptcLstq76OluUBSLUza6ldvKd3558OhjpJ9A==}
 
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
@@ -10758,8 +10749,6 @@ snapshots:
 
   svg-pathdata@6.0.3:
     optional: true
-
-  sweetalert2@11.26.3: {}
 
   symbol-tree@3.2.4: {}
 

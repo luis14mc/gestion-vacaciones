@@ -41,11 +41,6 @@ export const vacacionesConfigSchema = z.object({
     "Debe ser un número entre 0 y 90"
   ),
   "vacaciones.permitir_medio_dia": z.string().regex(/^(true|false)$/),
-  "vacaciones.acumulacion_habilitada": z.string().regex(/^(true|false)$/),
-  "vacaciones.max_acumulacion": z.string().refine(
-    (v) => { const n = Number(v); return !isNaN(n) && n >= 0 && n <= 365; },
-    "Debe ser un número entre 0 y 365"
-  ),
 });
 
 // ─── Notificaciones ───────────────────────────────────

@@ -5,25 +5,9 @@ import { usuarios, balances, anosLaborales } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { eq, and, isNull } from 'drizzle-orm';
+import { calcularDiasSegunAntiguedad } from '@/lib/domain/asignacion-antiguedad';
 
 export const runtime = 'nodejs';
-
-function calcularDiasSegunAntiguedad(fechaIngreso: string): number {
-  const ingreso = new Date(fechaIngreso);
-  const hoy = new Date();
-  
-  let anos = hoy.getFullYear() - ingreso.getFullYear();
-  const mes = hoy.getMonth() - ingreso.getMonth();
-  if (mes < 0 || (mes === 0 && hoy.getDate() < ingreso.getDate())) {
-    anos--;
-  }
-
-  if (anos < 1) return 0; // Menos de 1 año no recibe días completos automáticamente (o prorrateo según política)
-  if (anos === 1) return 10;
-  if (anos === 2) return 12;
-  if (anos === 3) return 15;
-  return 20; // 4 años o más
-}
 
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const session = await getSession();

@@ -30,12 +30,15 @@ import {
   Wrench,
   Server,
   MailCheck,
+  Play,
+  Info,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
 import { CONFIG_KEYS, filtrarConfigCatalogo } from "@/lib/config/catalog";
+import { REGLAS_ASIGNACION_ANTIGUEDAD } from "@/lib/domain/asignacion-antiguedad";
 
-import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -49,6 +52,16 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+import { Badge } from "@/components/ui/badge";
 
 // ─── Types ────────────────────────────────────────────
 interface ConfigItem {
@@ -94,13 +107,11 @@ const LABELS: Record<string, string> = {
   "app.idioma": "Idioma",
   "app.mantenimiento": "Modo Mantenimiento",
 
-  "vacaciones.dias_anuales_default": "Días Anuales por Defecto",
+  "vacaciones.dias_anuales_default": "Fallback para usuarios sin fecha de ingreso",
   "vacaciones.dias_minimos_solicitud": "Mínimo de Días por Solicitud",
   "vacaciones.dias_maximos_consecutivos": "Máximo Días Consecutivos",
   "vacaciones.dias_anticipacion": "Días de Anticipación Mínima",
   "vacaciones.permitir_medio_dia": "Permitir Medio Día",
-  "vacaciones.acumulacion_habilitada": "Acumulación Habilitada",
-  "vacaciones.max_acumulacion": "Máximo de Días Acumulables",
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
   "notificaciones.email_remitente": "Correo Remitente",
@@ -163,24 +174,14 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
   ],
   vacaciones: [
     {
-      titulo: "Asignación Base",
-      descripcion: "Configuración de días anuales y límites por solicitud",
-      icon: CalendarDays,
+      titulo: "Reglas por Solicitud",
+      descripcion: "Límites al crear solicitudes de vacaciones",
+      icon: Calendar,
       claves: [
-        "vacaciones.dias_anuales_default",
         "vacaciones.dias_minimos_solicitud",
         "vacaciones.dias_maximos_consecutivos",
         "vacaciones.dias_anticipacion",
-      ],
-    },
-    {
-      titulo: "Reglas de Acumulación",
-      descripcion: "Control sobre medio día y acumulación de saldo",
-      icon: Calendar,
-      claves: [
         "vacaciones.permitir_medio_dia",
-        "vacaciones.acumulacion_habilitada",
-        "vacaciones.max_acumulacion",
       ],
     },
   ],
@@ -293,6 +294,14 @@ function mergeConfigFallbacks(configs: ConfigItem[]) {
 const SMTP_CLAVES =
   GRUPOS.notificaciones.find((g) => g.titulo === "Servidor SMTP")?.claves ?? [];
 
+const CLAVE_FALLBACK_DIAS_ANUALES = "vacaciones.dias_anuales_default";
+
+interface ResultadoAsignacion {
+  asignados: number;
+  actualizados: number;
+  omitidos: number;
+}
+
 // ─── Componente Principal ─────────────────────────────
 export default function ConfiguracionClient({ session }: ConfiguracionClientProps) {
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
@@ -302,6 +311,11 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [testingSmtp, setTestingSmtp] = useState(false);
+  const [ejecutandoAsignacion, setEjecutandoAsignacion] = useState(false);
+  const [resultadoAsignacion, setResultadoAsignacion] = useState<ResultadoAsignacion | null>(null);
+
+  const puedeEjecutarAsignacion =
+    Boolean(session.user?.esAdmin) || Boolean(session.user?.esRrhh);
 
   // ── Cargar configuraciones ──
   const cargarConfiguraciones = useCallback(async () => {
@@ -431,6 +445,33 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       setTestingSmtp(false);
     }
   };
+
+  const ejecutarAsignacionAutomatica = async () => {
+    try {
+      setEjecutandoAsignacion(true);
+      setResultadoAsignacion(null);
+
+      const res = await fetch("/api/admin/asignar-dias", { method: "POST" });
+      const data = await res.json();
+
+      if (data.success) {
+        setResultadoAsignacion(data.resultados);
+        const { asignados, actualizados, omitidos } = data.resultados;
+        notify.success(
+          "Asignación completada",
+          `${asignados} nuevos, ${actualizados} actualizados, ${omitidos} omitidos`
+        );
+      } else {
+        notify.error("Error", data.error || "No se pudo ejecutar la asignación automática");
+      }
+    } catch {
+      notify.error("Error", "No se pudo ejecutar la asignación automática");
+    } finally {
+      setEjecutandoAsignacion(false);
+    }
+  };
+
+  const fallbackDiasConfig = configs.find((c) => c.clave === CLAVE_FALLBACK_DIAS_ANUALES);
 
   // ── Contar cambios pendientes en la categoría activa ──
   const cambiosPendientes = GRUPOS[categoriaActiva]
@@ -567,6 +608,14 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
               </div>
             ) : (
               <div className="space-y-6">
+                {categoriaActiva === "vacaciones" && (
+                  <AsignacionAntiguedadCard
+                    puedeEjecutar={puedeEjecutarAsignacion}
+                    ejecutando={ejecutandoAsignacion}
+                    resultado={resultadoAsignacion}
+                    onEjecutar={ejecutarAsignacionAutomatica}
+                  />
+                )}
                 {GRUPOS[categoriaActiva].map((grupo, idx) => (
                   <GrupoCard
                     key={`${categoriaActiva}-${idx}`}
@@ -601,6 +650,12 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                     }
                   />
                 ))}
+                {categoriaActiva === "vacaciones" && fallbackDiasConfig && (
+                  <FallbackDiasAnualesCard
+                    config={fallbackDiasConfig}
+                    valor={editedValues[CLAVE_FALLBACK_DIAS_ANUALES] ?? fallbackDiasConfig.valor}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -675,6 +730,150 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange, footer }:
   );
 }
 
+interface AsignacionAntiguedadCardProps {
+  puedeEjecutar: boolean;
+  ejecutando: boolean;
+  resultado: ResultadoAsignacion | null;
+  onEjecutar: () => void;
+}
+
+function AsignacionAntiguedadCard({
+  puedeEjecutar,
+  ejecutando,
+  resultado,
+  onEjecutar,
+}: AsignacionAntiguedadCardProps) {
+  return (
+    <Card className="bg-card text-card-foreground border shadow-sm transition-shadow duration-200 hover:shadow-md">
+      <CardHeader className="pb-4">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="p-1.5 rounded-lg bg-muted">
+            <CalendarDays className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0">
+            <CardTitle className="text-[14px] font-semibold">
+              Asignación Automática por Antigüedad
+            </CardTitle>
+            <CardDescription className="text-[12px] mt-0.5">
+              La asignación se calcula automáticamente usando la Fecha de Ingreso del colaborador.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Separator className="mb-5" />
+        <div className="rounded-lg border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[12px]">Antigüedad</TableHead>
+                <TableHead className="text-[12px] text-right w-28">Días asignados</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {REGLAS_ASIGNACION_ANTIGUEDAD.map((regla) => (
+                <TableRow key={regla.antiguedad}>
+                  <TableCell className="text-[13px]">{regla.antiguedad}</TableCell>
+                  <TableCell className="text-[13px] text-right font-medium tabular-nums">
+                    {regla.dias}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {resultado && (
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">Asignados</p>
+              <p className="text-lg font-semibold tabular-nums">{resultado.asignados}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">Actualizados</p>
+              <p className="text-lg font-semibold tabular-nums">{resultado.actualizados}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">Omitidos</p>
+              <p className="text-lg font-semibold tabular-nums">{resultado.omitidos}</p>
+            </div>
+          </div>
+        )}
+
+        <Separator className="my-5" />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] text-muted-foreground">
+            Ejecuta la asignación para el año laboral activo. Los colaboradores sin fecha de
+            ingreso o con menos de un año se omiten.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-2 shrink-0"
+            onClick={onEjecutar}
+            disabled={!puedeEjecutar || ejecutando}
+          >
+            {ejecutando ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            Ejecutar asignación automática
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface FallbackDiasAnualesCardProps {
+  config: ConfigItem;
+  valor: string;
+}
+
+function FallbackDiasAnualesCard({ config, valor }: FallbackDiasAnualesCardProps) {
+  return (
+    <Card className="bg-card text-card-foreground border border-dashed shadow-sm">
+      <CardHeader className="pb-4">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="p-1.5 rounded-lg bg-muted">
+            <Info className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0">
+            <CardTitle className="text-[14px] font-semibold">
+              Configuración legacy (no en uso)
+            </CardTitle>
+            <CardDescription className="text-[12px] mt-0.5">
+              Este valor no participa en la asignación automática por antigüedad.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-4">
+        <Alert className="border-amber-200 bg-amber-50/50 text-amber-950">
+          <Info className="text-amber-600" />
+          <AlertTitle className="text-amber-900">No afecta la asignación actual</AlertTitle>
+          <AlertDescription className="text-amber-800/90">
+            El endpoint de asignación automática usa únicamente la fecha de ingreso del
+            colaborador. Este fallback se conserva solo por compatibilidad histórica.
+          </AlertDescription>
+        </Alert>
+        <ConfigField
+          clave={config.clave}
+          valor={valor}
+          descripcion={config.descripcion}
+          esBool={false}
+          esNumero
+          esPassword={false}
+          isDirty={false}
+          disabled
+          onChange={() => {}}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Componente de Campo Individual ───────────────────
 interface ConfigFieldProps {
   clave: string;
@@ -684,10 +883,21 @@ interface ConfigFieldProps {
   esNumero: boolean;
   esPassword: boolean;
   isDirty: boolean;
+  disabled?: boolean;
   onChange: (valor: string) => void;
 }
 
-function ConfigField({ clave, valor, descripcion, esBool, esNumero, esPassword, isDirty, onChange }: ConfigFieldProps) {
+function ConfigField({
+  clave,
+  valor,
+  descripcion,
+  esBool,
+  esNumero,
+  esPassword,
+  isDirty,
+  disabled = false,
+  onChange,
+}: ConfigFieldProps) {
   const label = LABELS[clave] || clave;
 
   if (esBool) {
@@ -708,6 +918,7 @@ function ConfigField({ clave, valor, descripcion, esBool, esNumero, esPassword, 
         </div>
         <Switch
           checked={valor === "true"}
+          disabled={disabled}
           onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
         />
       </div>
@@ -731,11 +942,14 @@ function ConfigField({ clave, valor, descripcion, esBool, esNumero, esPassword, 
         id={`config-${clave}`}
         type={esPassword ? "password" : esNumero ? "number" : "text"}
         value={valor}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full sm:max-w-sm h-9 text-[13px] transition-all duration-200 ${
-          isDirty
-            ? "border-amber-400 ring-1 ring-amber-200 focus:ring-amber-300"
-            : ""
+          disabled
+            ? "opacity-60 cursor-not-allowed bg-muted/40"
+            : isDirty
+              ? "border-amber-400 ring-1 ring-amber-200 focus:ring-amber-300"
+              : ""
         }`}
         min={esNumero ? 0 : undefined}
       />

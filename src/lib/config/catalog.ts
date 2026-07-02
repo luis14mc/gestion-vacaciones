@@ -47,6 +47,8 @@ export const LEGACY_CONFIG_KEYS = [
   'flujo.jefe_auto_aprobar',
   'jefe_auto_aprobar',
   'jefe_puede_auto_aprobar',
+  'vacaciones.acumulacion_habilitada',
+  'vacaciones.max_acumulacion',
 ] as const;
 
 /** Excluye claves desconocidas o legacy del payload hacia el cliente. */
@@ -58,7 +60,6 @@ export function filtrarConfigCatalogo<T extends { clave: string }>(items: T[]): 
 const BOOLEAN_KEYS = new Set([
   'app.mantenimiento',
   'vacaciones.permitir_medio_dia',
-  'vacaciones.acumulacion_habilitada',
   'notificaciones.email_habilitado',
   'notificaciones.smtp_secure',
   'notificaciones.smtp_require_tls',
@@ -79,7 +80,6 @@ const NUMBER_KEYS = new Set([
   'vacaciones.dias_minimos_solicitud',
   'vacaciones.dias_maximos_consecutivos',
   'vacaciones.dias_anticipacion',
-  'vacaciones.max_acumulacion',
   'notificaciones.smtp_port',
   'notificaciones.recordatorio_dias_antes',
   'departamentos.max_ausencias_simultaneas',

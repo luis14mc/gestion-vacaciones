@@ -15,6 +15,7 @@ import {
 } from '@/lib/domain/aprobacion-inbox-queries';
 import { puedeAccederBandejaAprobacion } from '@/lib/domain/aprobacion-inbox';
 import { validarEstructuraSolicitudCumpleanos } from '@/lib/domain/cumpleanos';
+import { esErrorValidacionNegocioCrearSolicitud } from '@/lib/domain/solicitud-errores-negocio';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -370,7 +371,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       documentosAdjuntos
     });
   } catch (error) {
-    if (tipo === 'dia_cumpleanos' && error instanceof Error) {
+    if (esErrorValidacionNegocioCrearSolicitud(error)) {
       await registrarAuditoria({
         usuarioId: sessionUser.id,
         accion: 'validacion_rechazada',

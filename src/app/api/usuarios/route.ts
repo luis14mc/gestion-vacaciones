@@ -250,13 +250,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         .set({ jefeSuperiorId: Number(validatedData.jefeSuperiorId) })
         .where(eq(usuarios.id, usuarioCreado.id));
     }
-
-    if (validatedData.esDirector && validatedData.departamentoId) {
-      await db
-        .update(departamentos)
-        .set({ jefeId: usuarioCreado.id, updatedAt: new Date().toISOString() })
-        .where(eq(departamentos.id, Number(validatedData.departamentoId)));
-    }
   }
 
   const { ipAddress, userAgent } = datosPeticion(request);
@@ -372,30 +365,11 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
     .returning();
 
   if (usuarioActualizado) {
-    const nuevoEsDirector = camposPermitidos.esDirector ?? usuarioActualizado.esDirector;
-    const nuevoDeptId = camposPermitidos.departamentoId ?? usuarioActualizado.departamentoId;
-
-    if (nuevoEsDirector && nuevoDeptId) {
-      await db
-        .update(departamentos)
-        .set({ jefeId: usuarioActualizado.id, updatedAt: new Date().toISOString() })
-        .where(eq(departamentos.id, nuevoDeptId));
-    }
-
-    if (camposPermitidos.esDirector === false && usuarioActualizado.departamentoId) {
-      const dept = await db.query.departamentos.findFirst({
-        where: eq(departamentos.id, usuarioActualizado.departamentoId),
-      });
-      if (dept && dept.jefeId === usuarioActualizado.id) {
-        await db
-          .update(departamentos)
-          .set({ jefeId: null, updatedAt: new Date().toISOString() })
-          .where(eq(departamentos.id, usuarioActualizado.departamentoId));
-      }
-    }
-
     // Mantener usuarios_roles sincronizado con los flags (solo admin pudo cambiarlos).
     // Fuente única de verdad: evita que un flag activo quede sin su rol RBAC.
+    // Nota: los flags de rol (esDirector, esJefe, etc.) NO se acoplan a la columna
+    // departamentos.jefeId. La asignación de jefe de departamento se gestiona
+    // exclusivamente desde /api/departamentos y afecta solo a esJefe.
     if (session.esAdmin) {
       await syncUserRoles(usuarioActualizado.id, {
         esAdmin: usuarioActualizado.esAdmin,

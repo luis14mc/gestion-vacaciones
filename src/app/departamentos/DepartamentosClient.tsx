@@ -234,14 +234,21 @@ export default function DepartamentosClient({ session }: DepartamentosClientProp
   const totalEmpleados = departamentos.reduce((sum, d) => sum + d.totalEmpleados, 0);
   const sinJefe = departamentos.filter((d) => !d.jefe).length;
 
-  // Usuarios que podrían ser jefe de un departamento dado
+  // Usuarios que podrían ser jefe de un departamento dado.
+  // Regla: un usuario no puede ser jefe de dos departamentos a la vez.
+  // (esDirector es ortogonal: un director puede ser jefe de un departamento
+  // sin que eso lo "promocione" automáticamente a director).
   const getUsuariosParaJefe = () => {
-    if (editingDept) {
-      return usuariosDisponibles.filter(
-        (u) => u.departamentoId === editingDept.id || !u.esDirector
-      );
-    }
-    return usuariosDisponibles.filter((u) => !u.esDirector);
+    const jefeIdsAsignados = new Set(
+      departamentos
+        .map((d) => d.jefeId)
+        .filter((id): id is number => id !== null && id !== undefined)
+    );
+    return usuariosDisponibles.filter((u) => {
+      if (!jefeIdsAsignados.has(u.id)) return true;
+      if (editingDept && editingDept.jefeId === u.id) return true;
+      return false;
+    });
   };
 
   return (

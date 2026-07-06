@@ -112,11 +112,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       })
       .returning();
 
-    // Si se asignó un jefe, marcar al usuario como esDirector y sincronizar rol
+    // Si se asignó un jefe, marcar al usuario como esJefe (no esDirector).
+    // Director y Jefe son roles independientes: el director se asigna
+    // explicitamente desde /api/usuarios, no por ser jefe de departamento.
+    // Esto evita conflictos con el flujo de aprobaciones y solicitudes
+    // (un jefe interino puede dirigir el depto sin tener rango de director).
     if (jefeId) {
       await db
         .update(usuarios)
-        .set({ esDirector: true, updatedAt: new Date().toISOString() })
+        .set({ esJefe: true, updatedAt: new Date().toISOString() })
         .where(eq(usuarios.id, jefeId));
       await syncUserRolesDesdeBD(jefeId);
     }
@@ -176,7 +180,9 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   if (descripcion !== undefined) campos.descripcion = descripcion;
   if (activo !== undefined) campos.activo = activo;
 
-  // Gestión del cambio de jefe
+  // Gestión del cambio de jefe.
+  // Regla: asignar/quitar jefe de departamento solo afecta al flag esJefe.
+  // esDirector es independiente y solo se modifica desde /api/usuarios.
   if (jefeId !== undefined) {
     const nuevoJefeId = jefeId === null ? null : jefeId;
     campos.jefeId = nuevoJefeId;
@@ -192,7 +198,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
       if (!otrosDepts) {
         await db
           .update(usuarios)
-          .set({ esDirector: false, updatedAt: new Date().toISOString() })
+          .set({ esJefe: false, updatedAt: new Date().toISOString() })
           .where(eq(usuarios.id, deptActual.jefeId));
         await syncUserRolesDesdeBD(deptActual.jefeId);
       }
@@ -202,8 +208,7 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
       await db
         .update(usuarios)
         .set({
-          esDirector: true,
-          departamentoId: id,
+          esJefe: true,
           updatedAt: new Date().toISOString(),
         })
         .where(eq(usuarios.id, nuevoJefeId));

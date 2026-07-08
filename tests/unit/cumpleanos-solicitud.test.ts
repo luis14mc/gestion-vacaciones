@@ -76,7 +76,7 @@ describe('dia_cumpleanos - VoBo director', () => {
     ).toBeNull();
   });
 
-  it('director sigue necesitando VoBo para vacaciones y licencia', () => {
+  it('director sigue necesitando VoBo para vacaciones', () => {
     expect(
       requiereVoBoDirector({
         esDirector: true,
@@ -93,6 +93,16 @@ describe('dia_cumpleanos - VoBo director', () => {
         documentosAdjuntos: [],
       })
     ).toContain('VoBo del Ministro');
+  });
+
+  it('director con licencia médica no requiere VoBo (solo constancia)', () => {
+    expect(
+      requiereVoBoDirector({
+        esDirector: true,
+        esSolicitudPropia: true,
+        tipo: 'licencia_medica',
+      })
+    ).toBe(false);
 
     expect(
       validarVoBoDirectorService({
@@ -100,7 +110,7 @@ describe('dia_cumpleanos - VoBo director', () => {
         tipo: 'licencia_medica',
         documentosAdjuntos: [],
       })
-    ).toContain('VoBo del Ministro');
+    ).toBeNull();
   });
 
   it('director con adjunto vobo_ministro pasa validación de route', () => {

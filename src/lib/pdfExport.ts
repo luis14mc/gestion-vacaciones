@@ -4,6 +4,7 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate } from '@/lib/utils/date-format';
 
 interface PDFReporteConfig {
   titulo: string;
@@ -29,7 +30,7 @@ export function generarPDFReporte(config: PDFReporteConfig): jsPDF {
 
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
-  doc.text(`Generado: ${new Date().toLocaleDateString('es-HN')}`, pageWidth - 15, 10, { align: 'right' });
+  doc.text(`Generado: ${formatDate(new Date())}`, pageWidth - 15, 10, { align: 'right' });
 
   const body = config.datos.map(row =>
     config.campos.map(campo => String(row[campo] ?? ''))

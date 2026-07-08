@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { notify, confirmAction } from '@/lib/swal';
+import { formatDate } from '@/lib/utils/date-format';
 import autoTable from 'jspdf-autotable';
 import { generarPDFReporte, descargarPDF } from "@/lib/pdfExport";
 import { Button } from "@/components/ui/button";
@@ -174,7 +175,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
         // Preparar datos para PDF
         const proximasVacaciones = reporte.proximasVacaciones.map(vac => ({
           ...vac,
-          periodo: `${new Date(vac.fechaInicio).toLocaleDateString()} - ${new Date(vac.fechaFin).toLocaleDateString()}`,
+          periodo: `${formatDate(vac.fechaInicio)} - ${formatDate(vac.fechaFin)}`,
         }));
 
         const topUsuarios = reporte.topUsuarios;
@@ -618,7 +619,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                             <TableRow key={i}>
                               <TableCell className="font-medium">{vac.usuario}</TableCell>
                               <TableCell className="text-xs whitespace-normal">
-                                {new Date(vac.fechaInicio).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} - {new Date(vac.fechaFin).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                                {formatDate(vac.fechaInicio)} - {formatDate(vac.fechaFin)}
                               </TableCell>
                               <TableCell>
                                 <Badge>{vac.dias}</Badge>

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import { notify } from "@/lib/swal";
+import { formatDate } from "@/lib/utils/date-format";
 import {
   Card,
   CardContent,
@@ -227,14 +228,6 @@ export default function SolicitudesClient({ session }: Props) {
         {config.label}
       </Badge>
     );
-  };
-
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
   };
 
   const calcularDiasDesde = (fecha: string) =>
@@ -478,9 +471,9 @@ export default function SolicitudesClient({ session }: Props) {
                           </div>
                           <div className="flex flex-wrap items-center gap-1 text-sm text-foreground">
                             <Calendar className="h-3 w-3 shrink-0" />
-                            <span>{formatearFecha(sol.fechaInicio)}</span>
+                            <span>{formatDate(sol.fechaInicio)}</span>
                             <span className="text-muted-foreground">→</span>
-                            <span>{formatearFecha(sol.fechaFin)}</span>
+                            <span>{formatDate(sol.fechaFin)}</span>
                           </div>
                         </div>
 
@@ -535,11 +528,11 @@ export default function SolicitudesClient({ session }: Props) {
                             <div className="text-sm">
                               <div className="flex items-center gap-1 text-foreground">
                                 <Calendar className="h-3 w-3" />
-                                {formatearFecha(sol.fechaInicio)}
+                                {formatDate(sol.fechaInicio)}
                               </div>
                               <div className="flex items-center gap-1 text-muted-foreground">
                                 <Calendar className="h-3 w-3" />
-                                {formatearFecha(sol.fechaFin)}
+                                {formatDate(sol.fechaFin)}
                               </div>
                             </div>
                           </TableCell>
@@ -637,13 +630,13 @@ export default function SolicitudesClient({ session }: Props) {
                   <div className="space-y-1">
                     <Label className="text-muted-foreground">Fecha inicio</Label>
                     <p className="text-foreground">
-                      {formatearFecha(solicitudSeleccionada.fechaInicio)}
+                      {formatDate(solicitudSeleccionada.fechaInicio)}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-muted-foreground">Fecha fin</Label>
                     <p className="text-foreground">
-                      {formatearFecha(solicitudSeleccionada.fechaFin)}
+                      {formatDate(solicitudSeleccionada.fechaFin)}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -677,7 +670,7 @@ export default function SolicitudesClient({ session }: Props) {
                         <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
-                            <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
+                            <span className="text-xs text-muted-foreground">{formatDate(com.fecha)}</span>
                           </div>
                           <p className="text-sm text-foreground">{com.comentario}</p>
                         </div>
@@ -691,7 +684,7 @@ export default function SolicitudesClient({ session }: Props) {
                     Fecha de solicitud
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    {formatearFecha(solicitudSeleccionada.fechaCreacion)} (
+                    {formatDate(solicitudSeleccionada.fechaCreacion)} (
                     {calcularDiasDesde(solicitudSeleccionada.fechaCreacion)})
                   </p>
                 </div>

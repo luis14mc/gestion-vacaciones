@@ -8,7 +8,7 @@ import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { obtenerConfigs, asBool } from '@/lib/config/service';
 import { validarAdjuntos } from '@/lib/security/adjuntos';
-import { validarVoBoDirectorAdjunto } from '@/lib/domain/solicitud-adjuntos';
+import { validarVoBoDirectorAdjunto, debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
 import {
   construirCondicionesBandejaAprobacion,
   calcularStatsBandejaAprobacion,
@@ -336,11 +336,18 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const flujo = resolverFlujoSolicitante(datosSolicitante, tipo);
 
-  if (flujo.requiereVoBoMinistro) {
+  if (
+    debeExigirVoBoMinistro({
+      requiereVoBoFlujo: flujo.requiereVoBoMinistro,
+      tipo,
+      duracionPermiso,
+    })
+  ) {
     const errorVoBo = validarVoBoDirectorAdjunto({
       esDirector: true,
       esSolicitudPropia: usuarioId === sessionUser.id,
       tipo,
+      duracionPermiso,
       documentosAdjuntos,
     });
     if (errorVoBo) {

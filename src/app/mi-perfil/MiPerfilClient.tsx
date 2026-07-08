@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { notify } from "@/lib/swal";
+import { formatDate } from "@/lib/utils/date-format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -184,14 +185,6 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
     }
   };
 
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
   const initials = profile
     ? profile.nombre
         .split(" ")
@@ -328,7 +321,7 @@ export default function MiPerfilClient({ session }: { session?: any } = {}) {
                     <div className="min-w-0">
                       <div className="text-xs text-muted-foreground">Fecha de Contratación</div>
                       <div className="font-medium text-foreground">
-                        {formatearFecha(profile.fechaContratacion)}
+                        {formatDate(profile.fechaContratacion)}
                       </div>
                     </div>
                   </div>

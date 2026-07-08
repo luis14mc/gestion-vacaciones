@@ -12,8 +12,9 @@ import {
 } from '@/lib/domain/balance-display';
 
 describe('balance-display', () => {
-  it('formatea fecha de ingreso como DD/MM/YY', () => {
-    expect(formatFechaIngreso('2024-03-04T00:00:00.000Z')).toMatch(/^04\/03\/24$/);
+  it('formatea fecha de ingreso como DD/MM/YYYY', () => {
+    expect(formatFechaIngreso('2024-03-04T00:00:00.000Z')).toBe('04/03/2024');
+    expect(formatFechaIngreso('2024-01-03 00:00:00+00')).toBe('03/01/2024');
   });
 
   it('formatea días con dos decimales', () => {

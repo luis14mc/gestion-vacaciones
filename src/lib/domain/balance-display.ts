@@ -1,3 +1,5 @@
+import { formatDate } from '@/lib/utils/date-format';
+
 /**
  * Mapper único para saldos de vacaciones (regla institucional CNI).
  *
@@ -44,12 +46,9 @@ function toNum(value: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** @deprecated Usar formatDate de @/lib/utils/date-format */
 export function formatFechaIngreso(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const soloFecha = iso.includes('T') ? iso.slice(0, 10) : iso;
-  const [year, month, day] = soloFecha.split('-');
-  if (!year || !month || !day) return '—';
-  return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year.slice(-2)}`;
+  return formatDate(iso);
 }
 
 export function formatDias(value: number): string {

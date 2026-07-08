@@ -21,6 +21,7 @@ import {
   Activity
 } from "lucide-react";
 import { notify } from '@/lib/swal';
+import { formatDate } from '@/lib/utils/date-format';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -405,7 +406,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
                     <div>
                       <Label className="text-xs text-muted-foreground">Fecha de ingreso</Label>
                       <p className="text-sm font-medium">
-                        {new Date(usuarioSeleccionado.fechaIngreso).toLocaleDateString("es-ES")}
+                        {formatDate(usuarioSeleccionado.fechaIngreso)}
                       </p>
                     </div>
                   )}

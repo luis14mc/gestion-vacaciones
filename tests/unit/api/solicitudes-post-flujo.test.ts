@@ -87,6 +87,14 @@ const payloadVacaciones = {
   motivo: 'Vacaciones',
 };
 
+const payloadPermisoBase = {
+  usuarioId: 10,
+  tipo: 'permiso_salida' as const,
+  fechaInicio: '2026-08-01',
+  fechaFin: '2026-08-01',
+  motivo: 'Trámite personal',
+};
+
 function crearRequest(body: Record<string, unknown>) {
   return new NextRequest('http://localhost/api/solicitudes', {
     method: 'POST',
@@ -200,6 +208,89 @@ describe('POST /api/solicitudes — flujo de aprobación y VoBo', () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/constancia médica/i);
     expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Director + permiso_salida 1-2h sin VoBo crea solicitud', async () => {
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: true,
+      esJefe: false,
+      departamentoNombre: 'Operaciones',
+    });
+
+    const response = await POST(
+      crearRequest({
+        ...payloadPermisoBase,
+        duracionPermiso: '1-2h',
+        horaSalida: '09:00',
+        horaRegreso: '10:30',
+      })
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
+    expect(mockCrearSolicitud).toHaveBeenCalled();
+  });
+
+  it('Director + permiso_salida medio día (2-4h) sin VoBo crea solicitud', async () => {
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: true,
+      esJefe: false,
+      departamentoNombre: 'Operaciones',
+    });
+
+    const response = await POST(
+      crearRequest({
+        ...payloadPermisoBase,
+        duracionPermiso: '2-4h',
+      })
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
+  });
+
+  it('Director + permiso_salida dia_completo sin VoBo falla 400', async () => {
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: true,
+      esJefe: false,
+      departamentoNombre: 'Operaciones',
+    });
+
+    const response = await POST(
+      crearRequest({
+        ...payloadPermisoBase,
+        duracionPermiso: 'dia_completo',
+        diasSolicitados: 1,
+      })
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(result.error).toMatch(/VoBo del Ministro/i);
+    expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Director + permiso_salida dia_completo con VoBo crea solicitud', async () => {
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: true,
+      esJefe: false,
+      departamentoNombre: 'Operaciones',
+    });
+
+    const response = await POST(
+      crearRequest({
+        ...payloadPermisoBase,
+        duracionPermiso: 'dia_completo',
+        diasSolicitados: 1,
+        documentosAdjuntos: [{ nombre: 'vobo_ministro', data: PDF_VOBO }],
+      })
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.success).toBe(true);
   });
 
   it('no exige VoBo cuando sesión tiene esDirector pero BD del solicitante no', async () => {

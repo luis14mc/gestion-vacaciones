@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toIsoDateInput } from "@/lib/utils/date-format";
 import {
     usuarioSchema,
     type UsuarioFormValues,
@@ -60,10 +61,8 @@ export function UsuarioDialog({ open, onOpenChange, usuario, departamentos, onSu
         if (open) {
             setServerError(null);
             if (usuario) {
-                const fechaRaw = usuario.fechaIngreso || "";
-                const fechaFormato = fechaRaw ? fechaRaw.substring(0, 10) : "";
-                const nacimientoRaw = usuario.fechaNacimiento || "";
-                const nacimientoFormato = nacimientoRaw ? nacimientoRaw.substring(0, 10) : "";
+                const fechaFormato = toIsoDateInput(usuario.fechaIngreso);
+                const nacimientoFormato = toIsoDateInput(usuario.fechaNacimiento);
                 form.reset({
                     email: usuario.email,
                     password: "",

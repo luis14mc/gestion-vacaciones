@@ -17,6 +17,7 @@ import {
   Info,
 } from "lucide-react";
 import { notify } from "@/lib/swal";
+import { formatDate } from "@/lib/utils/date-format";
 import {
   determinarAccionAprobacion,
   esEstadoAccionableAprobacion,
@@ -259,14 +260,6 @@ export default function AprobarSolicitudesClient({
     }
   };
 
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
   const tiempoRelativo = (fecha: string) =>
     calcularTiempoRelativo(fecha, referenciaTiempo);
 
@@ -408,11 +401,11 @@ export default function AprobarSolicitudesClient({
                             <div className="text-sm">
                               <div className="flex items-center gap-1 text-foreground">
                                 <Calendar className="h-3 w-3" />
-                                {formatearFecha(sol.fechaInicio)}
+                                {formatDate(sol.fechaInicio)}
                               </div>
                               <div className="flex items-center gap-1 text-muted-foreground">
                                 <Calendar className="h-3 w-3" />
-                                {formatearFecha(sol.fechaFin)}
+                                {formatDate(sol.fechaFin)}
                               </div>
                             </div>
                           </TableCell>
@@ -514,14 +507,14 @@ export default function AprobarSolicitudesClient({
                             <Calendar className="h-3 w-3 text-muted-foreground" />
                             <span className="text-muted-foreground">Inicio:</span>
                             <span className="font-medium text-foreground">
-                              {formatearFecha(sol.fechaInicio)}
+                              {formatDate(sol.fechaInicio)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
                             <Calendar className="h-3 w-3 text-muted-foreground" />
                             <span className="text-muted-foreground">Fin:</span>
                             <span className="font-medium text-foreground">
-                              {formatearFecha(sol.fechaFin)}
+                              {formatDate(sol.fechaFin)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -665,13 +658,13 @@ export default function AprobarSolicitudesClient({
                     <div className="space-y-1">
                       <Label className="text-foreground">Fecha inicio</Label>
                       <p className="text-sm text-foreground">
-                        {formatearFecha(solicitudSeleccionada.fechaInicio)}
+                        {formatDate(solicitudSeleccionada.fechaInicio)}
                       </p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-foreground">Fecha fin</Label>
                       <p className="text-sm text-foreground">
-                        {formatearFecha(solicitudSeleccionada.fechaFin)}
+                        {formatDate(solicitudSeleccionada.fechaFin)}
                       </p>
                     </div>
                     <div className="space-y-1">
@@ -683,7 +676,7 @@ export default function AprobarSolicitudesClient({
                     <div className="space-y-1">
                       <Label className="text-foreground">Fecha de solicitud</Label>
                       <p className="text-sm text-muted-foreground">
-                        {formatearFecha(solicitudSeleccionada.createdAt)}
+                        {formatDate(solicitudSeleccionada.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -707,7 +700,7 @@ export default function AprobarSolicitudesClient({
                           <div key={i} className="flex flex-col space-y-1 pb-3 last:pb-0 border-b last:border-0 border-border">
                             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                               <span className="text-xs font-semibold uppercase text-primary">{com.accion.replace('_', ' ')}</span>
-                              <span className="text-xs text-muted-foreground">{formatearFecha(com.fecha)}</span>
+                              <span className="text-xs text-muted-foreground">{formatDate(com.fecha)}</span>
                             </div>
                             <p className="text-sm text-foreground">{com.comentario}</p>
                           </div>

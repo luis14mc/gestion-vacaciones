@@ -8,6 +8,7 @@ import type { TipoReporteCNI } from '@/lib/domain/reportes/filters';
 import { csvConBom, filasACsv } from '@/lib/domain/exportacion/csv';
 import { exportarFilasExcel } from '@/services/excel.service';
 import type { DatasetReporte } from '@/services/reportes.service';
+import { formatDateTime } from '@/lib/utils/date-format';
 
 export type FormatoExportacion = 'csv' | 'xlsx' | 'pdf';
 
@@ -61,7 +62,7 @@ function generarPdfInstitucional(dataset: DatasetReporte): Buffer {
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   doc.text(
-    `Generado: ${new Date(dataset.generadoEn).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`,
+    `Generado: ${formatDateTime(dataset.generadoEn)}`,
     pageWidth / 2,
     24,
     { align: 'center' }

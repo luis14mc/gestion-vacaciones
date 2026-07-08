@@ -153,6 +153,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     const errorVoBoDirector = validarVoBoDirectorService({
       esDirector,
       tipo,
+      duracionPermiso,
       documentosAdjuntos,
     });
     if (errorVoBoDirector) {

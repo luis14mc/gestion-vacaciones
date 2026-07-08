@@ -5,6 +5,7 @@ import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { formatDate } from '@/lib/utils/date-format';
 
 interface Props {
   form: UseFormReturn<SolicitudFormData>;
@@ -31,7 +32,7 @@ export function CumpleanosSection({ form, elegibilidad }: Props) {
 
       {elegibilidad?.fechaMinimaPermitida && elegibilidad?.fechaMaximaPermitida && (
         <p className="text-xs text-muted-foreground">
-          Rango permitido: {elegibilidad.fechaMinimaPermitida} al {elegibilidad.fechaMaximaPermitida}.
+          Rango permitido: {formatDate(elegibilidad.fechaMinimaPermitida)} al {formatDate(elegibilidad.fechaMaximaPermitida)}.
         </p>
       )}
 

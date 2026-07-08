@@ -7,6 +7,7 @@
  */
 
 import ExcelJS from 'exceljs';
+import { formatDateTime } from '@/lib/utils/date-format';
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
@@ -107,8 +108,8 @@ export async function exportarFilasExcel(input: ExportarFilasExcelInput): Promis
   ws.getRow(1).height = 32;
 
   const generado = input.meta?.generadoEn
-    ? new Date(input.meta.generadoEn).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })
-    : new Date().toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' });
+    ? formatDateTime(input.meta.generadoEn)
+    : formatDateTime(new Date());
 
   ws.mergeCells(`A2:${lastColLetter}2`);
   ws.getCell('A2').value = `Generado: ${generado}`;

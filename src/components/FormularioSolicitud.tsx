@@ -5,6 +5,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { sileo } from 'sileo';
 import { notify } from '@/lib/swal';
+import { formatDate } from '@/lib/utils/date-format';
+import { debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
+import { mensajeFlujoVisible } from '@/lib/domain/solicitud-flujo-aprobacion';
 import { Loader2 } from 'lucide-react';
 
 import { solicitudSchema, type SolicitudFormData } from '@/lib/validations/solicitud.schema';
@@ -70,6 +73,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
   });
 
   const tipoAusenciaId = form.watch('tipoAusenciaId');
+  const tipoPermiso = form.watch('tipoPermiso');
   const fechaInicio = form.watch('fechaInicio');
   const fechaFin = form.watch('fechaFin');
 
@@ -80,8 +84,20 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
   const esLicenciaMedica = tipoSeleccionado?.tipo === 'licencia_medica';
   const esCumpleanos = tipoSeleccionado?.tipo === 'dia_cumpleanos';
   const necesitaFechas = !!tipoSeleccionado && !esPermiso && !esCumpleanos;
-  const requiereVoBoMinistro = flujoAprobacion?.requiereVoBoMinistro ?? false;
+  const requiereVoBoMinistro = debeExigirVoBoMinistro({
+    requiereVoBoFlujo: flujoAprobacion?.requiereVoBoMinistro ?? false,
+    tipo: tipoSeleccionado?.tipo ?? '',
+    duracionPermiso: esPermiso ? tipoPermiso : undefined,
+  });
   const requiereAdjunto = requiereVoBoMinistro || esLicenciaMedica;
+  const pasosProcesoVisibles = (flujoAprobacion?.pasosProceso ?? []).filter(
+    (paso) => requiereVoBoMinistro || !/VoBo Ministro/i.test(paso)
+  );
+  const mensajeFlujo = mensajeFlujoVisible({
+    flujo: flujoAprobacion,
+    tipo: tipoSeleccionado?.tipo ?? '',
+    duracionPermiso: esPermiso ? tipoPermiso : undefined,
+  });
 
   const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica', 'dia_cumpleanos'];
   const tiposFiltradosBase = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
@@ -231,7 +247,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       if (result.success) {
         const mensajeExito = flujoAprobacion?.pasaDirectoRrhh
           ? 'Tu solicitud ha sido creada y derivada directamente a Recursos Humanos.'
-          : flujoAprobacion?.requiereVoBoMinistro
+          : requiereVoBoMinistro
             ? 'Tu solicitud ha sido creada y será revisada por Recursos Humanos tras el VoBo del Ministro.'
             : 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación.';
         notify.success('¡Solicitud enviada!', mensajeExito);
@@ -261,7 +277,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       <CardHeader className="px-0 text-center">
         <CardTitle className="text-xl tracking-tight sm:text-2xl">SOLICITUD DE PERMISO / VACACIONES</CardTitle>
         <CardDescription>
-          Fecha de solicitud: {new Date().toLocaleDateString('es-HN')}
+          Fecha de solicitud: {formatDate(new Date())}
         </CardDescription>
       </CardHeader>
 
@@ -417,14 +433,14 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       <CardFooter className="mt-6 rounded-xl bg-muted/30">
         <div className="w-full p-2 text-xs text-muted-foreground">
           <p className="font-semibold mb-2">Proceso de aprobación:</p>
-          {flujoAprobacion?.mensajeFlujo && (
-            <p className="mb-2 text-[11px] leading-relaxed">{flujoAprobacion.mensajeFlujo}</p>
+          {mensajeFlujo && (
+            <p className="mb-2 text-[11px] leading-relaxed">{mensajeFlujo}</p>
           )}
           {cargandoFlujo ? (
             <p className="text-[11px]">Cargando flujo de aprobación…</p>
           ) : (
             <ul className="list-disc list-inside space-y-1">
-              {(flujoAprobacion?.pasosProceso ?? []).map((paso) => (
+              {(pasosProcesoVisibles).map((paso) => (
                 <li key={paso}>{paso}</li>
               ))}
             </ul>

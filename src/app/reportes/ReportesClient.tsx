@@ -53,6 +53,8 @@ import {
   labelEstado,
   labelTipo,
 } from '@/lib/domain/reportes/labels';
+import { formatearValorExport } from '@/lib/domain/exportacion/format';
+import { formatDateTime } from '@/lib/utils/date-format';
 
 interface ReportesClientProps {
   session: Session;
@@ -107,6 +109,8 @@ function valorCelda(key: string, value: unknown): string {
     const map: Record<string, string> = { bajo: 'Bajo', medio: 'Medio', alto: 'Alto' };
     return map[String(value)] ?? String(value);
   }
+  const formatted = formatearValorExport(key, value);
+  if (formatted !== value) return String(formatted);
   return String(value);
 }
 
@@ -496,7 +500,7 @@ export default function ReportesClient({ session }: ReportesClientProps) {
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
           <Badge variant="secondary">{meta.totalRegistros} registros</Badge>
           <span>
-            Generado: {new Date(meta.generadoEn).toLocaleString('es-HN')}
+            Generado: {formatDateTime(meta.generadoEn)}
           </span>
           {departamentoId ? <span>· Depto. filtrado</span> : null}
           {tipoSolicitud ? <span>· Tipo: {labelTipo(tipoSolicitud)}</span> : null}

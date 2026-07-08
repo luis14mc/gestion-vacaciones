@@ -3,7 +3,7 @@
  * Fuente única para no duplicar reglas en el frontend.
  */
 
-import { requiereVoBoDirector } from '@/lib/domain/solicitud-adjuntos';
+import { esDirectorConFlujoVoBo, debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
 import {
   FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
   esDepartamentoDireccionAdministrativa,
@@ -26,6 +26,9 @@ const MENSAJE_JEFE_DIR_ADMIN =
 
 const MENSAJE_DIRECTOR =
   'Como Director, debe adjuntar el VoBo del Ministro. La solicitud será revisada por Recursos Humanos.';
+
+const MENSAJE_DIRECTOR_PERMISO_CORTO =
+  'Su permiso de salida será revisado por Recursos Humanos. No se requiere VoBo del Ministro para permisos de 1–2 horas ni medio día.';
 
 const MENSAJE_JEFE =
   'Su solicitud será enviada al Director de Área para aprobación y luego a Recursos Humanos.';
@@ -68,7 +71,7 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
     };
   }
 
-  if (requiereVoBoDirector({ esDirector: params.esDirector, esSolicitudPropia: true, tipo })) {
+  if (esDirectorConFlujoVoBo({ esDirector: params.esDirector, esSolicitudPropia: true, tipo })) {
     return {
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
@@ -125,4 +128,25 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
       PASO_NOTIFICACION,
     ],
   };
+}
+
+/** Mensaje de flujo según tipo y duración (VoBo condicionado en permiso de salida). */
+export function mensajeFlujoVisible(params: {
+  flujo: FlujoAprobacionNuevaSolicitud | null | undefined;
+  tipo: string;
+  duracionPermiso?: string | null;
+}): string | undefined {
+  if (!params.flujo?.mensajeFlujo) return undefined;
+
+  const exigeVoBo = debeExigirVoBoMinistro({
+    requiereVoBoFlujo: params.flujo.requiereVoBoMinistro,
+    tipo: params.tipo,
+    duracionPermiso: params.duracionPermiso,
+  });
+
+  if (params.flujo.requiereVoBoMinistro && params.tipo === 'permiso_salida' && !exigeVoBo) {
+    return MENSAJE_DIRECTOR_PERMISO_CORTO;
+  }
+
+  return params.flujo.mensajeFlujo;
 }

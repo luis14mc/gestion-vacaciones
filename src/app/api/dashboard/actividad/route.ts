@@ -5,6 +5,7 @@ import { usuarios, solicitudes } from "@/lib/db/schema";
 import { desc, isNull, or, eq, and, inArray, sql } from "drizzle-orm";
 import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 import { withErrorHandler } from "@/lib/api-handler";
+import { formatDate, parseSafeDate } from "@/lib/utils/date-format";
 
 export const GET = withErrorHandler(async () => {
   const session = await getSession();
@@ -66,17 +67,19 @@ export const GET = withErrorHandler(async () => {
     .limit(5);
 
   for (const solicitud of ultimasSolicitudes) {
-    const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio) : null;
-    const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin) : null;
-    
+    const fechaInicio = parseSafeDate(solicitud.fechaInicio);
+    const fechaFin = parseSafeDate(solicitud.fechaFin);
+
     let dias = 0;
     if (fechaInicio && fechaFin) {
-      dias = Math.ceil((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      dias =
+        Math.ceil((fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     }
 
-    const fechaRango = fechaInicio && fechaFin
-      ? `${fechaInicio.toLocaleDateString("es-ES", { month: "short", day: "numeric" })}-${fechaFin.toLocaleDateString("es-ES", { day: "numeric" })}`
-      : "Sin fechas";
+    const fechaRango =
+      solicitud.fechaInicio && solicitud.fechaFin
+        ? `${formatDate(solicitud.fechaInicio)} - ${formatDate(solicitud.fechaFin)}`
+        : "Sin fechas";
 
     actividades.push({
       id: `solicitud-${solicitud.id}`,

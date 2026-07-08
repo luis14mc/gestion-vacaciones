@@ -9,6 +9,7 @@ import FormularioSolicitud from '@/components/FormularioSolicitud';
 const TIPOS_AUSENCIA = [
   { id: '1', nombre: 'Vacaciones', tipo: 'vacaciones', activo: true, permiteHoras: false },
   { id: '2', nombre: 'Licencia médica', tipo: 'licencia_medica', activo: true, permiteHoras: false },
+  { id: '3', nombre: 'Permiso de salida', tipo: 'permiso_salida', activo: true, permiteHoras: true },
 ];
 
 vi.mock('@/hooks/useTiposAusencia', () => ({
@@ -102,6 +103,11 @@ describe('FormularioSolicitud — flujo de aprobación', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
+    global.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as typeof ResizeObserver;
   });
 
   it('Jefe de Dirección Administrativa no ve VoBo Ministro', async () => {
@@ -140,6 +146,40 @@ describe('FormularioSolicitud — flujo de aprobación', () => {
       expect(screen.getByText(/Constancia Médica \(Obligatorio\)/i)).toBeTruthy();
     });
     expect(screen.queryByText(/VoBo del Ministro/i)).toBeNull();
+  });
+
+  it('Director con permiso 1-2h no ve VoBo Ministro', async () => {
+    mockFetchFlujo({ permiso_salida: flujoDirector });
+    renderFormulario();
+
+    await seleccionarTipo('Permiso de salida');
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /PERMISO DE SALIDA/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: /1-2 Horas/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/VoBo del Ministro \(Obligatorio\)/i)).toBeNull();
+    });
+  });
+
+  it('Director con permiso día completo sí ve VoBo Ministro', async () => {
+    mockFetchFlujo({ permiso_salida: flujoDirector });
+    renderFormulario();
+
+    await seleccionarTipo('Permiso de salida');
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /PERMISO DE SALIDA/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: /Día Completo/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/VoBo del Ministro \(Obligatorio\)/i)).toBeTruthy();
+    });
   });
 
   it('Texto de proceso para jefe de Dirección Administrativa muestra derivación directa a RRHH', async () => {

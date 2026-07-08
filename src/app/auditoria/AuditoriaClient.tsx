@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { notify } from '@/lib/swal';
+import { formatDateTime } from '@/lib/utils/date-format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -374,7 +375,7 @@ export default function AuditoriaClient({ session }: { session: Session }) {
       {consultadoEn ? (
         <p className="text-xs text-muted-foreground">
           {totalFiltrado} registros filtrados · consulta{' '}
-          {new Date(consultadoEn).toLocaleString('es-HN')} · sesión{' '}
+          {formatDateTime(consultadoEn)} · sesión{' '}
           {session.user.email}
         </p>
       ) : null}
@@ -405,7 +406,7 @@ export default function AuditoriaClient({ session }: { session: Session }) {
                 {registros.map((registro) => (
                   <TableRow key={registro.id}>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(registro.fecha_creacion).toLocaleString('es-HN')}
+                      {formatDateTime(registro.fecha_creacion)}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">
@@ -470,7 +471,7 @@ export default function AuditoriaClient({ session }: { session: Session }) {
                 <Row label="Acción" value={labelAccion(selectedLog.accion)} />
                 <Row label="Evento" value={labelEvento(selectedLog.evento)} />
                 <Row label="Módulo" value={selectedLog.modulo ?? '—'} />
-                <Row label="Fecha" value={new Date(selectedLog.fecha_creacion).toLocaleString('es-HN')} />
+                <Row label="Fecha" value={formatDateTime(selectedLog.fecha_creacion)} />
                 <Row label="Resultado" value={selectedLog.resultado ?? '—'} />
                 <Row label="Severidad" value={selectedLog.severidad ?? '—'} />
               </Section>

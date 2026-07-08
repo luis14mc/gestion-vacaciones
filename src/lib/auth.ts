@@ -83,8 +83,8 @@ export async function getSession(): Promise<SessionUser | null> {
     }
 
     // Fuente única de verdad: roles y permisos se leen FRESCOS desde BD
-    // en cada request, no del token JWT (que solo se llena al login y vive
-    // 24h). Así una revocación de permisos surte efecto de inmediato.
+    // en cada request. El JWT solo guarda claims mínimos (id, flags, etc.);
+    // no incluye arrays de roles/permisos para mantener la cookie pequeña.
     let rolesDb: RolUsuario[] = [];
     let permisosDb: string[] = [];
     try {
@@ -94,9 +94,7 @@ export async function getSession(): Promise<SessionUser | null> {
         permisosDb = rbac.permisos;
       }
     } catch (rbacErr) {
-      console.error('Error leyendo RBAC de BD, usando token:', rbacErr);
-      rolesDb = (session.user.roles as RolUsuario[]) || [];
-      permisosDb = session.user.permisos || [];
+      console.error('Error leyendo RBAC de BD:', rbacErr);
     }
 
     const sessionUser: SessionUser = {
@@ -105,8 +103,8 @@ export async function getSession(): Promise<SessionUser | null> {
       nombre: session.user.nombre,
       apellido: session.user.apellido,
       departamentoId: departamentoIdDb ?? session.user.departamentoId,
-      departamentoNombre: session.user.departamentoNombre || undefined,
-      cargo: (cargoDb ?? session.user.cargo) || undefined,
+      departamentoNombre: undefined,
+      cargo: cargoDb || undefined,
 
       roles: rolesDb,
       permisos: permisosDb,

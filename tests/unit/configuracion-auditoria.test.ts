@@ -332,6 +332,18 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
+vi.mock('@/lib/domain/solicitud-flujo-solicitante', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/domain/solicitud-flujo-solicitante')>();
+  return {
+    ...actual,
+    cargarDatosFlujoSolicitante: vi.fn(async () => ({
+      esDirector: false,
+      esJefe: false,
+      departamentoNombre: 'Tecnología',
+    })),
+  };
+});
+
 import { POST } from '@/app/api/solicitudes/route';
 
 const sessionEmpleado = {

@@ -26,7 +26,6 @@ export default async function ReportesDepartamentoPage() {
           esDirector: usuarios.esDirector,
           esJefe: usuarios.esJefe,
           departamentoId: usuarios.departamentoId,
-          cargo: usuarios.cargo,
         })
         .from(usuarios)
         .where(eq(usuarios.id, userId))
@@ -42,7 +41,6 @@ export default async function ReportesDepartamentoPage() {
         session.user.esDirector = esDirector;
         session.user.esJefe = esJefe;
         session.user.departamentoId = dbUser.departamentoId ?? session.user.departamentoId;
-        session.user.cargo = dbUser.cargo ?? session.user.cargo;
       }
     }
   } catch (error) {

@@ -7,31 +7,52 @@ import type {
   anosLaborales
 } from '@/lib/db/schema';
 
-// Tipos de NextAuth
-import type { DefaultSession } from "next-auth";
+// Tipos de NextAuth — sesión JWT mínima (ver SlimAuthJwt y src/auth.ts)
 
 declare module "next-auth" {
   interface Session {
+    /** Expiración absoluta (ms epoch), derivada de seguridad.sesion_duracion_horas */
+    absExp?: number | null;
     user: {
       id: number;
+      email: string;
+      name?: string | null;
+      image?: string | null;
       nombre: string;
       apellido: string;
-      departamentoId: number;
-      departamentoNombre?: string;
-      cargo?: string | null;
+      departamentoId: number | null;
       esDirector: boolean;
       esJefe: boolean;
       esRrhh: boolean;
       esAdmin: boolean;
-      roles?: Array<{
-        id: number;
-        codigo: string;
-        nombre: string;
-        nivel: number;
-      }>;
-      permisos?: string[];
-    } & DefaultSession["user"];
+    };
   }
+
+  interface User {
+    nombre: string;
+    apellido: string;
+    departamentoId: number | null;
+    esDirector: boolean;
+    esJefe: boolean;
+    esRrhh: boolean;
+    esAdmin: boolean;
+  }
+}
+
+/** Claims persistidos en la cookie JWT (mantener mínimos). */
+export interface SlimAuthJwt {
+  id?: string;
+  email?: string | null;
+  nombre?: string;
+  apellido?: string;
+  departamentoId?: number | null;
+  esDirector?: boolean;
+  esJefe?: boolean;
+  esRrhh?: boolean;
+  esAdmin?: boolean;
+  absExp?: number;
+  name?: string;
+  picture?: string;
 }
 
 // =====================================================

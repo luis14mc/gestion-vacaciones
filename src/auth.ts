@@ -8,6 +8,41 @@ import { obtenerRolesYPermisos } from "@/services/rbac.service";
 import { checkDualRateLimit, resetDualRateLimit } from "@/lib/rate-limiter";
 import { obtenerConfigs, asNumber } from "@/lib/config/service";
 import { registrarEventoAuditoria, datosPeticion } from "@/services/auditoria.service";
+import type { SlimAuthJwt } from "@/types";
+
+/**
+ * Claims mínimos en el JWT/cookie de sesión.
+ *
+ * NO agregar roles[], permisos[], módulos, metadata ni objetos de usuario
+ * completos al token: inflan la cookie y provocan 502 en Nginx con
+ * "upstream sent too big header while reading response header from upstream"
+ * (p. ej. POST /api/auth/callback/credentials).
+ *
+ * Roles y permisos se resuelven server-side vía getSession() → BD (usuarioId).
+ */
+const CODIGOS_ROL = {
+  ADMIN: "ADMIN",
+  RRHH: "RRHH",
+  DIRECTOR: "DIRECTOR",
+  JEFE: "JEFE",
+} as const;
+
+function resolverFlagsDesdeRoles(
+  codigosRol: string[],
+  usuario: {
+    esAdmin: boolean;
+    esRrhh: boolean;
+    esDirector: boolean;
+    esJefe: boolean;
+  }
+) {
+  return {
+    esAdmin: codigosRol.includes(CODIGOS_ROL.ADMIN) || usuario.esAdmin,
+    esRrhh: codigosRol.includes(CODIGOS_ROL.RRHH) || usuario.esRrhh,
+    esDirector: codigosRol.includes(CODIGOS_ROL.DIRECTOR) || usuario.esDirector,
+    esJefe: codigosRol.includes(CODIGOS_ROL.JEFE) || usuario.esJefe,
+  };
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -84,94 +119,64 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           .set({ ultimoAcceso: new Date().toISOString() })
           .where(eq(usuarios.id, usuario.id));
 
-        // 🆕 Obtener roles y permisos RBAC
-        const usuarioConRBAC = await obtenerRolesYPermisos(usuario.id);
+        // RBAC solo para derivar flags booleanos; roles/permisos NO van al JWT.
+        const rbac = await obtenerRolesYPermisos(usuario.id);
+        const codigosRol = rbac?.roles.map((r) => r.codigo) ?? [];
+        const flags = resolverFlagsDesdeRoles(codigosRol, usuario);
 
-        // Retornar usuario para sesión con RBAC
         return {
           id: usuario.id.toString(),
           email: usuario.email,
-          name: `${usuario.nombre} ${usuario.apellido}`,
-          image: null,
-          // Datos adicionales
           nombre: usuario.nombre,
           apellido: usuario.apellido,
           departamentoId: usuario.departamentoId,
-          departamentoNombre: undefined, // Se resuelve por separado si se necesita
-          cargo: usuario.cargo,
-          // 🆕 RBAC
-          roles: usuarioConRBAC?.roles || [],
-          permisos: usuarioConRBAC?.permisos || [],
-          // ⚠️ Legacy (calculado desde roles)
-          esAdmin:
-            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'ADMIN') ||
-            usuario.esAdmin ||
-            false,
-          esRrhh:
-            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'RRHH') ||
-            usuario.esRrhh ||
-            false,
-          esDirector:
-            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'DIRECTOR') ||
-            usuario.esDirector ||
-            false,
-          esJefe:
-            usuarioConRBAC?.roles?.some((r: any) => r.codigo === 'JEFE') ||
-            usuario.esJefe ||
-            false,
+          ...flags,
         };
       }
     })
   ],
   callbacks: {
     async jwt({ token, user }) {
+      const slimToken = token as SlimAuthJwt & typeof token;
       if (user) {
-        // Expiración absoluta de sesión según Configuración → Seguridad.
-        // Se fija solo al iniciar sesión (no en cada request).
         const horas = asNumber(
           (await obtenerConfigs(['seguridad.sesion_duracion_horas']))['seguridad.sesion_duracion_horas'],
           24
         );
-        (token as any).absExp = Date.now() + horas * 60 * 60 * 1000;
-        // Agregar datos personalizados al token incluyendo RBAC
-        token.id = user.id;
-        token.nombre = (user as any).nombre;
-        token.apellido = (user as any).apellido;
-        token.departamentoId = (user as any).departamentoId;
-        token.departamentoNombre = (user as any).departamentoNombre;
-        token.cargo = (user as any).cargo;
-        // 🆕 RBAC
-        token.roles = (user as any).roles;
-        token.permisos = (user as any).permisos;
-        token.esDirector = (user as any).esDirector;
-        token.esJefe = (user as any).esJefe;
-        token.esRrhh = (user as any).esRrhh;
-        token.esAdmin = (user as any).esAdmin;
+        slimToken.absExp = Date.now() + horas * 60 * 60 * 1000;
+
+        slimToken.id = user.id;
+        slimToken.email = user.email;
+        slimToken.nombre = user.nombre;
+        slimToken.apellido = user.apellido;
+        slimToken.departamentoId = user.departamentoId ?? null;
+        slimToken.esDirector = user.esDirector;
+        slimToken.esJefe = user.esJefe;
+        slimToken.esRrhh = user.esRrhh;
+        slimToken.esAdmin = user.esAdmin;
+
+        delete slimToken.name;
+        delete slimToken.picture;
       }
-      return token;
+      return slimToken;
     },
     async session({ session, token }) {
-      if (token) {
-        // Exponer la expiración absoluta para que middleware y getSession
-        // puedan invalidar la sesión cuando se supere la duración configurada.
-        (session as any).absExp = (token as any).absExp ?? null;
-        // Agregar datos del token a la sesión incluyendo RBAC
-        session.user = {
-          ...session.user,
-          id: Number.parseInt(token.id as string),
-          nombre: token.nombre as string,
-          apellido: token.apellido as string,
-          departamentoId: (token.departamentoId as number) ?? null,
-          departamentoNombre: token.departamentoNombre as string,
-          cargo: token.cargo as string | null,
-          // 🆕 RBAC
-          roles: token.roles as any[],
-          permisos: token.permisos as string[],
-          esDirector: token.esDirector as boolean,
-          esJefe: token.esJefe as boolean,
-          esRrhh: token.esRrhh as boolean,
-          esAdmin: token.esAdmin as boolean
-        } as any;
+      const slimToken = token as SlimAuthJwt;
+      if (slimToken.id) {
+        session.absExp = slimToken.absExp ?? null;
+        const userId = Number.parseInt(slimToken.id, 10);
+        Object.assign(session.user, {
+          id: userId,
+          email: slimToken.email ?? session.user.email,
+          name: `${slimToken.nombre ?? ""} ${slimToken.apellido ?? ""}`.trim(),
+          nombre: slimToken.nombre ?? "",
+          apellido: slimToken.apellido ?? "",
+          departamentoId: slimToken.departamentoId ?? null,
+          esDirector: slimToken.esDirector ?? false,
+          esJefe: slimToken.esJefe ?? false,
+          esRrhh: slimToken.esRrhh ?? false,
+          esAdmin: slimToken.esAdmin ?? false,
+        });
       }
       return session;
     }

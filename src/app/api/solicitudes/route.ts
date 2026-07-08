@@ -16,6 +16,10 @@ import {
 import { puedeAccederBandejaAprobacion } from '@/lib/domain/aprobacion-inbox';
 import { validarEstructuraSolicitudCumpleanos } from '@/lib/domain/cumpleanos';
 import { esErrorValidacionNegocioCrearSolicitud } from '@/lib/domain/solicitud-errores-negocio';
+import {
+  cargarDatosFlujoSolicitante,
+  resolverFlujoSolicitante,
+} from '@/lib/domain/solicitud-flujo-solicitante';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -322,15 +326,32 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  // Validación: Directores deben adjuntar VoBo del Ministro (no aplica a día de cumpleaños)
-  const errorVoBo = validarVoBoDirectorAdjunto({
-    esDirector: sessionUser.esDirector || false,
-    esSolicitudPropia: usuarioId === sessionUser.id,
-    tipo,
-    documentosAdjuntos,
-  });
-  if (errorVoBo) {
-    return NextResponse.json({ success: false, error: errorVoBo }, { status: 400 });
+  const datosSolicitante = await cargarDatosFlujoSolicitante(usuarioId);
+  if (!datosSolicitante) {
+    return NextResponse.json(
+      { success: false, error: 'Usuario solicitante no encontrado' },
+      { status: 404 }
+    );
+  }
+
+  const flujo = resolverFlujoSolicitante(datosSolicitante, tipo);
+
+  if (flujo.requiereVoBoMinistro) {
+    const errorVoBo = validarVoBoDirectorAdjunto({
+      esDirector: true,
+      esSolicitudPropia: usuarioId === sessionUser.id,
+      tipo,
+      documentosAdjuntos,
+    });
+    if (errorVoBo) {
+      await registrarAuditoria({
+        usuarioId: sessionUser.id,
+        accion: 'validacion_rechazada',
+        tablaAfectada: 'solicitudes',
+        detalles: { tipo, motivo: errorVoBo, requiereVoBoMinistro: true },
+      });
+      return NextResponse.json({ success: false, error: errorVoBo }, { status: 400 });
+    }
   }
 
   // Validación: licencia médica requiere constancia
@@ -340,6 +361,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       (a: any) => a?.nombre === 'constancia_medica' && typeof a?.data === 'string' && a.data.length > 0
     );
     if (!tieneConstancia) {
+      await registrarAuditoria({
+        usuarioId: sessionUser.id,
+        accion: 'validacion_rechazada',
+        tablaAfectada: 'solicitudes',
+        detalles: { tipo, motivo: 'Falta constancia médica' },
+      });
       return NextResponse.json(
         { success: false, error: 'Para licencia médica es obligatorio adjuntar la constancia médica.' },
         { status: 400 }
@@ -367,7 +394,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       horaRegreso,
       motivo: motivoNormalizado,
       comentarioEmpleado: observaciones || undefined,
-      esDirector: sessionUser.esDirector || false,
+      esDirector: datosSolicitante.esDirector,
       documentosAdjuntos
     });
   } catch (error) {
@@ -433,6 +460,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       tipo,
       usuarioSolicitanteId: usuarioId,
       codigo: solicitudCreada.codigo,
+      ...(flujo.flujoEspecial ? { flujoEspecial: flujo.flujoEspecial } : {}),
+      ...(flujo.pasaDirectoRrhh ? { derivadoDirectoRrhh: true } : {}),
     },
     ipAddress,
     userAgent,

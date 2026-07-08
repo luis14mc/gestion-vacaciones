@@ -17,8 +17,13 @@ import {
   crearDatosBaseTest,
   crearUsuarioTest,
   crearBalanceTest,
+  crearDepartamentoTest,
 } from '../helpers/test-data'
 import './setup'
+import {
+  COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN,
+  FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
+} from '@/lib/domain/solicitud-flujo-inicial'
 
 const FECHA_INICIO_LAB = '2026-03-02'
 const FECHA_FIN_LAB = '2026-03-06'
@@ -570,6 +575,166 @@ describe('Solicitudes Service - Integration Tests', () => {
       expect(resultado[0].usuario).toBeDefined()
       expect(resultado[0].usuario?.nombre).toBe('Juan')
       expect(resultado[0].usuario?.email).toBe('juan@example.com')
+    })
+  })
+
+  // ===================================================
+  // TESTS: excepción Dirección Administrativa
+  // ===================================================
+
+  describe('crearSolicitud() — excepción Dirección Administrativa', () => {
+    let deptoDirAdmin: Awaited<ReturnType<typeof crearDepartamentoTest>>
+    let deptoOtro: Awaited<ReturnType<typeof crearDepartamentoTest>>
+    let jefeDirAdmin: Awaited<ReturnType<typeof crearUsuarioTest>>
+    let empleadoDirAdmin: Awaited<ReturnType<typeof crearUsuarioTest>>
+    let jefeOtroDepto: Awaited<ReturnType<typeof crearUsuarioTest>>
+    let usuarioDirector: Awaited<ReturnType<typeof crearUsuarioTest>>
+
+    beforeEach(async () => {
+      datosBase = await crearDatosBaseTest()
+      deptoDirAdmin = await crearDepartamentoTest('Dirección Administrativa', 'DIR-ADM')
+      deptoOtro = await crearDepartamentoTest('Operaciones', 'OPS')
+
+      jefeDirAdmin = await crearUsuarioTest({
+        nombre: 'Laura',
+        apellido: 'Mendez',
+        email: 'laura.diradmin@example.com',
+        password: 'password123',
+        departamentoId: deptoDirAdmin.id,
+        rolId: datosBase.roles.jefe.id,
+      })
+
+      empleadoDirAdmin = await crearUsuarioTest({
+        nombre: 'Pedro',
+        apellido: 'Soto',
+        email: 'pedro.diradmin@example.com',
+        password: 'password123',
+        departamentoId: deptoDirAdmin.id,
+        rolId: datosBase.roles.empleado.id,
+      })
+
+      jefeOtroDepto = await crearUsuarioTest({
+        nombre: 'Ana',
+        apellido: 'Ruiz',
+        email: 'ana.ops@example.com',
+        password: 'password123',
+        departamentoId: deptoOtro.id,
+        rolId: datosBase.roles.jefe.id,
+      })
+
+      usuarioDirector = await crearUsuarioTest({
+        nombre: 'Diego',
+        apellido: 'Vega',
+        email: 'diego.director@example.com',
+        password: 'password123',
+        departamentoId: deptoOtro.id,
+        rolId: datosBase.roles.empleado.id,
+      })
+
+      const { db } = await import('@/lib/db')
+      const { usuarios } = await import('@/lib/db/schema')
+      const { eq } = await import('drizzle-orm')
+
+      await db
+        .update(usuarios)
+        .set({ esJefe: true })
+        .where(eq(usuarios.id, jefeDirAdmin.id))
+
+      await db
+        .update(usuarios)
+        .set({ jefeSuperiorId: jefeDirAdmin.id, esJefe: false })
+        .where(eq(usuarios.id, empleadoDirAdmin.id))
+
+      await db
+        .update(usuarios)
+        .set({ esJefe: true })
+        .where(eq(usuarios.id, jefeOtroDepto.id))
+
+      await db
+        .update(usuarios)
+        .set({ esDirector: true })
+        .where(eq(usuarios.id, usuarioDirector.id))
+
+      for (const usuarioId of [
+        jefeDirAdmin.id,
+        empleadoDirAdmin.id,
+        jefeOtroDepto.id,
+        usuarioDirector.id,
+      ]) {
+        await crearBalanceTest({
+          usuarioId,
+          anoLaboralId: datosBase.anoLaboral.id,
+          cantidadAsignada: 15,
+          cantidadDisponible: 15,
+          tipoAusencia: 'vacaciones',
+        })
+      }
+    })
+
+    it('Jefe de Dirección Administrativa → estado inicial aprobada_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: jefeDirAdmin.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+        motivo: 'Vacaciones de jefatura',
+      })
+
+      expect(solicitud.estado).toBe('aprobada_jefe')
+      expect(solicitud.aprobadaJefePor).toBe(jefeDirAdmin.id)
+      expect(solicitud.aprobadaJefeFecha).toBeDefined()
+      expect(solicitud.comentarioJefe).toBe(COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN)
+      expect(solicitud.metadata).toMatchObject({
+        flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
+        derivadoDirectoRrhh: true,
+      })
+    })
+
+    it('Empleado normal de Dirección Administrativa → estado inicial pendiente_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: empleadoDirAdmin.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+        motivo: 'Vacaciones',
+      })
+
+      expect(solicitud.estado).toBe('pendiente_jefe')
+      expect(solicitud.aprobadaJefePor).toBeNull()
+      expect(solicitud.comentarioJefe).toBeNull()
+    })
+
+    it('Jefe de otro departamento → estado inicial pendiente_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: jefeOtroDepto.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+        motivo: 'Vacaciones jefe operaciones',
+      })
+
+      expect(solicitud.estado).toBe('pendiente_jefe')
+      expect(solicitud.metadata).toEqual({})
+    })
+
+    it('Director de cualquier departamento → mantiene aprobada_jefe', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioDirector.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+        motivo: 'Vacaciones director',
+        esDirector: true,
+        documentosAdjuntos: [{ nombre: 'vobo_ministro', data: 'dGVzdA==' }],
+      })
+
+      expect(solicitud.estado).toBe('aprobada_jefe')
+      expect(solicitud.comentarioJefe).toBe('Auto-aprobado (solicitud creada por Director)')
+      expect(solicitud.metadata).toEqual({})
     })
   })
 })

@@ -8,7 +8,7 @@
  */
 
 import { db } from '@/lib/db';
-import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
+import { solicitudes, balances, anosLaborales, usuarios, departamentos } from '@/lib/db/schema';
 import { eq, and, sql, desc, inArray, isNull } from 'drizzle-orm';
 import { obtenerConfigs, asNumber } from '@/lib/config/service';
 import { contarDiasHabiles } from '@/lib/domain/labor-days';
@@ -20,6 +20,7 @@ import {
 } from '@/lib/domain/cumpleanos';
 import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
 import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
+import { resolverFlujoInicialSolicitud } from '@/lib/domain/solicitud-flujo-inicial';
 
 // =====================================================
 // TIPOS
@@ -261,11 +262,20 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
 
     const codigo = `CNI-SOL-${year}-${String(nextNumber).padStart(4, '0')}`;
 
-    // 5. Crear solicitud
-    // Director crea + adjunta VoBo → va directo a RRHH (estado: aprobada_jefe)
-    // Jefe crea → pendiente_jefe (va a su Director para aprobación)
-    // Empleado crea → pendiente_jefe (va a su Jefe/Director para aprobación)
-    const estadoInicial = esDirector ? 'aprobada_jefe' : 'pendiente_jefe';
+    let departamentoNombre: string | null = null;
+    if (usuario.departamentoId) {
+      const departamento = await tx.query.departamentos.findFirst({
+        where: eq(departamentos.id, usuario.departamentoId),
+        columns: { nombre: true },
+      });
+      departamentoNombre = departamento?.nombre ?? null;
+    }
+
+    const flujoInicial = resolverFlujoInicialSolicitud({
+      esDirector,
+      esJefe: usuario.esJefe,
+      departamentoNombre,
+    });
 
     // Resolver horas para permisos de salida
     // El CHECK constraint de la BD exige hora_salida y hora_regreso NOT NULL para permiso_salida
@@ -288,6 +298,8 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       }
     }
 
+    const ahoraIso = new Date().toISOString();
+
     const [nuevaSolicitud] = await tx
       .insert(solicitudes)
       .values({
@@ -304,15 +316,15 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         motivo,
         comentarioEmpleado,
         documentosAdjuntos,
-        estado: estadoInicial,
-        // Si es Director, marcamos que ya pasó el filtro del jefe vía adjunto
-        aprobadaJefeFecha: esDirector ? new Date().toISOString() : null,
-        metadata: { test: false },
-        ...(esDirector ? {
-          aprobadaJefePor: usuarioId,
-          aprobadaJefeFecha: new Date().toISOString(),
-          comentarioJefe: 'Auto-aprobado (solicitud creada por Director)',
-        } : {}),
+        estado: flujoInicial.estadoInicial,
+        metadata: flujoInicial.metadataInicial,
+        ...(flujoInicial.autoAprobacionJefe
+          ? {
+              aprobadaJefePor: usuarioId,
+              aprobadaJefeFecha: ahoraIso,
+              comentarioJefe: flujoInicial.autoAprobacionJefe.comentarioJefe,
+            }
+          : {}),
       })
       .returning();
 

@@ -17,6 +17,7 @@ import { PermisoHorasSection } from './solicitudes/PermisoHorasSection';
 import { CumpleanosSection } from './solicitudes/CumpleanosSection';
 import { BalanceViewer } from './solicitudes/BalanceViewer';
 import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
+import type { FlujoAprobacionNuevaSolicitud } from '@/lib/domain/solicitud-flujo-aprobacion';
 
 const TIPO_DIA_CUMPLEANOS = {
   id: 'dia_cumpleanos',
@@ -35,16 +36,16 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 
 interface FormularioSolicitudProps {
   usuarioId: number;
-  esDirector?: boolean;
-  esJefe?: boolean;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
 
-export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onSuccess, onCancel }: FormularioSolicitudProps) {
+export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: FormularioSolicitudProps) {
   const [submitting, setSubmitting] = useState(false);
   const [archivoBase64, setArchivoBase64] = useState<string | null>(null);
   const [elegibilidadCumpleanos, setElegibilidadCumpleanos] = useState<ElegibilidadCumpleanos | null>(null);
+  const [flujoAprobacion, setFlujoAprobacion] = useState<FlujoAprobacionNuevaSolicitud | null>(null);
+  const [cargandoFlujo, setCargandoFlujo] = useState(true);
 
   // Initializing React Query Hooks
   const { data: tiposAusencia = [], isLoading: loadingTipos } = useTiposAusencia();
@@ -79,7 +80,8 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
   const esLicenciaMedica = tipoSeleccionado?.tipo === 'licencia_medica';
   const esCumpleanos = tipoSeleccionado?.tipo === 'dia_cumpleanos';
   const necesitaFechas = !!tipoSeleccionado && !esPermiso && !esCumpleanos;
-  const requiereAdjunto = (esDirector && !esCumpleanos) || esLicenciaMedica;
+  const requiereVoBoMinistro = flujoAprobacion?.requiereVoBoMinistro ?? false;
+  const requiereAdjunto = requiereVoBoMinistro || esLicenciaMedica;
 
   const tiposPermitidos = ['vacaciones', 'permiso_salida', 'licencia_medica', 'dia_cumpleanos'];
   const tiposFiltradosBase = tiposAusencia.filter((t: any) => tiposPermitidos.includes(t.tipo));
@@ -135,6 +137,31 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       .catch(() => setElegibilidadCumpleanos(null));
   }, []);
 
+  useEffect(() => {
+    const tipoFlujo = tipoSeleccionado?.tipo ?? 'vacaciones';
+    setCargandoFlujo(true);
+
+    fetch(`/api/solicitudes/flujo-aprobacion?tipo=${encodeURIComponent(tipoFlujo)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) {
+          setFlujoAprobacion(json.data);
+        } else {
+          setFlujoAprobacion(null);
+        }
+      })
+      .catch(() => setFlujoAprobacion(null))
+      .finally(() => setCargandoFlujo(false));
+  }, [tipoSeleccionado?.tipo]);
+
+  useEffect(() => {
+    if (!requiereAdjunto) {
+      setArchivoBase64(null);
+    }
+  }, [requiereAdjunto]);
+
   const onSubmit = async (data: SolicitudFormData) => {
     if (esCumpleanos && !elegibilidadCumpleanos?.puedeSolicitar) {
       sileo.error({
@@ -184,7 +211,10 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         motivo: data.motivo || undefined,
         observaciones: data.observaciones || undefined,
         duracionPermiso,
-        documentosAdjuntos: archivoBase64 ? [{ nombre: esLicenciaMedica ? 'constancia_medica' : 'vobo_ministro', data: archivoBase64 }] : [],
+        documentosAdjuntos:
+          archivoBase64 && (esLicenciaMedica || requiereVoBoMinistro)
+            ? [{ nombre: esLicenciaMedica ? 'constancia_medica' : 'vobo_ministro', data: archivoBase64 }]
+            : [],
       };
 
       const response = await fetch('/api/solicitudes', {
@@ -199,10 +229,12 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
         : { success: false, error: 'El servidor no devolvió una respuesta válida.' };
 
       if (result.success) {
-        notify.success(
-          '¡Solicitud enviada!',
-          'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación por tu jefe inmediato.'
-        );
+        const mensajeExito = flujoAprobacion?.pasaDirectoRrhh
+          ? 'Tu solicitud ha sido creada y derivada directamente a Recursos Humanos.'
+          : flujoAprobacion?.requiereVoBoMinistro
+            ? 'Tu solicitud ha sido creada y será revisada por Recursos Humanos tras el VoBo del Ministro.'
+            : 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación.';
+        notify.success('¡Solicitud enviada!', mensajeExito);
         form.reset();
         onSuccess?.();
       } else {
@@ -385,30 +417,18 @@ export default function FormularioSolicitud({ usuarioId, esDirector, esJefe, onS
       <CardFooter className="mt-6 rounded-xl bg-muted/30">
         <div className="w-full p-2 text-xs text-muted-foreground">
           <p className="font-semibold mb-2">Proceso de aprobación:</p>
-          <ul className="list-disc list-inside space-y-1">
-            {esCumpleanos ? (
-              <>
-                <li>1. Aprobación de Jefe Inmediato / Director de Área</li>
-                <li>2. Revisión y aprobación de Recursos Humanos</li>
-              </>
-            ) : esDirector ? (
-              <>
-                <li>1. VoBo Ministro (Mediante documento adjunto)</li>
-                <li>2. Revisión y validación de Recursos Humanos</li>
-              </>
-            ) : esJefe ? (
-              <>
-                <li>1. Aprobación de Director de Área</li>
-                <li>2. Revisión y aprobación de Recursos Humanos</li>
-              </>
-            ) : (
-              <>
-                <li>1. Aprobación de Jefe Inmediato</li>
-                <li>2. Revisión y aprobación de Recursos Humanos</li>
-              </>
-            )}
-            <li>Último paso: Notificación al solicitante</li>
-          </ul>
+          {flujoAprobacion?.mensajeFlujo && (
+            <p className="mb-2 text-[11px] leading-relaxed">{flujoAprobacion.mensajeFlujo}</p>
+          )}
+          {cargandoFlujo ? (
+            <p className="text-[11px]">Cargando flujo de aprobación…</p>
+          ) : (
+            <ul className="list-disc list-inside space-y-1">
+              {(flujoAprobacion?.pasosProceso ?? []).map((paso) => (
+                <li key={paso}>{paso}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </CardFooter>
     </Card>

@@ -22,8 +22,6 @@ export default function NuevaSolicitudClient({ session }: Props) {
 
       <FormularioSolicitud
         usuarioId={Number(session.user.id)}
-        esDirector={(session.user as any)?.esDirector}
-        esJefe={(session.user as any)?.esJefe}
         onSuccess={() => {
           router.push('/solicitudes');
         }}

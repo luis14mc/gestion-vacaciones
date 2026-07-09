@@ -3,6 +3,9 @@
  * Ejecuta una acción del workflow sobre una solicitud
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { eq, and, isNull } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { solicitudes } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { ejecutarAccion, obtenerAccionesParaSolicitud } from '@/services/workflow.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
@@ -57,6 +60,57 @@ export const POST = withErrorHandler(async (
 
   if (!accion) {
     return NextResponse.json({ success: false, error: 'Acción requerida' }, { status: 400 });
+  }
+
+  // Fase 4: defensa en profundidad. Bloquear explícitamente cualquier
+  // intento de RRHH de aprobar/rechazar una solicitud que ya fue
+  // rechazada por un aprobador previo (estado final). El state machine
+  // también lo impide, pero este mensaje es más claro para el frontend
+  // institucional.
+  const solicitudPreview = await db.query.solicitudes.findFirst({
+    where: and(
+      eq(solicitudes.id, solicitudId),
+      isNull(solicitudes.deletedAt)
+    ),
+    columns: { estado: true, usuarioId: true },
+  });
+
+  if (
+    solicitudPreview &&
+    (solicitudPreview.estado === 'rechazada_jefe' ||
+      solicitudPreview.estado === 'rechazada_director' ||
+      solicitudPreview.estado === 'rechazada_secretario_general') &&
+    (accion === 'aprobar_rrhh' || accion === 'rechazar_rrhh')
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          'Esta solicitud fue rechazada antes de llegar a Recursos Humanos y no puede ser aprobada por RRHH.',
+      },
+      { status: 409 }
+    );
+  }
+
+  // Bloquear también si RRHH intenta cualquier acción sobre estados
+  // finales (incluye los rechazados arriba).
+  if (
+    solicitudPreview &&
+    (solicitudPreview.estado === 'rechazada_jefe' ||
+      solicitudPreview.estado === 'rechazada_director' ||
+      solicitudPreview.estado === 'rechazada_secretario_general' ||
+      solicitudPreview.estado === 'cancelada' ||
+      solicitudPreview.estado === 'rechazada_rrhh' ||
+      solicitudPreview.estado === 'finalizada') &&
+    (session.esRrhh || session.esSecretarioGeneral || session.esJefe || session.esDirector)
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'La solicitud está en un estado final y no admite más acciones.',
+      },
+      { status: 409 }
+    );
   }
 
   const resultado = await ejecutarAccion({

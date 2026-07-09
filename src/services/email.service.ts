@@ -277,6 +277,36 @@ export async function notificarAprobacionJefeARRHH(
   });
 }
 
+/**
+ * Fase 4: notifica a RRHH que una solicitud fue rechazada por un
+ * aprobador previo (Jefe, Director o Secretario General). El mensaje
+ * es puramente informativo: NO sugiere aprobar/rechazar, no incluye
+ * enlace a la bandeja de aprobación, e indica que el rechazo es
+ * final y la solicitud NO requiere acción de RRHH.
+ */
+export async function notificarRRHHRechazoPrevio(
+  rrhhEmail: string,
+  solicitudCodigo: string,
+  solicitanteNombre: string,
+  nivelRechazo: 'Jefe' | 'Director' | 'Secretario General'
+) {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">
+      <h2 style="color: #182243;">Rechazo previo a RRHH (informativo)</h2>
+      <p>La solicitud <strong>${escapeHtml(solicitudCodigo)}</strong> de <strong>${escapeHtml(solicitanteNombre)}</strong> fue rechazada por <strong>${escapeHtml(nivelRechazo)}</strong>.</p>
+      <p>Se registra únicamente para conocimiento y auditoría. <strong>No requiere acción de RRHH</strong> y la solicitud no aparece en su bandeja de aprobación.</p>
+      <hr style="margin-top: 30px; border: none; border-top: 1px solid #eaeaeb;">
+      <p style="font-size: 12px; color: #666;">Este es un mensaje automático. Por favor, no respondas a este correo.</p>
+    </div>
+  `;
+
+  return enviarEmail({
+    to: rrhhEmail,
+    subject: `[CNI Vacaciones] Rechazo previo a RRHH — ${escapeHtml(solicitudCodigo)}`,
+    html,
+  });
+}
+
 export async function notificarResolucionAEmpleado(
   empleadoEmail: string,
   empleadoNombre: string,

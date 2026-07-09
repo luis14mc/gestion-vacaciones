@@ -544,6 +544,123 @@ it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
     });
   });
 
+  // ─── Fase 4: Rechazos finales por nivel (no escapan a RRHH) ───
+
+  describe('Fase 4: rechazos previos a RRHH son estados finales', () => {
+    it('pendiente_jefe + rechazar_jefe → rechazada_jefe (LIBERAR_BALANCE)', () => {
+      const resultado = transicionar('pendiente_jefe', 'rechazar_jefe', jefe, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_jefe');
+      expect(resultado.efectos).toContainEqual(
+        expect.objectContaining({ tipo: 'LIBERAR_BALANCE' })
+      );
+    });
+
+    it('pendiente_director + rechazar_director → rechazada_director', () => {
+      const directorCtx: TransicionContexto = {
+        usuarioId: 50,
+        solicitanteId: 10,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        aprobadorSegundoNivelId: 50,
+        aprobadorSegundoNivelTipo: 'director',
+      };
+      const resultado = transicionar('pendiente_director', 'rechazar_director', directorCtx, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_director');
+    });
+
+    it('pendiente_secretario_general + rechazar_secretario_general → rechazada_secretario_general', () => {
+      const sgCtx: TransicionContexto = {
+        usuarioId: 99,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSecretarioGeneral: true,
+        aprobadorSegundoNivelId: 99,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      };
+      const resultado = transicionar(
+        'pendiente_secretario_general',
+        'rechazar_secretario_general',
+        sgCtx,
+        5
+      );
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_secretario_general');
+    });
+
+    it('rechazada_jefe es estado final (RRHH no puede aprobar)', () => {
+      const resultado = transicionar('rechazada_jefe', 'aprobar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('rechazada_director es estado final (RRHH no puede aprobar)', () => {
+      const resultado = transicionar('rechazada_director', 'aprobar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('rechazada_secretario_general es estado final (RRHH no puede aprobar)', () => {
+      const resultado = transicionar(
+        'rechazada_secretario_general',
+        'aprobar_rrhh',
+        rrhh,
+        5
+      );
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('rechazada_jefe: RRHH no puede rechazar tampoco', () => {
+      const resultado = transicionar('rechazada_jefe', 'rechazar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('rechazada_director: RRHH no puede rechazar tampoco', () => {
+      const resultado = transicionar('rechazada_director', 'rechazar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('rechazada_secretario_general: RRHH no puede rechazar tampoco', () => {
+      const resultado = transicionar(
+        'rechazada_secretario_general',
+        'rechazar_rrhh',
+        rrhh,
+        5
+      );
+      expect(resultado.exito).toBe(false);
+      expect(resultado.error).toMatch(/final/i);
+    });
+
+    it('obtenerAccionesDisponibles retorna vacío para rechazada_jefe', () => {
+      expect(obtenerAccionesDisponibles('rechazada_jefe')).toHaveLength(0);
+    });
+
+    it('obtenerAccionesDisponibles retorna vacío para rechazada_director', () => {
+      expect(obtenerAccionesDisponibles('rechazada_director')).toHaveLength(0);
+    });
+
+    it('obtenerAccionesDisponibles retorna vacío para rechazada_secretario_general', () => {
+      expect(obtenerAccionesDisponibles('rechazada_secretario_general')).toHaveLength(0);
+    });
+
+    it('esEstadoFinal reconoce rechazada_jefe/director/secretario como finales', async () => {
+      const { esEstadoFinal } = await import('@/lib/domain/state-machine');
+      expect(esEstadoFinal('rechazada_jefe')).toBe(true);
+      expect(esEstadoFinal('rechazada_director')).toBe(true);
+      expect(esEstadoFinal('rechazada_secretario_general')).toBe(true);
+      expect(esEstadoFinal('rechazada_rrhh')).toBe(true);
+    });
+  });
+
   // ─── Transiciones inválidas ───
 
   describe('Transiciones inválidas', () => {

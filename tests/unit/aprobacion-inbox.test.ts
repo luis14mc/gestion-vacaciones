@@ -200,6 +200,32 @@ describe('aprobacion-inbox — Fase 2', () => {
         )
       ).toBe(false);
     });
+
+    it('Fase 4: NO ve rechazada_jefe / rechazada_director / rechazada_secretario_general', () => {
+      const ctx = {
+        sessionId: 70,
+        equipoIds: [],
+        roles: {
+          esAdmin: false,
+          esRrhh: true,
+          esJefe: false,
+          esDirector: false,
+          esSecretarioGeneral: false,
+        },
+      };
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'rechazada_jefe' }, ctx)
+      ).toBe(false);
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'rechazada_director' }, ctx)
+      ).toBe(false);
+      expect(
+        solicitudVisibleEnBandeja(
+          { usuarioId: 20, estado: 'rechazada_secretario_general' },
+          ctx
+        )
+      ).toBe(false);
+    });
   });
 
   describe('Auto-exclusión', () => {

@@ -1,7 +1,11 @@
 import { db } from '@/lib/db';
 import { solicitudes, usuarios, usuariosRoles, roles } from '@/lib/db/schema';
 import { eq, and, sql, isNull } from 'drizzle-orm';
-import { notificarAprobacionJefeARRHH, notificarResolucionAEmpleado } from './email.service';
+import {
+  notificarAprobacionJefeARRHH,
+  notificarResolucionAEmpleado,
+  notificarRRHHRechazoPrevio,
+} from './email.service';
 import { obtenerConfigs, asBool } from '@/lib/config/service';
 import {
   type AccionSolicitud,
@@ -15,6 +19,10 @@ import {
   liberarBalanceUsada,
   reservarBalanceVacaciones,
 } from '@/lib/domain/balance-effects';
+import {
+  registrarAuditoria,
+  registrarEventoAuditoria,
+} from '@/services/auditoria.service';
 
 function solicitudConsumeBalance(solicitud: { tipo: string; duracionPermiso?: string | null }): boolean {
   return solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo');
@@ -313,6 +321,11 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   try {
     const [solicitante] = await db.select().from(usuarios).where(eq(usuarios.id, solicitud.usuarioId)).limit(1);
 
+    const rechazoPrevioRRHH =
+      nuevoEstado === 'rechazada_jefe' ||
+      nuevoEstado === 'rechazada_director' ||
+      nuevoEstado === 'rechazada_secretario_general';
+
     if (solicitante && solicitante.email) {
       const flags = await obtenerConfigs([
         'notificaciones.notificar_rrhh_aprobacion_jefe',
@@ -340,13 +353,105 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
           notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
         }
       } else if (accion.startsWith('rechazar')) {
+        // Siempre se notifica al empleado del rechazo.
         if (asBool(flags['notificaciones.notificar_empleado_rechazo'])) {
-          notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoRechazo || comentario).catch(e => console.error('Error email empleado', e));
+          const motivoParaEmpleado = motivoRechazo || comentario;
+          notificarResolucionAEmpleado(solicitante.email, solicitante.nombre, nuevoEstado, solicitud.tipo, dias, motivoParaEmpleado).catch(e => console.error('Error email empleado', e));
+        }
+
+        // Fase 4: rechazos ANTES de RRHH notifican a RRHH únicamente
+        // para conocimiento, sin crear tarea pendiente de aprobación.
+        if (rechazoPrevioRRHH) {
+          const rrhhUsers = await db.select({ email: usuarios.email })
+            .from(usuarios)
+            .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
+            .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
+            .where(and(eq(roles.codigo, 'RRHH'), eq(usuarios.activo, true)));
+
+          const nivelRechazo =
+            nuevoEstado === 'rechazada_jefe'
+              ? 'Jefe'
+              : nuevoEstado === 'rechazada_director'
+                ? 'Director'
+                : 'Secretario General';
+
+          for (const rrhh of rrhhUsers) {
+            if (rrhh.email) {
+              notificarRRHHRechazoPrevio(
+                rrhh.email,
+                solicitud.codigo,
+                `${solicitante.nombre} ${solicitante.apellido}`,
+                nivelRechazo
+              ).catch((e) => console.error('Error email RRHH informativo', e));
+            }
+          }
         }
       }
     }
   } catch (error) {
     console.error('Error procesando notificaciones de correo:', error);
+  }
+
+  // Fase 4: auditoría explícita del rechazo (estado anterior, motivo,
+  // nivel) y, si fue rechazo previo a RRHH, evento informativo
+  // 'rrhh_notificado_rechazo_previo' para que el dashboard de auditoría
+  // pueda filtrarlo.
+  const rechazoPrevioRRHH =
+    nuevoEstado === 'rechazada_jefe' ||
+    nuevoEstado === 'rechazada_director' ||
+    nuevoEstado === 'rechazada_secretario_general';
+
+  const accionAuditoria = rechazoPrevioRRHH
+    ? `solicitud_rechazada_${nuevoEstado.replace('rechazada_', '')}`
+    : accion;
+
+  try {
+    await registrarAuditoria({
+      usuarioId,
+      accion: accionAuditoria,
+      tablaAfectada: 'solicitudes',
+      registroId: solicitudId,
+      detalles: {
+        evento: accionAuditoria,
+        tipoSolicitud: solicitud.tipo,
+        estadoAnterior: estadoActual,
+        estadoNuevo: nuevoEstado,
+        motivo: motivoRechazo || comentario || null,
+        nivelRechazo:
+          nuevoEstado === 'rechazada_jefe'
+            ? 'jefe'
+            : nuevoEstado === 'rechazada_director'
+              ? 'director'
+              : nuevoEstado === 'rechazada_secretario_general'
+                ? 'secretario_general'
+                : null,
+        esRechazoPrevioRRHH: rechazoPrevioRRHH,
+      },
+    });
+  } catch (err) {
+    console.error('[workflow] Error registrando auditoría de rechazo', err);
+  }
+
+  if (rechazoPrevioRRHH) {
+    try {
+      await registrarEventoAuditoria({
+        usuarioId,
+        modulo: 'solicitudes',
+        evento: 'rrhh_notificado_rechazo_previo',
+        severidad: 'info',
+        resultado: 'exito',
+        accion: 'rrhh_notificado_rechazo_previo',
+        tablaAfectada: 'solicitudes',
+        registroId: solicitudId,
+        detalles: {
+          tipoNotificacion: 'informativa',
+          nivelRechazo: nuevoEstado,
+          motivo: motivoRechazo || comentario || null,
+        },
+      });
+    } catch (err) {
+      console.error('[workflow] Error registrando notificación RRHH informativo', err);
+    }
   }
 
   return {

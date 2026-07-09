@@ -21,6 +21,7 @@ import { CumpleanosSection } from './solicitudes/CumpleanosSection';
 import { BalanceViewer } from './solicitudes/BalanceViewer';
 import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 import type { FlujoAprobacionNuevaSolicitud } from '@/lib/domain/solicitud-flujo-aprobacion';
+import type { AdjuntoRequerido } from '@/lib/domain/requisitos-adjuntos';
 
 const TIPO_DIA_CUMPLEANOS = {
   id: 'dia_cumpleanos',
@@ -37,6 +38,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 
+interface AdjuntoSubido {
+  tipo: string;
+  nombre: string;
+  data: string;
+  mimeType?: string;
+  size?: number;
+}
+
 interface FormularioSolicitudProps {
   usuarioId: number;
   onSuccess?: () => void;
@@ -45,10 +54,22 @@ interface FormularioSolicitudProps {
 
 export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: FormularioSolicitudProps) {
   const [submitting, setSubmitting] = useState(false);
-  const [archivoBase64, setArchivoBase64] = useState<string | null>(null);
   const [elegibilidadCumpleanos, setElegibilidadCumpleanos] = useState<ElegibilidadCumpleanos | null>(null);
-  const [flujoAprobacion, setFlujoAprobacion] = useState<FlujoAprobacionNuevaSolicitud | null>(null);
+  const [flujoAprobacion, setFlujoAprobacion] = useState<
+    | (FlujoAprobacionNuevaSolicitud & {
+        adjuntosRequeridos?: AdjuntoRequerido[];
+        tipoVoBoRequerido?: string | null;
+        etiquetaVoBo?: string | null;
+        requiereVoBo?: boolean;
+        requiereConstanciaMedica?: boolean;
+      })
+    | null
+  >(null);
   const [cargandoFlujo, setCargandoFlujo] = useState(true);
+  // Fase 3: el backend exige adjuntos por rol. Mantenemos un map
+  // tipoAdjunto → archivo en base64. Cualquier rol puede tener 1 o
+  // varios adjuntos obligatorios (vobo_jefe + constancia_medica, etc.).
+  const [adjuntosPorTipo, setAdjuntosPorTipo] = useState<Record<string, AdjuntoSubido>>({});
 
   // Initializing React Query Hooks
   const { data: tiposAusencia = [], isLoading: loadingTipos } = useTiposAusencia();
@@ -89,7 +110,12 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
     tipo: tipoSeleccionado?.tipo ?? '',
     duracionPermiso: esPermiso ? tipoPermiso : undefined,
   });
-  const requiereAdjunto = requiereVoBoMinistro || esLicenciaMedica;
+  const adjuntosRequeridos: AdjuntoRequerido[] = flujoAprobacion?.adjuntosRequeridos ?? [];
+  const tiposAdjuntosRequeridos = adjuntosRequeridos.map((a) => a.tipo);
+  const tieneAdjuntosRequeridos = tiposAdjuntosRequeridos.length > 0;
+  const todosLosAdjuntosCargados = tiposAdjuntosRequeridos.every(
+    (t) => !!adjuntosPorTipo[t]?.data
+  );
   const pasosProcesoVisibles = (flujoAprobacion?.pasosProceso ?? []).filter(
     (paso) => requiereVoBoMinistro || !/VoBo Ministro/i.test(paso)
   );
@@ -121,7 +147,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
     : 0;
 
   const diasRestantes = diasDisponibles - diasLaborables;
-  
+
   const mostrarBalances = esVacaciones;
 
   // Set unit and requiereMotivo default depending on selection
@@ -137,7 +163,6 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       if (esCumpleanosTemp) {
         form.setValue('motivo', '');
         form.setValue('fechaFin', form.getValues('fechaInicio') || '');
-        setArchivoBase64(null);
       }
     }
   }, [tipoSeleccionado, form]);
@@ -155,28 +180,35 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
 
   useEffect(() => {
     const tipoFlujo = tipoSeleccionado?.tipo ?? 'vacaciones';
+    const params = new URLSearchParams({ tipo: tipoFlujo });
+    if (esPermiso && tipoPermiso) params.set('duracionPermiso', tipoPermiso);
     setCargandoFlujo(true);
 
-    fetch(`/api/solicitudes/flujo-aprobacion?tipo=${encodeURIComponent(tipoFlujo)}`, {
+    fetch(`/api/solicitudes/flujo-aprobacion?${params.toString()}`, {
       cache: 'no-store',
     })
       .then((res) => res.json())
       .then((json) => {
         if (json.success) {
           setFlujoAprobacion(json.data);
+          // Reset adjuntos que ya no aplican al nuevo flujo.
+          setAdjuntosPorTipo((prev) => {
+            const next: Record<string, AdjuntoSubido> = {};
+            const required = (json.data?.adjuntosRequeridos ?? []).map(
+              (a: AdjuntoRequerido) => a.tipo
+            );
+            for (const t of required) {
+              if (prev[t]) next[t] = prev[t];
+            }
+            return next;
+          });
         } else {
           setFlujoAprobacion(null);
         }
       })
       .catch(() => setFlujoAprobacion(null))
       .finally(() => setCargandoFlujo(false));
-  }, [tipoSeleccionado?.tipo]);
-
-  useEffect(() => {
-    if (!requiereAdjunto) {
-      setArchivoBase64(null);
-    }
-  }, [requiereAdjunto]);
+  }, [tipoSeleccionado?.tipo, esPermiso ? tipoPermiso : '']);
 
   const onSubmit = async (data: SolicitudFormData) => {
     if (esCumpleanos && !elegibilidadCumpleanos?.puedeSolicitar) {
@@ -192,11 +224,16 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       return;
     }
 
-    if (requiereAdjunto && !archivoBase64) {
-      const errorMsg = esLicenciaMedica 
-        ? 'Debe adjuntar el certificado médico.' 
-        : 'Debe adjuntar el correo con el VoBo del Ministro.';
-      sileo.error({ title: 'Adjunto requerido', description: errorMsg });
+    if (tieneAdjuntosRequeridos && !todosLosAdjuntosCargados) {
+      const faltantes = tiposAdjuntosRequeridos
+        .filter((t) => !adjuntosPorTipo[t]?.data)
+        .map((t) =>
+          adjuntosRequeridos.find((a) => a.tipo === t)?.mensajeFaltante ?? `Falta ${t}`
+        );
+      sileo.error({
+        title: 'Adjuntos requeridos',
+        description: faltantes.join(' '),
+      });
       return;
     }
 
@@ -211,6 +248,8 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
           : (data.fechaFin || undefined);
 
       const duracionPermiso = (data.tipoPermiso as '1-2h' | '2-4h' | 'dia_completo') || undefined;
+
+      const documentosAdjuntos = Object.values(adjuntosPorTipo).filter((a) => a.data);
 
       const payload = {
         usuarioId,
@@ -227,10 +266,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
         motivo: data.motivo || undefined,
         observaciones: data.observaciones || undefined,
         duracionPermiso,
-        documentosAdjuntos:
-          archivoBase64 && (esLicenciaMedica || requiereVoBoMinistro)
-            ? [{ nombre: esLicenciaMedica ? 'constancia_medica' : 'vobo_ministro', data: archivoBase64 }]
-            : [],
+        documentosAdjuntos,
       };
 
       const response = await fetch('/api/solicitudes', {
@@ -252,6 +288,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
             : 'Tu solicitud ha sido creada exitosamente y está pendiente de aprobación.';
         notify.success('¡Solicitud enviada!', mensajeExito);
         form.reset();
+        setAdjuntosPorTipo({});
         onSuccess?.();
       } else {
         sileo.error({ title: 'Error', description: result.error || 'No se pudo crear la solicitud.' });
@@ -262,6 +299,33 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Handlers de carga de adjuntos ───────────────────────────────────────
+  const handleAdjuntoChange = (tipo: string, file: File | null) => {
+    if (!file) {
+      setAdjuntosPorTipo((prev) => {
+        const next = { ...prev };
+        delete next[tipo];
+        return next;
+      });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      setAdjuntosPorTipo((prev) => ({
+        ...prev,
+        [tipo]: {
+          tipo,
+          nombre: file.name,
+          data: dataUrl,
+          mimeType: file.type,
+          size: file.size,
+        },
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   if (loadingTipos) {
@@ -372,33 +436,51 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
               />
             )}
 
-            {requiereAdjunto && (
-              <div className="space-y-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 sm:p-6">
+            {tieneAdjuntosRequeridos && (
+              <div className="space-y-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 sm:p-6">
                 <FormLabel className="text-base font-semibold block">
-                  {esLicenciaMedica ? 'Constancia Médica (Obligatorio)' : 'VoBo del Ministro (Obligatorio)'}
+                  Adjuntos institucionales (obligatorios)
                 </FormLabel>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {esLicenciaMedica 
-                    ? 'Por favor adjunte el certificado médico que valide esta solicitud.'
-                    : 'Por favor adjunte una captura o el archivo PDF del correo con el VoBo del Ministro para esta solicitud.'}
+                  Por favor adjunte los archivos solicitados. Se aceptan PDF o imágenes.
                 </p>
-                <Input 
-                  type="file" 
-                  accept=".pdf,image/*" 
-                  className="bg-background"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setArchivoBase64(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    } else {
-                      setArchivoBase64(null);
-                    }
-                  }}
-                />
+                {adjuntosRequeridos.map((req) => {
+                  const cargado = !!adjuntosPorTipo[req.tipo]?.data;
+                  return (
+                    <div
+                      key={req.tipo}
+                      className="space-y-2 rounded-md border border-border bg-background p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold">
+                          {req.etiqueta}{' '}
+                          <span className="text-destructive">*</span>
+                        </span>
+                        <span
+                          className={
+                            cargado
+                              ? 'text-xs font-medium text-emerald-600'
+                              : 'text-xs text-muted-foreground'
+                          }
+                        >
+                          {cargado ? 'Adjunto cargado' : 'Pendiente'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{req.mensajeFaltante}</p>
+                      <Input
+                        type="file"
+                        accept={req.acepta ?? '.pdf,image/*'}
+                        className="bg-background"
+                        onChange={(e) => handleAdjuntoChange(req.tipo, e.target.files?.[0] ?? null)}
+                      />
+                      {cargado && (
+                        <p className="text-xs text-muted-foreground">
+                          Archivo seleccionado: {adjuntosPorTipo[req.tipo]?.nombre}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

@@ -18,6 +18,7 @@ vi.mock('@/services/solicitudes.service', () => ({
 
 vi.mock('@/services/auditoria.service', () => ({
   registrarAuditoria: (...args: unknown[]) => mockRegistrarAuditoria(...args),
+  registrarEventoAuditoria: (...args: unknown[]) => mockRegistrarAuditoria(...args),
   datosPeticion: vi.fn(() => ({ ipAddress: '127.0.0.1', userAgent: 'vitest' })),
 }));
 
@@ -129,6 +130,33 @@ const payloadPermisoBase = {
   motivo: 'Trámite personal',
 };
 
+// Adjuntos por rol (Fase 3 — VoBo obligatorio):
+const adjuntoVoboDirector = {
+  tipo: 'vobo_director',
+  nombre: 'vobo_director.pdf',
+  data: PDF_VOBO,
+};
+const adjuntoVoboSecretario = {
+  tipo: 'vobo_secretario_general',
+  nombre: 'vobo_sg.pdf',
+  data: PDF_VOBO,
+};
+const adjuntoVoboMinistro = {
+  tipo: 'vobo_ministro',
+  nombre: 'vobo_ministro.pdf',
+  data: PDF_VOBO,
+};
+const adjuntoVoboJefe = {
+  tipo: 'vobo_jefe',
+  nombre: 'vobo_jefe.pdf',
+  data: PDF_VOBO,
+};
+const adjuntoConstancia = {
+  tipo: 'constancia_medica',
+  nombre: 'constancia.pdf',
+  data: PDF_VOBO,
+};
+
 function crearRequest(body: Record<string, unknown>) {
   return new NextRequest('http://localhost/api/solicitudes', {
     method: 'POST',
@@ -170,7 +198,7 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     const response = await POST(
       crearRequest({
         ...payloadVacaciones,
-        documentosAdjuntos: [{ nombre: 'vobo_ministro', data: PDF_VOBO }],
+        documentosAdjuntos: [adjuntoVoboMinistro],
       })
     );
     const result = await response.json();
@@ -229,7 +257,11 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
 
     // sessionJefe.id = 20 → ajustamos payload para que coincida.
     const response = await POST(
-      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+      crearRequest({
+        ...payloadVacaciones,
+        usuarioId: sessionJefe.id,
+        documentosAdjuntos: [adjuntoVoboDirector],
+      })
     );
     expect(response.status).toBe(200);
     expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
@@ -264,7 +296,11 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     });
 
     const response = await POST(
-      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+      crearRequest({
+        ...payloadVacaciones,
+        usuarioId: sessionJefe.id,
+        documentosAdjuntos: [adjuntoVoboSecretario],
+      })
     );
     expect(response.status).toBe(200);
     expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
@@ -298,7 +334,11 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     });
 
     const response = await POST(
-      crearRequest({ ...payloadVacaciones, usuarioId: sessionEmpleado.id })
+      crearRequest({
+        ...payloadVacaciones,
+        usuarioId: sessionEmpleado.id,
+        documentosAdjuntos: [adjuntoVoboJefe],
+      })
     );
     expect(response.status).toBe(200);
   });
@@ -326,7 +366,15 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     });
 
     const response = await POST(
-      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+      crearRequest({
+        ...payloadVacaciones,
+        usuarioId: sessionJefe.id,
+        // Sin adjuntos: ya fallaría en VoBo antes de llegar al 422.
+        // Como el flujo se rompe antes (aprobadorSegundoNivelTipo=null),
+        // el orden de checks del backend hace que el 422 se devuelva
+        // ANTES de evaluar adjuntos — pero igualmente mandamos VoBo.
+        documentosAdjuntos: [adjuntoVoboSecretario],
+      })
     );
     expect(response.status).toBe(422);
     const result = await response.json();
@@ -364,12 +412,49 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
         fechaFin: '2026-08-03',
         diasSolicitados: 2,
         motivo: 'Reposo médico',
+        // VoBo del director sí, pero falta constancia médica.
+        documentosAdjuntos: [adjuntoVoboDirector],
       })
     );
     expect(response.status).toBe(400);
     const result = await response.json();
     expect(result.error).toMatch(/constancia médica/i);
     expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Licencia médica con VoBo + constancia crea solicitud', async () => {
+    mockGetSession.mockResolvedValue(sessionJefe);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: false,
+      esJefe: true,
+      esSecretarioGeneral: false,
+      departamentoId: 2,
+      departamentoNombre: 'TI',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: true,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'OK',
+      pasosProceso: ['Director', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: 'Director',
+    });
+
+    const response = await POST(
+      crearRequest({
+        usuarioId: sessionJefe.id,
+        tipo: 'licencia_medica',
+        fechaInicio: '2026-08-01',
+        fechaFin: '2026-08-03',
+        diasSolicitados: 2,
+        motivo: 'Reposo médico',
+        documentosAdjuntos: [adjuntoVoboDirector, adjuntoConstancia],
+      })
+    );
+    expect(response.status).toBe(200);
   });
 
   it('Director + permiso_salida 1-2h sin VoBo crea solicitud', async () => {
@@ -398,6 +483,7 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
         duracionPermiso: '1-2h',
         horaSalida: '09:00',
         horaRegreso: '10:30',
+        documentosAdjuntos: [adjuntoVoboMinistro],
       })
     );
     expect(response.status).toBe(200);

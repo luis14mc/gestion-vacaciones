@@ -15,6 +15,7 @@ import {
   XCircle,
   MessageSquare,
   Info,
+  Paperclip,
 } from "lucide-react";
 import { notify } from "@/lib/swal";
 import { formatDate } from "@/lib/utils/date-format";
@@ -26,6 +27,8 @@ import {
 } from '@/lib/domain/aprobacion-inbox';
 import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import type { Session } from "next-auth";
+import { AdjuntosViewer, type AdjuntoVisor } from "@/components/solicitudes/AdjuntosViewer";
+import { normalizarAdjuntosHistoricos } from "@/lib/domain/requisitos-adjuntos";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -69,6 +72,16 @@ interface Solicitud {
   comentariosRrhh: string | null;
   createdAt: string;
   metadata?: any;
+  /** Fase 3: lista de adjuntos (VoBo, Constancia médica). */
+  documentosAdjuntos?: Array<{
+    tipo?: string;
+    nombre?: string;
+    data?: string;
+    mimeType?: string;
+    size?: number;
+    uploadedAt?: string;
+    uploadedBy?: number;
+  }> | null;
   usuario: {
     id: number;
     nombre: string;
@@ -691,6 +704,29 @@ export default function AprobarSolicitudesClient({
                       </p>
                     </div>
                   )}
+
+                  <div className="mt-4 space-y-2">
+                    <Label className="flex items-center gap-2 text-foreground">
+                      <Paperclip className="h-4 w-4" />
+                      Adjuntos institucionales (VoBo / Constancia)
+                    </Label>
+                    <AdjuntosViewer
+                      autorizado
+                      adjuntos={normalizarAdjuntosHistoricos(
+                        solicitudSeleccionada.documentosAdjuntos
+                      ) as AdjuntoVisor[]}
+                      onAdjuntoVisualizado={(adj) => {
+                        // La auditoría real (registrarEventoAuditoria) se
+                        // hace vía backend en /api/solicitudes/[id]/adjuntos/[idx]/ver.
+                        // Aquí dejamos preparado el hook por si se requiere
+                        // un evento client-side en el futuro.
+                        if (typeof window !== 'undefined') {
+                          // eslint-disable-next-line no-console
+                          console.debug('[visor] adjunto abierto', adj.tipo);
+                        }
+                      }}
+                    />
+                  </div>
 
                   {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
                     <div className="mt-4 space-y-2">

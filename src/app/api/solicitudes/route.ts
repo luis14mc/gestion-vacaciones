@@ -5,10 +5,13 @@ import { solicitudes, usuarios, departamentos } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { crearSolicitud } from '@/services/solicitudes.service';
 import { notificarNuevaSolicitudAJefe } from '@/services/email.service';
-import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
+import {
+  registrarAuditoria,
+  registrarEventoAuditoria,
+  datosPeticion,
+} from '@/services/auditoria.service';
 import { obtenerConfigs, asBool } from '@/lib/config/service';
 import { validarAdjuntos } from '@/lib/security/adjuntos';
-import { validarVoBoDirectorAdjunto, debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
 import {
   construirCondicionesBandejaAprobacion,
   calcularStatsBandejaAprobacion,
@@ -20,6 +23,10 @@ import {
   cargarDatosFlujoSolicitante,
   resolverFlujoSolicitante,
 } from '@/lib/domain/solicitud-flujo-solicitante';
+import {
+  resolverRequisitosAdjuntosSolicitud,
+  validarAdjuntosObligatorios,
+} from '@/lib/domain/requisitos-adjuntos';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -364,49 +371,40 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  if (
-    debeExigirVoBoMinistro({
-      requiereVoBoFlujo: flujo.requiereVoBoMinistro,
-      tipo,
-      duracionPermiso,
-    })
-  ) {
-    const errorVoBo = validarVoBoDirectorAdjunto({
-      esDirector: true,
-      esSolicitudPropia: usuarioId === sessionUser.id,
-      tipo,
-      duracionPermiso,
-      documentosAdjuntos,
-    });
-    if (errorVoBo) {
-      await registrarAuditoria({
-        usuarioId: sessionUser.id,
-        accion: 'validacion_rechazada',
-        tablaAfectada: 'solicitudes',
-        detalles: { tipo, motivo: errorVoBo, requiereVoBoMinistro: true },
-      });
-      return NextResponse.json({ success: false, error: errorVoBo }, { status: 400 });
-    }
-  }
+  // Fase 3: resolver requisitos de adjuntos según rol/flujo del
+// solicitante. La regla canónica vive en `requisitos-adjuntos.ts`.
+// Esto reemplaza las reglas hardcoded por rol/tipo del esquema previo.
+  const requisitosAdjuntos = resolverRequisitosAdjuntosSolicitud({
+    usuarioSolicitante: {
+      esDirector: datosSolicitante.esDirector,
+      esJefe: datosSolicitante.esJefe,
+      esSecretarioGeneral: datosSolicitante.esSecretarioGeneral,
+    },
+    tipoSolicitud: tipo,
+    duracionPermiso,
+    flujoAprobacion: {
+      requiereVoBoMinistro: flujo.requiereVoBoMinistro,
+      aprobadorSegundoNivelTipo: flujo.aprobadorSegundoNivelTipo ?? null,
+    },
+  });
 
-  // Validación: licencia médica requiere constancia
-  if (tipo === 'licencia_medica') {
-    const adjuntos = Array.isArray(documentosAdjuntos) ? documentosAdjuntos : [];
-    const tieneConstancia = adjuntos.some(
-      (a: any) => a?.nombre === 'constancia_medica' && typeof a?.data === 'string' && a.data.length > 0
-    );
-    if (!tieneConstancia) {
-      await registrarAuditoria({
-        usuarioId: sessionUser.id,
-        accion: 'validacion_rechazada',
-        tablaAfectada: 'solicitudes',
-        detalles: { tipo, motivo: 'Falta constancia médica' },
-      });
-      return NextResponse.json(
-        { success: false, error: 'Para licencia médica es obligatorio adjuntar la constancia médica.' },
-        { status: 400 }
-      );
-    }
+  // Validación: que los adjuntos provistos cubran todos los obligatorios.
+  const errorAdjuntosObligatorios = validarAdjuntosObligatorios({
+    requisitos: requisitosAdjuntos,
+    documentosAdjuntos,
+  });
+  if (errorAdjuntosObligatorios) {
+    await registrarAuditoria({
+      usuarioId: sessionUser.id,
+      accion: 'validacion_rechazada',
+      tablaAfectada: 'solicitudes',
+      detalles: {
+        tipo,
+        motivo: errorAdjuntosObligatorios,
+        adjuntosRequeridos: requisitosAdjuntos.adjuntosRequeridos.map((r) => r.tipo),
+      },
+    });
+    return NextResponse.json({ success: false, error: errorAdjuntosObligatorios }, { status: 400 });
   }
 
   // Validación de seguridad de adjuntos (tipo real, tamaño y cantidad)
@@ -485,6 +483,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   }
 
   const { ipAddress, userAgent } = datosPeticion(request);
+
+  // Fase 3: auditar cada adjunto subido. Tipo + nombre + solicitante +
+  // solicitud asociada. El visor posterior también genera
+  // `adjunto_visualizado` cuando un aprobador abre el archivo.
+  const adjuntosParaAuditoria = Array.isArray(documentosAdjuntos)
+    ? (documentosAdjuntos as Array<{ tipo?: string; nombre?: string }>).filter(
+        (a) => a && (a.tipo || a.nombre)
+      )
+    : [];
+
   await registrarAuditoria({
     usuarioId: sessionUser.id,
     accion: 'crear',
@@ -499,12 +507,37 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       aprobadorSegundoNivelNombre: flujo.aprobadorSegundoNivelNombre ?? null,
       requiereAprobacionDirector: flujo.requiereAprobacionDirector,
       requiereAprobacionSecretarioGeneral: flujo.requiereAprobacionSecretarioGeneral,
+      adjuntosRequeridos: requisitosAdjuntos.adjuntosRequeridos.map((r) => r.tipo),
+      adjuntosSubidos: adjuntosParaAuditoria.map((a) => ({
+        tipo: a.tipo ?? a.nombre,
+        nombre: a.nombre,
+      })),
       ...(flujo.flujoEspecial ? { flujoEspecial: flujo.flujoEspecial } : {}),
       ...(flujo.pasaDirectoRrhh ? { derivadoDirectoRrhh: true } : {}),
     },
     ipAddress,
     userAgent,
   });
+
+  for (const adj of adjuntosParaAuditoria) {
+    await registrarEventoAuditoria({
+      usuarioId: sessionUser.id,
+      modulo: 'solicitudes',
+      evento: 'adjunto_subido',
+      severidad: 'info',
+      resultado: 'exito',
+      accion: 'adjunto_subido',
+      tablaAfectada: 'solicitudes',
+      registroId: Number(solicitudCreada.id),
+      detalles: {
+        tipoAdjunto: adj.tipo ?? adj.nombre,
+        nombreAdjunto: adj.nombre,
+        solicitudCodigo: solicitudCreada.codigo,
+      },
+      ipAddress,
+      userAgent,
+    });
+  }
 
   return NextResponse.json({
     success: true,

@@ -5,6 +5,7 @@ import {
   cargarDatosFlujoSolicitante,
   resolverFlujoSolicitante,
 } from '@/lib/domain/solicitud-flujo-solicitante';
+import { resolverRequisitosAdjuntosSolicitud } from '@/lib/domain/requisitos-adjuntos';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   }
 
   const tipo = request.nextUrl.searchParams.get('tipo') ?? 'vacaciones';
+  const duracionPermiso =
+    request.nextUrl.searchParams.get('duracionPermiso') ?? undefined;
 
   const datosSolicitante = await cargarDatosFlujoSolicitante(session.id);
   if (!datosSolicitante) {
@@ -23,7 +26,32 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   try {
     const flujo = await resolverFlujoSolicitante(datosSolicitante, tipo);
-    return NextResponse.json({ success: true, data: flujo });
+
+    const requisitos = resolverRequisitosAdjuntosSolicitud({
+      usuarioSolicitante: {
+        esDirector: datosSolicitante.esDirector,
+        esJefe: datosSolicitante.esJefe,
+        esSecretarioGeneral: datosSolicitante.esSecretarioGeneral,
+      },
+      tipoSolicitud: tipo,
+      duracionPermiso,
+      flujoAprobacion: {
+        requiereVoBoMinistro: flujo.requiereVoBoMinistro,
+        aprobadorSegundoNivelTipo: flujo.aprobadorSegundoNivelTipo ?? null,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...flujo,
+        requiereVoBo: requisitos.requiereVoBo,
+        tipoVoBoRequerido: requisitos.tipoVoBoRequerido,
+        etiquetaVoBo: requisitos.etiquetaVoBo,
+        requiereConstanciaMedica: requisitos.requiereConstanciaMedica,
+        adjuntosRequeridos: requisitos.adjuntosRequeridos,
+      },
+    });
   } catch (err) {
     const mensajeError =
       err instanceof Error

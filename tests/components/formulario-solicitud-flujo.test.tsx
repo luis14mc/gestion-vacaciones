@@ -28,31 +28,79 @@ vi.mock('@/lib/swal', () => ({
   notify: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-const flujoJefeDirAdmin = {
-  requiereVoBoMinistro: false,
-  requiereAprobacionJefe: false,
-  requiereAprobacionDirector: false,
-  pasaDirectoRrhh: true,
-  flujoEspecial: 'jefe_direccion_administrativa_sin_director',
-  mensajeFlujo:
-    'Esta solicitud será derivada directamente a Recursos Humanos por excepción temporal: Jefatura de Dirección Administrativa sin Director asignado.',
-  pasosProceso: [
-    'Derivación directa a Recursos Humanos por excepción temporal',
-    'Revisión y aprobación de Recursos Humanos',
-    'Notificación al solicitante',
-  ],
-};
-
+// Flujos por tipo. La forma nueva (Fase 3) incluye adjuntosRequeridos
+// directamente, que es lo que el frontend itera para pintar los
+// bloques de VoBo / Constancia.
 const flujoDirector = {
   requiereVoBoMinistro: true,
   requiereAprobacionJefe: false,
   requiereAprobacionDirector: false,
-  pasaDirectoRrhh: false,
+  pasaDirectoRrhh: true,
   mensajeFlujo: 'Como Director, debe adjuntar el VoBo del Ministro.',
-  pasosProceso: [
-    'VoBo Ministro (Mediante documento adjunto)',
-    'Revisión y validación de Recursos Humanos',
-    'Notificación al solicitante',
+  pasosProceso: ['VoBo Ministro', 'RRHH', 'Notificación'],
+  requiereVoBo: true,
+  tipoVoBoRequerido: 'vobo_ministro',
+  etiquetaVoBo: 'VoBo del Ministro',
+  requiereConstanciaMedica: false,
+  adjuntosRequeridos: [
+    {
+      tipo: 'vobo_ministro',
+      etiqueta: 'VoBo del Ministro',
+      mensajeFaltante: 'Debe adjuntar el VoBo del Ministro.',
+      obligatorio: true,
+      acepta: '.pdf,image/*',
+    },
+  ],
+};
+
+const flujoLicenciaDirector = {
+  requiereVoBoMinistro: true,
+  requiereAprobacionJefe: false,
+  requiereAprobacionDirector: false,
+  pasaDirectoRrhh: true,
+  mensajeFlujo: 'Como Director, debe adjuntar el VoBo del Ministro.',
+  pasosProceso: ['VoBo Ministro', 'RRHH', 'Notificación'],
+  requiereVoBo: true,
+  tipoVoBoRequerido: 'vobo_ministro',
+  etiquetaVoBo: 'VoBo del Ministro',
+  requiereConstanciaMedica: true,
+  adjuntosRequeridos: [
+    {
+      tipo: 'vobo_ministro',
+      etiqueta: 'VoBo del Ministro',
+      mensajeFaltante: 'Debe adjuntar el VoBo del Ministro.',
+      obligatorio: true,
+      acepta: '.pdf,image/*',
+    },
+    {
+      tipo: 'constancia_medica',
+      etiqueta: 'Constancia médica',
+      mensajeFaltante: 'Debe adjuntar la constancia médica.',
+      obligatorio: true,
+      acepta: '.pdf,image/*',
+    },
+  ],
+};
+
+const flujoEmpleadoSinAdjuntos = {
+  requiereVoBoMinistro: false,
+  requiereAprobacionJefe: true,
+  requiereAprobacionDirector: false,
+  pasaDirectoRrhh: false,
+  mensajeFlujo: 'Su solicitud será enviada a su jefe inmediato.',
+  pasosProceso: ['Jefe', 'Director', 'RRHH'],
+  requiereVoBo: true,
+  tipoVoBoRequerido: 'vobo_jefe',
+  etiquetaVoBo: 'VoBo del Jefe inmediato',
+  requiereConstanciaMedica: false,
+  adjuntosRequeridos: [
+    {
+      tipo: 'vobo_jefe',
+      etiqueta: 'VoBo del Jefe inmediato',
+      mensajeFaltante: 'Debe adjuntar el VoBo del Jefe inmediato.',
+      obligatorio: true,
+      acepta: '.pdf,image/*',
+    },
   ],
 };
 
@@ -99,7 +147,7 @@ async function seleccionarTipo(nombre: string) {
   fireEvent.click(screen.getByRole('option', { name: nombre }));
 }
 
-describe('FormularioSolicitud — flujo de aprobación', () => {
+describe('FormularioSolicitud — Fase 3 adjuntos dinámicos', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
@@ -110,88 +158,46 @@ describe('FormularioSolicitud — flujo de aprobación', () => {
     } as typeof ResizeObserver;
   });
 
-  it('Jefe de Dirección Administrativa no ve VoBo Ministro', async () => {
-    mockFetchFlujo({ vacaciones: flujoJefeDirAdmin, licencia_medica: flujoJefeDirAdmin });
+  it('Director en vacaciones pinta bloque "VoBo del Ministro"', async () => {
+    mockFetchFlujo({ vacaciones: flujoDirector, licencia_medica: flujoLicenciaDirector });
     renderFormulario();
 
     await waitFor(() => {
-      expect(screen.queryByText(/VoBo del Ministro/i)).toBeNull();
+      expect(screen.getAllByText(/VoBo del Ministro/i).length).toBeGreaterThan(0);
     });
-    expect(
-      screen.getByText(/Derivación directa a Recursos Humanos por excepción temporal/i)
-    ).toBeTruthy();
-    expect(screen.getByText(/Jefatura de Dirección Administrativa sin Director asignado/i)).toBeTruthy();
+    expect(screen.getByText(/Adjuntos institucionales \(obligatorios\)/i)).toBeTruthy();
   });
 
-  it('Director normal sí ve VoBo Ministro', async () => {
-    mockFetchFlujo({ vacaciones: flujoDirector, licencia_medica: flujoDirector });
+  it('Director en licencia médica pinta VoBo + Constancia', async () => {
+    mockFetchFlujo({ vacaciones: flujoDirector, licencia_medica: flujoLicenciaDirector });
     renderFormulario();
-
-    await waitFor(() => {
-      expect(screen.getByText(/VoBo del Ministro \(Obligatorio\)/i)).toBeTruthy();
-    });
-  });
-
-  it('Licencia médica siempre pide constancia médica', async () => {
-    mockFetchFlujo({ vacaciones: flujoJefeDirAdmin, licencia_medica: flujoJefeDirAdmin });
-    renderFormulario();
-
-    await waitFor(() => {
-      expect(screen.queryByText(/VoBo del Ministro/i)).toBeNull();
-    });
 
     await seleccionarTipo('Licencia médica');
 
     await waitFor(() => {
-      expect(screen.getByText(/Constancia Médica \(Obligatorio\)/i)).toBeTruthy();
-    });
-    expect(screen.queryByText(/VoBo del Ministro/i)).toBeNull();
-  });
-
-  it('Director con permiso 1-2h no ve VoBo Ministro', async () => {
-    mockFetchFlujo({ permiso_salida: flujoDirector });
-    renderFormulario();
-
-    await seleccionarTipo('Permiso de salida');
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /PERMISO DE SALIDA/i })).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByRole('radio', { name: /1-2 Horas/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByText(/VoBo del Ministro \(Obligatorio\)/i)).toBeNull();
+      expect(screen.getAllByText(/VoBo del Ministro/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Constancia médica/i).length).toBeGreaterThan(0);
     });
   });
 
-  it('Director con permiso día completo sí ve VoBo Ministro', async () => {
-    mockFetchFlujo({ permiso_salida: flujoDirector });
+  it('Empleado normal pinta VoBo del Jefe inmediato', async () => {
+    mockFetchFlujo({ vacaciones: flujoEmpleadoSinAdjuntos });
     renderFormulario();
 
-    await seleccionarTipo('Permiso de salida');
-
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /PERMISO DE SALIDA/i })).toBeTruthy();
+      expect(screen.getAllByText(/VoBo del Jefe inmediato/i).length).toBeGreaterThan(0);
     });
-
-    fireEvent.click(screen.getByRole('radio', { name: /Día Completo/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/VoBo del Ministro \(Obligatorio\)/i)).toBeTruthy();
-    });
+    expect(screen.queryByText(/Constancia médica/i)).toBeNull();
   });
 
-  it('Texto de proceso para jefe de Dirección Administrativa muestra derivación directa a RRHH', async () => {
-    mockFetchFlujo({ vacaciones: flujoJefeDirAdmin });
+  it('No pinta bloque de adjuntos si el flujo no los requiere', async () => {
+    mockFetchFlujo({
+      vacaciones: { ...flujoEmpleadoSinAdjuntos, adjuntosRequeridos: [] },
+    });
     renderFormulario();
 
     await waitFor(() => {
-      expect(screen.getByText(/Proceso de aprobación:/i)).toBeTruthy();
-      expect(
-        screen.getByText(/Derivación directa a Recursos Humanos por excepción temporal/i)
-      ).toBeTruthy();
-      expect(screen.getByText(/Revisión y aprobación de Recursos Humanos/i)).toBeTruthy();
+      expect(screen.queryByText(/Adjuntos institucionales/i)).toBeNull();
     });
   });
 });

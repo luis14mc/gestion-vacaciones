@@ -300,6 +300,30 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       }
     }
 
+    // Fase 3: resolver requisitos de adjuntos según rol/flujo del
+    // solicitante. La regla canónica vive en `requisitos-adjuntos.ts`.
+    // Persistimos el `tipoVoBoRequerido` en metadata (no como columna)
+    // para que el visor histórico siga funcionando sin migración.
+    const { resolverRequisitosAdjuntosSolicitud } = await import(
+      '@/lib/domain/requisitos-adjuntos'
+    );
+    const requisitosAdjuntos = resolverRequisitosAdjuntosSolicitud({
+      usuarioSolicitante: {
+        esDirector: usuario.esDirector,
+        esJefe: usuario.esJefe,
+        esSecretarioGeneral: usuario.esSecretarioGeneral,
+      },
+      tipoSolicitud: tipo,
+      duracionPermiso,
+      flujoAprobacion: {
+        requiereVoBoMinistro: false, // No usado en este camino; el helper
+        // decide por rol. Director pasa por su propio flujo.
+        aprobadorSegundoNivelTipo,
+      },
+    });
+    const tipoVoBoRequerido = requisitosAdjuntos.tipoVoBoRequerido;
+    const adjuntosRequeridos = requisitosAdjuntos.adjuntosRequeridos;
+
     const flujoInicial = resolverFlujoInicialSolicitud({
       esDirector,
       esJefe: usuario.esJefe,
@@ -314,6 +338,12 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         : {}),
       ...(aprobadorDirectorId ? { aprobadorDirectorIdSnapshot: aprobadorDirectorId } : {}),
       ...(aprobadorSecretarioId ? { aprobadorSecretarioIdSnapshot: aprobadorSecretarioId } : {}),
+      // Fase 3: snapshot del tipo de VoBo requerido (sin guardarlo
+      // en columna propia, vive en metadata para evitar migración).
+      ...(tipoVoBoRequerido ? { tipoVoBoRequerido } : {}),
+      ...(adjuntosRequeridos && adjuntosRequeridos.length > 0
+        ? { adjuntosRequeridos: adjuntosRequeridos.map((r) => r.tipo) }
+        : {}),
     };
 
     // Resolver horas para permisos de salida
@@ -354,7 +384,17 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         horaRegreso: horaRegresoFinal,
         motivo,
         comentarioEmpleado,
-        documentosAdjuntos,
+        // Fase 3: persistir cada adjunto con su `tipo` poblado. Si el
+        // cliente solo mandó `nombre` (compatibilidad histórica), se
+        // propaga como `tipo` para que el visor pueda identificarlo.
+        documentosAdjuntos: Array.isArray(documentosAdjuntos)
+          ? documentosAdjuntos.map((a: any) => ({
+              ...a,
+              tipo: typeof a?.tipo === 'string' ? a.tipo : a?.nombre ?? 'adjunto',
+              uploadedAt: typeof a?.uploadedAt === 'string' ? a.uploadedAt : ahoraIso,
+              uploadedBy: typeof a?.uploadedBy === 'number' ? a.uploadedBy : usuarioId,
+            }))
+          : [],
         estado: flujoInicial.estadoInicial,
         metadata: metadataInicial,
         // Fase 2: persistir aprobador de segundo nivel esperado para

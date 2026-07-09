@@ -302,6 +302,7 @@ vi.mock('@/services/solicitudes.service', () => ({
 
 vi.mock('@/services/auditoria.service', () => ({
   registrarAuditoria: (...args: unknown[]) => mockRegistrarAuditoria(...args),
+  registrarEventoAuditoria: (...args: unknown[]) => mockRegistrarAuditoria(...args),
   datosPeticion: vi.fn(() => ({ ipAddress: '127.0.0.1', userAgent: 'vitest' })),
 }));
 
@@ -339,7 +340,20 @@ vi.mock('@/lib/domain/solicitud-flujo-solicitante', async (importOriginal) => {
     cargarDatosFlujoSolicitante: vi.fn(async () => ({
       esDirector: false,
       esJefe: false,
+      esSecretarioGeneral: false,
+      departamentoId: 1,
       departamentoNombre: 'Tecnología',
+    })),
+    resolverFlujoSolicitante: vi.fn(async () => ({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: true,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'OK',
+      pasosProceso: ['Jefe', 'Director', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: 'Director',
     })),
   };
 });
@@ -352,8 +366,14 @@ const sessionEmpleado = {
   esRrhh: false,
   esDirector: false,
   esJefe: false,
+  esSecretarioGeneral: false,
   departamentoId: 1,
 };
+
+// PDF válido en base64 (firma %PDF-1.4) para satisfacer la nueva
+// validación de VoBo obligatorio (Fase 3) y llegar al servicio.
+const PDF_B64 = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]).toString('base64');
+const adjuntoVoBoJefe = { tipo: 'vobo_jefe', nombre: 'vobo_jefe.pdf', data: PDF_B64 };
 
 function crearRequest(body: Record<string, unknown>) {
   return new NextRequest('http://localhost/api/solicitudes', {
@@ -387,6 +407,7 @@ describe('POST /api/solicitudes — vacaciones.dias_anticipacion', () => {
         fechaFin: '2026-07-12',
         diasSolicitados: 5,
         motivo: 'Vacaciones',
+        documentosAdjuntos: [adjuntoVoBoJefe],
       })
     );
 

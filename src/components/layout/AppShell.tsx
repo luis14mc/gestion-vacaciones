@@ -61,7 +61,7 @@ interface AppShellProps {
 }
 
 // ─── Navigation Config ────────────────────────────────
-function getNavGroups(session: Session): NavGroup[] {
+export function getNavGroups(session: Session): NavGroup[] {
   const { esAdmin, esRrhh, esDirector, esJefe } = session.user;
 
   const groups: NavGroup[] = [
@@ -87,14 +87,21 @@ function getNavGroups(session: Session): NavGroup[] {
   }
 
   if ((esDirector || esJefe || esRrhh) && !esAdmin) {
-    groups.push({
-      title: 'Gestión',
-      items: [
-        { label: 'Mi Equipo', href: '/mi-equipo', icon: UsersRound },
-        { label: 'Reportes', href: '/reportes', icon: BarChart3 },
-        { label: 'Reportes Depto.', href: '/reportes-departamento', icon: BarChart3 },
-      ],
-    });
+    // Política Fase 1 — Seguridad de jefes:
+    //   - Jefe/Director NO ven Reportes ni Reportes Depto. (restringido a
+    //     Admin/RRHH institucionalmente). Solo mantienen "Mi Equipo" para
+    //     su gestión operativa.
+    //   - RRHH (sin esAdmin) sí ve "Mi Equipo" pero los links de reportes
+    //     aparecen en el grupo "Administración".
+    const items: Array<{ label: string; href: string; icon: any }> = [];
+    if (esDirector || esJefe) {
+      items.push({ label: 'Mi Equipo', href: '/mi-equipo', icon: UsersRound });
+    } else if (esRrhh) {
+      items.push({ label: 'Mi Equipo', href: '/mi-equipo', icon: UsersRound });
+    }
+    if (items.length > 0) {
+      groups.push({ title: 'Gestión', items });
+    }
   }
 
   // Administración (RRHH / Admin)

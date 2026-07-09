@@ -41,12 +41,15 @@ export function QuickActions({ session }: QuickActionsProps) {
       { href: '/reportes', label: 'Reportes', icon: BarChart3 },
     ];
   } else if (esDirector || esJefe) {
+    // Política Fase 1 — Seguridad de jefes:
+    // Jefe/Director NO ven "Reportes" como quick action (restringido a
+    // Admin/RRHH institucionalmente). Sus quick actions se limitan a la
+    // bandeja operativa.
     actions = [
       { href: '/aprobar-solicitudes', label: 'Aprobar', icon: CheckSquare },
       { href: '/solicitudes/nueva', label: 'Nueva Solicitud', icon: PenLine },
       { href: '/solicitudes', label: 'Mis Solicitudes', icon: FileText },
       { href: '/mi-equipo', label: 'Mi Equipo', icon: Users },
-      { href: '/reportes-departamento', label: 'Reportes', icon: BarChart3 },
     ];
   } else {
     actions = [

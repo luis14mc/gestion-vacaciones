@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler } from "@/lib/api-handler";
 import { db } from "@/lib/db";
-import { getSession, tienePermiso } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { usuarios, balances, solicitudes, anosLaborales } from "@/lib/db/schema";
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
-import { resolverIdsEquipo } from "@/lib/domain/equipo-jefe";
 import {
   buildHistorialDesdeBalances,
   mapSaldosAResumenDepartamento,
   sumarSaldos,
 } from "@/lib/domain/balance-display";
+import { puedeVerReporteDepartamento } from "@/lib/domain/reportes/access";
 
 export const runtime = 'nodejs';
 
@@ -32,20 +32,16 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
     }
 
-    const esDirectorOJefe = session.roles?.some(r => ['JEFE', 'DIRECTOR'].includes(r.codigo)) || session.esDirector || session.esJefe;
-    const esAdminORrhh = session.roles?.some(r => ['ADMIN', 'RRHH'].includes(r.codigo)) || session.esAdmin || session.esRrhh;
-
-    if (!tienePermiso(session, 'reportes.departamento') && !esDirectorOJefe && !esAdminORrhh) {
+    // Política Fase 1 (Fase 1 — Seguridad de jefes): los reportes
+    // departamentales están restringidos a Admin/RRHH. Jefe/Director ya
+    // tienen el Dashboard operativo y la bandeja de aprobación; no
+    // necesitan reportes institucionales.
+    if (!puedeVerReporteDepartamento(session)) {
       return NextResponse.json(
-        { error: 'No tienes permiso para consultar reportes por departamento' },
+        { success: false, error: 'No autorizado' },
         { status: 403 }
       );
     }
-
-    // Política Fase 1: Jefe/Director NO ven balances del equipo en reportes
-    // departamentales (días disponibles, usados, vencidos, proporcionales, etc.).
-    // Solo Admin/RRHH tienen visibilidad completa.
-    const ocultarBalances = esDirectorOJefe && !esAdminORrhh;
 
     const { searchParams } = new URL(request.url);
     const mes = parseInt(searchParams.get("mes") || String(new Date().getMonth() + 1));
@@ -53,36 +49,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
     let usuariosDept: Array<typeof usuarios.$inferSelect> = [];
 
-    if (esDirectorOJefe && !esAdminORrhh) {
-      const usuariosIds = await resolverIdsEquipo({
-        jefeId: session.id,
-        esDirector: session.esDirector,
-        departamentoId: session.departamentoId,
-      });
-
-      if (usuariosIds.length === 0) {
-        return NextResponse.json({
-          success: true,
-          data: {
-            periodo: { mes, anio },
-            resumen: RESUMEN_VACIO,
-            solicitudes: { total: 0, aprobadas: 0, pendientes: 0, rechazadas: 0 },
-            proximasVacaciones: [],
-            topUsuarios: [],
-            historialDias: [],
-            detalle: [],
-          },
-        });
-      }
-
-      usuariosDept = await db.query.usuarios.findMany({
-        where: and(isNull(usuarios.deletedAt), inArray(usuarios.id, usuariosIds)),
-      });
-    } else {
-      usuariosDept = await db.query.usuarios.findMany({
-        where: isNull(usuarios.deletedAt),
-      });
-    }
+    // Después del gate `puedeVerReporteDepartamento` solo pasan Admin/RRHH.
+    // La vista es siempre organizacional (todos los usuarios activos).
+    usuariosDept = await db.query.usuarios.findMany({
+      where: isNull(usuarios.deletedAt),
+    });
 
     const usuariosIds = usuariosDept.map(u => u.id);
     const totalColaboradores = usuariosDept.length;
@@ -95,7 +66,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let balancesData: Array<typeof balances.$inferSelect> = [];
     let totalesSaldos = sumarSaldos([]);
 
-    if (!ocultarBalances && anoLaboral && usuariosIds.length > 0) {
+    if (anoLaboral && usuariosIds.length > 0) {
       balancesData = await db.query.balances.findMany({
         where: and(
           eq(balances.anoLaboralId, anoLaboral.id),
@@ -180,32 +151,19 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       }))
       .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
 
-    const resumenFinal = ocultarBalances
-      ? {
-          totalColaboradores,
-          colaboradoresActivos,
-          enVacacionesHoy,
-          diasTotalesVencidos: 0,
-          diasTotalesProporcionales: 0,
-          diasTotalesAsignados: 0,
-          diasTotalesUsados: 0,
-          diasTotalesPendientes: 0,
-          diasTotalesDisponibles: 0,
-          promedioUsoPorPersona: 0,
-        }
-      : {
+    // Después del gate, solo Admin/RRHH consumen este endpoint, por lo
+    // que siempre se devuelven balances completos.
+    return NextResponse.json({
+      success: true,
+      data: {
+        periodo: { mes, anio },
+        resumen: {
           totalColaboradores,
           colaboradoresActivos,
           enVacacionesHoy,
           ...totalesResumen,
           promedioUsoPorPersona,
-        };
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        periodo: { mes, anio },
-        resumen: resumenFinal,
+        },
         solicitudes: {
           total: solicitudesDept.length,
           aprobadas: solicitudesAprobadas,
@@ -213,8 +171,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
           rechazadas: solicitudesRechazadas,
         },
         proximasVacaciones,
-        topUsuarios: ocultarBalances ? [] : historialDias,
-        historialDias: ocultarBalances ? [] : historialDias,
+        topUsuarios: historialDias,
+        historialDias,
         detalle: solicitudesDept,
       },
     });

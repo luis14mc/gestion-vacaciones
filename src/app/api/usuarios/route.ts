@@ -129,29 +129,36 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   }
 
   // Balances
-  let balancesMap = new Map<number, number>();
-  const balancesData = await db
-    .select({
-      usuarioId: balances.usuarioId,
-      disponible: balances.cantidadDisponible,
-    })
-    .from(balances)
-    .innerJoin(anosLaborales, eq(balances.anoLaboralId, anosLaborales.id))
-    .where(and(
-      inArray(balances.usuarioId, userIds),
-      eq(anosLaborales.activo, true),
-      eq(balances.tipoAusencia, 'vacaciones')
-    ));
+  // Política Fase 1: jefes/directores NO deben ver días disponibles de sus
+  // empleados. Solo Admin/RRHH consultan balances.
+  const jefeSinVisibilidadCompleta =
+    !session.esAdmin && !session.esRrhh && (session.esJefe || session.esDirector);
 
-  for (const row of balancesData) {
-    balancesMap.set(row.usuarioId, parseFloat(row.disponible ?? '0'));
+  let balancesMap = new Map<number, number>();
+  if (!jefeSinVisibilidadCompleta) {
+    const balancesData = await db
+      .select({
+        usuarioId: balances.usuarioId,
+        disponible: balances.cantidadDisponible,
+      })
+      .from(balances)
+      .innerJoin(anosLaborales, eq(balances.anoLaboralId, anosLaborales.id))
+      .where(and(
+        inArray(balances.usuarioId, userIds),
+        eq(anosLaborales.activo, true),
+        eq(balances.tipoAusencia, 'vacaciones')
+      ));
+
+    for (const row of balancesData) {
+      balancesMap.set(row.usuarioId, parseFloat(row.disponible ?? '0'));
+    }
   }
 
   const usuariosData = usuariosDataBase.map((u) => ({
     ...u,
     departamento: u.departamentoId ? departamentosMap.get(u.departamentoId) || null : null,
     usuariosRoles: rolesByUser.get(u.id) || [],
-    diasDisponibles: balancesMap.get(u.id) ?? null,
+    diasDisponibles: jefeSinVisibilidadCompleta ? null : balancesMap.get(u.id) ?? null,
   }));
 
   return NextResponse.json({

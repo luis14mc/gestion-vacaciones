@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { balances, anosLaborales } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
+import { puedeVerBalanceEmpleado } from '@/lib/domain/dashboard-jefe/access';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +28,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const anio = searchParams.get('anio');
     const puedeVerTodos = tienePermiso(session, 'balances.ver_todos') || session.esRrhh || session.esAdmin;
     const usuarioIdNum = usuarioId ? Number.parseInt(usuarioId, 10) : null;
-    const esPropio = usuarioIdNum === session.id;
+    const esPropio = usuarioIdNum !== null && usuarioIdNum === session.id;
 
     if (!usuarioId && !puedeVerTodos) {
       return NextResponse.json(
@@ -37,10 +38,13 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     }
 
     if (usuarioId && !esPropio && !puedeVerTodos) {
-      return NextResponse.json(
-        { success: false, error: 'No tienes permiso para ver balances de otros usuarios' },
-        { status: 403 }
-      );
+      const autorizadoPorEquipo = await puedeVerBalanceEmpleado(session, usuarioIdNum!);
+      if (!autorizadoPorEquipo) {
+        return NextResponse.json(
+          { success: false, error: 'No tienes permiso para ver balances de otros usuarios' },
+          { status: 403 }
+        );
+      }
     }
 
     const condiciones = [

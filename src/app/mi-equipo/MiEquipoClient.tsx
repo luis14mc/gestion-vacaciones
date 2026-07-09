@@ -62,6 +62,12 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
   const [stats, setStats] = useState<Stats>({ total: 0, activos: 0, enVacaciones: 0, diasPromedio: 0 });
   const [loading, setLoading] = useState(true);
 
+  // Política Fase 1: Jefe/Director NO ven días disponibles de sus empleados.
+  const ocultarBalances = Boolean(
+    session?.user && (session.user.esJefe || session.user.esDirector) &&
+    !session.user.esAdmin && !session.user.esRrhh
+  );
+
   // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -94,8 +100,8 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
           departamento: u.departamento?.nombre ?? null,
           estado: u.activo ? 'activo' : 'inactivo',
           fechaIngreso: u.fechaIngreso ?? null,
-          diasAsignados: u.diasDisponibles ?? 0,
-          diasDisponibles: u.diasDisponibles ?? 0,
+          diasAsignados: ocultarBalances ? 0 : (u.diasDisponibles ?? 0),
+          diasDisponibles: ocultarBalances ? 0 : (u.diasDisponibles ?? 0),
           diasUsados: 0,
           solicitudesPendientes: 0,
           enVacaciones: false,
@@ -108,9 +114,9 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
         }
 
         const activos = mapped.filter((u: Usuario) => u.estado === "activo").length;
-        const diasPromedio = mapped.length > 0
-          ? Math.round(mapped.reduce((sum: number, u: Usuario) => sum + (u.diasDisponibles || 0), 0) / mapped.length)
-          : 0;
+        const diasPromedio = ocultarBalances || mapped.length === 0
+          ? 0
+          : Math.round(mapped.reduce((sum: number, u: Usuario) => sum + (u.diasDisponibles || 0), 0) / mapped.length);
 
         setStats({
           total: mapped.length,
@@ -173,7 +179,7 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+        <div className={ocultarBalances ? "grid grid-cols-1 gap-3 sm:grid-cols-3 lg:gap-4" : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4"}>
           <Card>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
@@ -210,18 +216,20 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
               <p className="text-xs text-muted-foreground mt-1">Actualmente ausentes</p>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
-                <p className="text-sm font-medium">Días Promedio</p>
-                <TrendingUp className="w-4 h-4 text-primary" />
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div className="text-2xl font-bold text-primary">{stats.diasPromedio}</div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Disponibles por persona</p>
-            </CardContent>
-          </Card>
+          {!ocultarBalances && (
+            <Card>
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 space-y-0 pb-2">
+                  <p className="text-sm font-medium">Días Promedio</p>
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="text-2xl font-bold text-primary">{stats.diasPromedio}</div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Disponibles por persona</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Filtros */}
@@ -316,23 +324,25 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
                         )}
                       </div>
 
-                      {/* Balance de días */}
-                      <div className="mt-4 pt-3 border-t">
-                        <div className="flex justify-between items-center mb-1.5">
-                          <span className="text-xs text-muted-foreground">Días disponibles</span>
-                          <span className="text-[13px] font-semibold text-primary">{usuario.diasDisponibles}/{usuario.diasAsignados}</span>
+                      {/* Balance de días — oculto para Jefe/Director (no ven días de empleados) */}
+                      {!ocultarBalances && (
+                        <div className="mt-4 pt-3 border-t">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-xs text-muted-foreground">Días disponibles</span>
+                            <span className="text-[13px] font-semibold text-primary">{usuario.diasDisponibles}/{usuario.diasAsignados}</span>
+                          </div>
+                          <Progress
+                            value={usuario.diasAsignados > 0 ? (usuario.diasDisponibles / usuario.diasAsignados) * 100 : 0}
+                            className="h-2"
+                          />
+                          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                            <span>{calcularPorcentajeUso(usuario.diasUsados, usuario.diasAsignados)}% usado</span>
+                            {usuario.solicitudesPendientes > 0 && (
+                              <span className="text-amber-500 font-medium">{usuario.solicitudesPendientes} pendiente(s)</span>
+                            )}
+                          </div>
                         </div>
-                        <Progress
-                          value={usuario.diasAsignados > 0 ? (usuario.diasDisponibles / usuario.diasAsignados) * 100 : 0}
-                          className="h-2"
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                          <span>{calcularPorcentajeUso(usuario.diasUsados, usuario.diasAsignados)}% usado</span>
-                          {usuario.solicitudesPendientes > 0 && (
-                            <span className="text-amber-500 font-medium">{usuario.solicitudesPendientes} pendiente(s)</span>
-                          )}
-                        </div>
-                      </div>
+                      )}
 
                       <div className="flex justify-end mt-4">
                         <Button
@@ -413,33 +423,35 @@ export default function MiEquipoClient({ session }: { session?: any } = {}) {
                 </div>
               </div>
 
-              {/* Balance de vacaciones */}
-              <div className="bg-muted p-4 rounded-xl border">
-                <h4 className="font-semibold mb-3 flex items-center text-sm gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Balance de Vacaciones
-                </h4>
-                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3 sm:gap-4">
-                  <div className="bg-background rounded-xl p-3 border shadow-sm">
-                    <div className="text-xs text-muted-foreground text-center">Asignados</div>
-                    <div className="text-lg font-bold text-primary text-center mt-1">{usuarioSeleccionado.diasAsignados}</div>
+              {/* Balance de vacaciones — oculto para Jefe/Director */}
+              {!ocultarBalances && (
+                <div className="bg-muted p-4 rounded-xl border">
+                  <h4 className="font-semibold mb-3 flex items-center text-sm gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Balance de Vacaciones
+                  </h4>
+                  <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3 sm:gap-4">
+                    <div className="bg-background rounded-xl p-3 border shadow-sm">
+                      <div className="text-xs text-muted-foreground text-center">Asignados</div>
+                      <div className="text-lg font-bold text-primary text-center mt-1">{usuarioSeleccionado.diasAsignados}</div>
+                    </div>
+                    <div className="bg-background rounded-xl p-3 border shadow-sm">
+                      <div className="text-xs text-muted-foreground text-center">Usados</div>
+                      <div className="text-lg font-bold text-red-500 text-center mt-1">{usuarioSeleccionado.diasUsados}</div>
+                    </div>
+                    <div className="bg-background rounded-xl p-3 border shadow-sm">
+                      <div className="text-xs text-muted-foreground text-center">Disponibles</div>
+                      <div className="text-lg font-bold text-green-500 text-center mt-1">{usuarioSeleccionado.diasDisponibles}</div>
+                    </div>
                   </div>
-                  <div className="bg-background rounded-xl p-3 border shadow-sm">
-                    <div className="text-xs text-muted-foreground text-center">Usados</div>
-                    <div className="text-lg font-bold text-red-500 text-center mt-1">{usuarioSeleccionado.diasUsados}</div>
-                  </div>
-                  <div className="bg-background rounded-xl p-3 border shadow-sm">
-                    <div className="text-xs text-muted-foreground text-center">Disponibles</div>
-                    <div className="text-lg font-bold text-green-500 text-center mt-1">{usuarioSeleccionado.diasDisponibles}</div>
+                  <div className="mt-4">
+                    <Progress
+                      value={usuarioSeleccionado.diasAsignados > 0 ? (usuarioSeleccionado.diasDisponibles / usuarioSeleccionado.diasAsignados) * 100 : 0}
+                      className="h-2"
+                    />
                   </div>
                 </div>
-                <div className="mt-4">
-                  <Progress
-                    value={usuarioSeleccionado.diasAsignados > 0 ? (usuarioSeleccionado.diasDisponibles / usuarioSeleccionado.diasAsignados) * 100 : 0}
-                    className="h-2"
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Estado actual */}
               {usuarioSeleccionado.enVacaciones && (

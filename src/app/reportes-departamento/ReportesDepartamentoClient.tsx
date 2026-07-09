@@ -131,6 +131,12 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
   const [mesSeleccionado, setMesSeleccionado] = useState(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState(new Date().getFullYear());
 
+  // Política Fase 1: Jefe/Director no ven balances de su equipo en reportes.
+  const esJefeODirectorSinAdminRrhh = Boolean(
+    session?.user && (session.user.esJefe || session.user.esDirector) &&
+    !session.user.esAdmin && !session.user.esRrhh
+  );
+
   const cargarReporte = useCallback(async () => {
     try {
       setLoading(true);
@@ -181,21 +187,30 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
         const topUsuarios = reporte.topUsuarios;
 
         // Crear documento con datos de resumen
-        const datosResumen = [
-          { concepto: 'Colaboradores Totales', valor: reporte.totalColaboradores },
-          { concepto: 'Colaboradores Activos', valor: reporte.colaboradoresActivos },
-          { concepto: 'En Vacaciones Hoy', valor: reporte.enVacacionesHoy },
-          { concepto: 'Solicitudes Pendientes', valor: reporte.solicitudesPendientes },
-          { concepto: 'Solicitudes Aprobadas', valor: reporte.solicitudesAprobadas },
-          { concepto: 'Solicitudes Rechazadas', valor: reporte.solicitudesRechazadas },
-          { concepto: 'Días totales vencidos', valor: reporte.diasTotalesVencidos },
-          { concepto: 'Días totales proporcionales', valor: reporte.diasTotalesProporcionales },
-          { concepto: 'Días totales asignados', valor: reporte.diasTotalesAsignados },
-          { concepto: 'Días totales usados', valor: reporte.diasTotalesUsados },
-          { concepto: 'Días totales pendientes', valor: reporte.diasTotalesPendientes },
-          { concepto: 'Días totales disponibles', valor: reporte.diasTotalesDisponibles },
-          { concepto: 'Promedio Uso por Persona', valor: reporte.promedioUsoPorPersona.toFixed(1) },
-        ];
+        const datosResumen = esJefeODirectorSinAdminRrhh
+          ? [
+              { concepto: 'Colaboradores Totales', valor: reporte.totalColaboradores },
+              { concepto: 'Colaboradores Activos', valor: reporte.colaboradoresActivos },
+              { concepto: 'En Vacaciones Hoy', valor: reporte.enVacacionesHoy },
+              { concepto: 'Solicitudes Pendientes', valor: reporte.solicitudesPendientes },
+              { concepto: 'Solicitudes Aprobadas', valor: reporte.solicitudesAprobadas },
+              { concepto: 'Solicitudes Rechazadas', valor: reporte.solicitudesRechazadas },
+            ]
+          : [
+              { concepto: 'Colaboradores Totales', valor: reporte.totalColaboradores },
+              { concepto: 'Colaboradores Activos', valor: reporte.colaboradoresActivos },
+              { concepto: 'En Vacaciones Hoy', valor: reporte.enVacacionesHoy },
+              { concepto: 'Solicitudes Pendientes', valor: reporte.solicitudesPendientes },
+              { concepto: 'Solicitudes Aprobadas', valor: reporte.solicitudesAprobadas },
+              { concepto: 'Solicitudes Rechazadas', valor: reporte.solicitudesRechazadas },
+              { concepto: 'Días totales vencidos', valor: reporte.diasTotalesVencidos },
+              { concepto: 'Días totales proporcionales', valor: reporte.diasTotalesProporcionales },
+              { concepto: 'Días totales asignados', valor: reporte.diasTotalesAsignados },
+              { concepto: 'Días totales usados', valor: reporte.diasTotalesUsados },
+              { concepto: 'Días totales pendientes', valor: reporte.diasTotalesPendientes },
+              { concepto: 'Días totales disponibles', valor: reporte.diasTotalesDisponibles },
+              { concepto: 'Promedio Uso por Persona', valor: reporte.promedioUsoPorPersona.toFixed(1) },
+            ];
 
         const config = {
           titulo: 'Reporte Departamental',
@@ -441,6 +456,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                 </CardContent>
               </Card>
 
+              {!esJefeODirectorSinAdminRrhh && (
               <Card className="rounded-2xl">
                 <CardContent className="p-5 pt-6">
                   <div className="flex items-start justify-between gap-3">
@@ -455,12 +471,14 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                   </div>
                 </CardContent>
               </Card>
+              )}
             </div>
 
             {/* Gráficos de uso */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-              {/* Balance total de días */}
-              <Card className="rounded-2xl">
+            <div className={esJefeODirectorSinAdminRrhh ? "grid grid-cols-1 gap-4 md:gap-6" : "grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6"}>
+              {/* Balance total de días — solo Admin/RRHH */}
+              {!esJefeODirectorSinAdminRrhh && (
+                <Card className="rounded-2xl">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
                     <PieChart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
@@ -524,6 +542,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                   </div>
                 </CardContent>
               </Card>
+              )}
 
               {/* Estado de solicitudes */}
               <Card className="rounded-2xl">
@@ -633,8 +652,9 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                 </CardContent>
               </Card>
 
-              {/* Historial de dias por colaborador */}
-              <Card className="rounded-2xl">
+              {/* Historial de dias por colaborador — solo Admin/RRHH */}
+              {!esJefeODirectorSinAdminRrhh && (
+                <Card className="rounded-2xl">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-[13px] font-semibold flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
@@ -675,6 +695,7 @@ export default function ReportesDepartamentoClient({ session }: { session?: any 
                   )}
                 </CardContent>
               </Card>
+              )}
             </div>
           </>
         )}

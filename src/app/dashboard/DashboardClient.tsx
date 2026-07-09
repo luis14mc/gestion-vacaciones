@@ -16,6 +16,13 @@ import type { Session } from 'next-auth';
 import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+interface MetricsJefe {
+  empleados_bajo_cargo: number;
+  solicitudes_pendientes_aprobacion: number;
+  solicitudes_aprobadas_hoy: number;
+  solicitudes_rechazadas_hoy: number;
+}
+
 interface Metrics {
   usuarios_totales: number;
   usuarios_activos: number;
@@ -76,6 +83,7 @@ interface CalendarioData {
 // â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function DashboardClient({ session }: { session: Session }) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [metricsJefe, setMetricsJefe] = useState<MetricsJefe | null>(null);
   const [balance, setBalance] = useState<BalancePersonal | null>(null);
   const [actividades, setActividades] = useState<Actividad[]>([]);
   const [calendario, setCalendario] = useState<CalendarioData | null>(null);
@@ -115,10 +123,26 @@ export default function DashboardClient({ session }: { session: Session }) {
       ]);
 
       if (!isEmpleado) {
-        if (metricsRes.success) {
-          setMetrics(metricsRes.data);
+        const esJefeODirectorSinAdminRrhh = (esDirector || esJefe) && !esAdmin && !esRrhh;
+        if (esJefeODirectorSinAdminRrhh) {
+          if (metricsRes.success) {
+            setMetricsJefe(metricsRes.data);
+          } else {
+            setMetricsJefe({
+              empleados_bajo_cargo: 0,
+              solicitudes_pendientes_aprobacion: 0,
+              solicitudes_aprobadas_hoy: 0,
+              solicitudes_rechazadas_hoy: 0,
+            });
+          }
+          setMetrics(null);
         } else {
-          setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
+          if (metricsRes.success) {
+            setMetrics(metricsRes.data);
+          } else {
+            setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
+          }
+          setMetricsJefe(null);
         }
       }
 
@@ -134,7 +158,17 @@ export default function DashboardClient({ session }: { session: Session }) {
     } catch (error) {
       console.error('Error cargando datos:', error);
       if (!isEmpleado) {
-        setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
+        const esJefeODirectorSinAdminRrhh = (esDirector || esJefe) && !esAdmin && !esRrhh;
+        if (esJefeODirectorSinAdminRrhh) {
+          setMetricsJefe({
+            empleados_bajo_cargo: 0,
+            solicitudes_pendientes_aprobacion: 0,
+            solicitudes_aprobadas_hoy: 0,
+            solicitudes_rechazadas_hoy: 0,
+          });
+        } else {
+          setMetrics({ usuarios_totales: 0, usuarios_activos: 0, solicitudes_pendientes: 0, en_vacaciones: 0 });
+        }
       }
     } finally {
       setLoading(false);
@@ -304,13 +338,12 @@ export default function DashboardClient({ session }: { session: Session }) {
           )}
 
           {/* Jefe metrics */}
-          {(esDirector || esJefe) && !esAdmin && !esRrhh && metrics && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <MetricCard title="Pendientes" value={metrics.solicitudes_pendientes || 0} subtitle="Tu aprobación" icon={Clock} color="warning" />
-              <MetricCard title="Aprobadas Hoy" value={metrics.aprobadas_hoy || 0} icon={CheckCircle} color="success" />
-              <MetricCard title="Rechazadas Hoy" value={metrics.rechazadas_hoy || 0} icon={X} color="error" />
-              <MetricCard title="Mi Equipo" value={metrics.usuarios_activos || 0} icon={Users} color="info" />
-              <MetricCard title="De Vacaciones" value={metrics.en_vacaciones || 0} subtitle="De su equipo" icon={Car} color="accent" />
+          {(esDirector || esJefe) && !esAdmin && !esRrhh && metricsJefe && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard title="Empleados bajo cargo" value={metricsJefe.empleados_bajo_cargo || 0} icon={Users} color="info" />
+              <MetricCard title="Pendientes" value={metricsJefe.solicitudes_pendientes_aprobacion || 0} subtitle="Tu aprobación" icon={Clock} color="warning" />
+              <MetricCard title="Aprobadas Hoy" value={metricsJefe.solicitudes_aprobadas_hoy || 0} icon={CheckCircle} color="success" />
+              <MetricCard title="Rechazadas Hoy" value={metricsJefe.solicitudes_rechazadas_hoy || 0} icon={X} color="error" />
             </div>
           )}
 

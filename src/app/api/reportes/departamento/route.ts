@@ -42,6 +42,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       );
     }
 
+    // Política Fase 1: Jefe/Director NO ven balances del equipo en reportes
+    // departamentales (días disponibles, usados, vencidos, proporcionales, etc.).
+    // Solo Admin/RRHH tienen visibilidad completa.
+    const ocultarBalances = esDirectorOJefe && !esAdminORrhh;
+
     const { searchParams } = new URL(request.url);
     const mes = parseInt(searchParams.get("mes") || String(new Date().getMonth() + 1));
     const anio = parseInt(searchParams.get("anio") || String(new Date().getFullYear()));
@@ -90,7 +95,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     let balancesData: Array<typeof balances.$inferSelect> = [];
     let totalesSaldos = sumarSaldos([]);
 
-    if (anoLaboral && usuariosIds.length > 0) {
+    if (!ocultarBalances && anoLaboral && usuariosIds.length > 0) {
       balancesData = await db.query.balances.findMany({
         where: and(
           eq(balances.anoLaboralId, anoLaboral.id),
@@ -175,17 +180,32 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       }))
       .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        periodo: { mes, anio },
-        resumen: {
+    const resumenFinal = ocultarBalances
+      ? {
+          totalColaboradores,
+          colaboradoresActivos,
+          enVacacionesHoy,
+          diasTotalesVencidos: 0,
+          diasTotalesProporcionales: 0,
+          diasTotalesAsignados: 0,
+          diasTotalesUsados: 0,
+          diasTotalesPendientes: 0,
+          diasTotalesDisponibles: 0,
+          promedioUsoPorPersona: 0,
+        }
+      : {
           totalColaboradores,
           colaboradoresActivos,
           enVacacionesHoy,
           ...totalesResumen,
           promedioUsoPorPersona,
-        },
+        };
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        periodo: { mes, anio },
+        resumen: resumenFinal,
         solicitudes: {
           total: solicitudesDept.length,
           aprobadas: solicitudesAprobadas,
@@ -193,8 +213,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
           rechazadas: solicitudesRechazadas,
         },
         proximasVacaciones,
-        topUsuarios: historialDias,
-        historialDias,
+        topUsuarios: ocultarBalances ? [] : historialDias,
+        historialDias: ocultarBalances ? [] : historialDias,
         detalle: solicitudesDept,
       },
     });

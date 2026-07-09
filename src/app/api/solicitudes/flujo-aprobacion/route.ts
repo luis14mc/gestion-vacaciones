@@ -21,7 +21,20 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 });
   }
 
-  const flujo = resolverFlujoSolicitante(datosSolicitante, tipo);
-
-  return NextResponse.json({ success: true, data: flujo });
+  try {
+    const flujo = await resolverFlujoSolicitante(datosSolicitante, tipo);
+    return NextResponse.json({ success: true, data: flujo });
+  } catch (err) {
+    const mensajeError =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo resolver el flujo de aprobación.';
+    return NextResponse.json(
+      {
+        success: false,
+        error: mensajeError,
+      },
+      { status: 422 }
+    );
+  }
 });

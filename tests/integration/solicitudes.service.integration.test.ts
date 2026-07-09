@@ -20,10 +20,9 @@ import {
   crearDepartamentoTest,
 } from '../helpers/test-data'
 import './setup'
-import {
-  COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN,
-  FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-} from '@/lib/domain/solicitud-flujo-inicial'
+// Fase 2: las constantes COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN y
+// FLUJO_ESPECIAL_JEFE_DIR_ADMIN ya no existen (la excepción hardcoded
+// fue reemplazada por el flujo general con Secretario General).
 
 const FECHA_INICIO_LAB = '2026-03-02'
 const FECHA_FIN_LAB = '2026-03-06'
@@ -671,7 +670,7 @@ describe('Solicitudes Service - Integration Tests', () => {
       }
     })
 
-    it('Jefe de Dirección Administrativa → estado inicial aprobada_jefe', async () => {
+    it('Jefe de Dirección Administrativa → estado inicial pendiente_director o pendiente_secretario_general', async () => {
       const solicitud = await crearSolicitud({
         usuarioId: jefeDirAdmin.id,
         tipo: 'vacaciones',
@@ -681,14 +680,14 @@ describe('Solicitudes Service - Integration Tests', () => {
         motivo: 'Vacaciones de jefatura',
       })
 
-      expect(solicitud.estado).toBe('aprobada_jefe')
-      expect(solicitud.aprobadaJefePor).toBe(jefeDirAdmin.id)
-      expect(solicitud.aprobadaJefeFecha).toBeDefined()
-      expect(solicitud.comentarioJefe).toBe(COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN)
+      // Fase 2: ya NO hay excepción hardcoded; el flujo cae al aprobador
+      // de segundo nivel real (Director si existe, Secretario General si no).
+      expect(['pendiente_director', 'pendiente_secretario_general']).toContain(
+        solicitud.estado
+      );
       expect(solicitud.metadata).toMatchObject({
-        flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-        derivadoDirectoRrhh: true,
-      })
+        aprobadorSegundoNivelTipo: expect.stringMatching(/director|secretario_general/),
+      });
     })
 
     it('Empleado normal de Dirección Administrativa → estado inicial pendiente_jefe', async () => {

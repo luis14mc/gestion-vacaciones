@@ -30,6 +30,7 @@ export const GET = withErrorHandler(async (
     esJefe: session.esJefe || false,
     esRrhh: session.esRrhh || false,
     esAdmin: session.esAdmin || false,
+    esSecretarioGeneral: session.esSecretarioGeneral || false,
     departamentoId: session.departamentoId ?? null,
   });
 
@@ -66,6 +67,7 @@ export const POST = withErrorHandler(async (
     esJefe: session.esJefe || false,
     esRrhh: session.esRrhh || false,
     esAdmin: session.esAdmin || false,
+    esSecretarioGeneral: session.esSecretarioGeneral || false,
     departamentoId: session.departamentoId ?? null,
     comentario,
     motivoRechazo,

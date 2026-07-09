@@ -1,16 +1,17 @@
 /**
  * Resolución del estado inicial y auto-aprobación al crear solicitudes.
+ *
+ * Fase 2: cuando el solicitante es un Jefe, el aprobador de segundo nivel
+ * lo decide `resolverAprobadorSegundoNivel()` (Director o Secretario General).
+ * Ya NO hay excepción hardcoded por nombre de departamento.
  */
 
-export const DEPARTAMENTO_DIRECCION_ADMINISTRATIVA = 'Dirección Administrativa';
-
-export const FLUJO_ESPECIAL_JEFE_DIR_ADMIN =
-  'jefe_direccion_administrativa_sin_director' as const;
-
-export const COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN =
-  'Derivado directamente a RRHH por excepción temporal: Jefatura de Dirección Administrativa sin Director asignado.';
-
-export type EstadoInicialSolicitud = 'aprobada_jefe' | 'pendiente_jefe';
+export type EstadoInicialSolicitud =
+  | 'aprobada_jefe'
+  | 'pendiente_jefe'
+  | 'pendiente_director'
+  | 'pendiente_secretario_general'
+  | 'pendiente_rrhh';
 
 export interface FlujoInicialSolicitud {
   estadoInicial: EstadoInicialSolicitud;
@@ -20,59 +21,49 @@ export interface FlujoInicialSolicitud {
   metadataInicial: Record<string, unknown>;
 }
 
-export function normalizarNombreDepartamento(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
-
-export function esDepartamentoDireccionAdministrativa(
-  nombre: string | null | undefined
-): boolean {
-  if (!nombre) return false;
-  return (
-    normalizarNombreDepartamento(nombre) ===
-    normalizarNombreDepartamento(DEPARTAMENTO_DIRECCION_ADMINISTRATIVA)
-  );
-}
-
 /**
  * Determina el estado inicial y campos de auto-aprobación al crear una solicitud.
  *
- * Prioridad:
- * 1. Director → aprobada_jefe (flujo actual)
- * 2. Jefe en Dirección Administrativa → aprobada_jefe (excepción temporal sin Director)
- * 3. Resto → pendiente_jefe
+ * Reglas (Fase 2):
+ *   - Director que solicita vacaciones → pendiente_rrhh (VoBo Ministro
+ *     validado por RRHH).
+ *   - Jefe (no Director) → pendiente_director o pendiente_secretario_general
+ *     según `aprobadorSegundoNivelTipo`.
+ *   - Empleado normal → pendiente_jefe.
+ *
+ * No auto-aprueba solicitudes de Jefe (la jerarquía institucional requiere
+ * siempre una aprobación de segundo nivel).
  */
 export function resolverFlujoInicialSolicitud(params: {
   esDirector: boolean;
   esJefe: boolean;
-  departamentoNombre: string | null | undefined;
+  aprobadorSegundoNivelTipo?: 'director' | 'secretario_general' | null;
 }): FlujoInicialSolicitud {
   if (params.esDirector) {
     return {
-      estadoInicial: 'aprobada_jefe',
-      autoAprobacionJefe: {
-        comentarioJefe: 'Auto-aprobado (solicitud creada por Director)',
+      estadoInicial: 'pendiente_rrhh',
+      metadataInicial: {
+        flujoAprobacion: 'director_con_vobo_ministro',
+        requiereVoBoMinistro: true,
       },
-      metadataInicial: {},
     };
   }
 
-  if (
-    params.esJefe &&
-    esDepartamentoDireccionAdministrativa(params.departamentoNombre)
-  ) {
+  if (params.esJefe) {
+    if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
+      return {
+        estadoInicial: 'pendiente_secretario_general',
+        metadataInicial: {
+          flujoAprobacion: 'jefe_sin_director',
+          aprobadorSegundoNivelTipo: 'secretario_general',
+        },
+      };
+    }
     return {
-      estadoInicial: 'aprobada_jefe',
-      autoAprobacionJefe: {
-        comentarioJefe: COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN,
-      },
+      estadoInicial: 'pendiente_director',
       metadataInicial: {
-        flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-        derivadoDirectoRrhh: true,
+        flujoAprobacion: 'jefe_estandar',
+        aprobadorSegundoNivelTipo: 'director',
       },
     };
   }

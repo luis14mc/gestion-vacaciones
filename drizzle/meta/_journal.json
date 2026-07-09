@@ -51,11 +51,18 @@
       "tag": "0006_fecha_nacimiento_dia_cumpleanos",
       "breakpoints": true
     },
-    {
+{
       "idx": 7,
       "version": "7",
       "when": 1780000004000,
       "tag": "0007_notificaciones_cumpleanos",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780000005000,
+      "tag": "0008_secretario_general",
       "breakpoints": true
     }
   ]

@@ -80,6 +80,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         esRrhh: sessionUser.esRrhh,
         esJefe: sessionUser.esJefe,
         esDirector: sessionUser.esDirector,
+        esSecretarioGeneral: sessionUser.esSecretarioGeneral,
       })
     ) {
       return NextResponse.json(
@@ -334,7 +335,34 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     );
   }
 
-  const flujo = resolverFlujoSolicitante(datosSolicitante, tipo);
+  const flujo = await resolverFlujoSolicitante(datosSolicitante, tipo);
+
+  // Si el helper de flujo reportó error por falta de aprobador de segundo
+  // nivel (Director + Secretario General ausentes), rechazamos la creación
+  // con 422 y mensaje claro.
+  if (
+    flujo.aprobadorSegundoNivelTipo == null &&
+    !flujo.pasaDirectoRrhh &&
+    datosSolicitante.esJefe
+  ) {
+    await registrarAuditoria({
+      usuarioId: sessionUser.id,
+      accion: 'validacion_rechazada',
+      tablaAfectada: 'solicitudes',
+      detalles: {
+        tipo,
+        motivo: 'sin_aprobador_segundo_nivel',
+        mensajeFlujo: flujo.mensajeFlujo,
+      },
+    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: flujo.mensajeFlujo,
+      },
+      { status: 422 }
+    );
+  }
 
   if (
     debeExigirVoBoMinistro({
@@ -467,6 +495,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       tipo,
       usuarioSolicitanteId: usuarioId,
       codigo: solicitudCreada.codigo,
+      aprobadorSegundoNivelTipo: flujo.aprobadorSegundoNivelTipo ?? null,
+      aprobadorSegundoNivelNombre: flujo.aprobadorSegundoNivelNombre ?? null,
+      requiereAprobacionDirector: flujo.requiereAprobacionDirector,
+      requiereAprobacionSecretarioGeneral: flujo.requiereAprobacionSecretarioGeneral,
       ...(flujo.flujoEspecial ? { flujoEspecial: flujo.flujoEspecial } : {}),
       ...(flujo.pasaDirectoRrhh ? { derivadoDirectoRrhh: true } : {}),
     },

@@ -1,28 +1,28 @@
 /**
  * Flujo de aprobación para nueva solicitud (UI + API).
  * Fuente única para no duplicar reglas en el frontend.
+ *
+ * Fase 2: se incorpora la figura del Secretario General como aprobador
+ * sustituto del Director de Área.
  */
-
 import { esDirectorConFlujoVoBo, debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
-import {
-  FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-  esDepartamentoDireccionAdministrativa,
-} from '@/lib/domain/solicitud-flujo-inicial';
 
-export type FlujoEspecialNuevaSolicitud = typeof FLUJO_ESPECIAL_JEFE_DIR_ADMIN;
+export type FlujoEspecialNuevaSolicitud = never;
+
+export type TipoAprobadorSegundoNivelUI = 'director' | 'secretario_general';
 
 export interface FlujoAprobacionNuevaSolicitud {
   requiereVoBoMinistro: boolean;
   requiereAprobacionJefe: boolean;
   requiereAprobacionDirector: boolean;
+  requiereAprobacionSecretarioGeneral: boolean;
   pasaDirectoRrhh: boolean;
   flujoEspecial?: FlujoEspecialNuevaSolicitud;
   mensajeFlujo: string;
   pasosProceso: string[];
+  aprobadorSegundoNivelTipo?: TipoAprobadorSegundoNivelUI | null;
+  aprobadorSegundoNivelNombre?: string | null;
 }
-
-const MENSAJE_JEFE_DIR_ADMIN =
-  'Esta solicitud será derivada directamente a Recursos Humanos por excepción temporal: Jefatura de Dirección Administrativa sin Director asignado.';
 
 const MENSAJE_DIRECTOR =
   'Como Director, debe adjuntar el VoBo del Ministro. La solicitud será revisada por Recursos Humanos.';
@@ -33,53 +33,50 @@ const MENSAJE_DIRECTOR_PERMISO_CORTO =
 const MENSAJE_JEFE =
   'Su solicitud será enviada al Director de Área para aprobación y luego a Recursos Humanos.';
 
+const MENSAJE_JEFE_SG =
+  'Esta Dirección no tiene Director activo o asignado. Luego de la aprobación de su jefe inmediato, la solicitud pasará al Secretario General.';
+
 const MENSAJE_EMPLEADO =
   'Su solicitud será enviada a su jefe inmediato para aprobación y luego a Recursos Humanos.';
+
+const MENSAJE_EMPLEADO_SG =
+  'Esta Dirección no tiene Director activo o asignado. Luego de la aprobación de su jefe inmediato, la solicitud pasará al Secretario General.';
 
 const MENSAJE_CUMPLEANOS =
   'Su día libre por cumpleaños será revisado por su jefe o director y luego por Recursos Humanos.';
 
 const PASO_NOTIFICACION = 'Notificación al solicitante';
 
+/**
+ * Resuelve el flujo de aprobación de una solicitud nueva.
+ *
+ * @param params.esDirector               Solicitante es Director.
+ * @param params.esJefe                   Solicitante es Jefe (no Director).
+ * @param params.aprobadorSegundoNivelTipo Tipo del aprobador de segundo nivel
+ *                                          cuando el solicitante es Jefe.
+ * @param params.aprobadorSegundoNivelNombre Nombre humano del aprobador.
+ * @param params.tipo                     Tipo de solicitud.
+ */
 export function resolverFlujoAprobacionNuevaSolicitud(params: {
   esDirector: boolean;
   esJefe: boolean;
-  departamentoNombre: string | null | undefined;
+  aprobadorSegundoNivelTipo?: TipoAprobadorSegundoNivelUI | null;
+  aprobadorSegundoNivelNombre?: string | null;
   tipo?: string;
 }): FlujoAprobacionNuevaSolicitud {
   const tipo = params.tipo ?? 'vacaciones';
   const esCumpleanos = tipo === 'dia_cumpleanos';
-
-  const esJefeDirAdmin =
-    params.esJefe &&
-    !params.esDirector &&
-    esDepartamentoDireccionAdministrativa(params.departamentoNombre);
-
-  if (esJefeDirAdmin && !esCumpleanos) {
-    return {
-      requiereVoBoMinistro: false,
-      requiereAprobacionJefe: false,
-      requiereAprobacionDirector: false,
-      pasaDirectoRrhh: true,
-      flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-      mensajeFlujo: MENSAJE_JEFE_DIR_ADMIN,
-      pasosProceso: [
-        'Derivación directa a Recursos Humanos por excepción temporal',
-        'Revisión y aprobación de Recursos Humanos',
-        PASO_NOTIFICACION,
-      ],
-    };
-  }
 
   if (esDirectorConFlujoVoBo({ esDirector: params.esDirector, esSolicitudPropia: true, tipo })) {
     return {
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
-      pasaDirectoRrhh: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: true,
       mensajeFlujo: MENSAJE_DIRECTOR,
       pasosProceso: [
-        'VoBo Ministro (Mediante documento adjunto)',
+        'VoBo Ministro (mediante documento adjunto)',
         'Revisión y validación de Recursos Humanos',
         PASO_NOTIFICACION,
       ],
@@ -91,6 +88,7 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: true,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
       mensajeFlujo: MENSAJE_CUMPLEANOS,
       pasosProceso: [
@@ -102,14 +100,54 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
   }
 
   if (params.esJefe) {
+    if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
+      return {
+        requiereVoBoMinistro: false,
+        requiereAprobacionJefe: false,
+        requiereAprobacionDirector: false,
+        requiereAprobacionSecretarioGeneral: true,
+        pasaDirectoRrhh: false,
+        mensajeFlujo: MENSAJE_JEFE_SG,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
+        pasosProceso: [
+          'Aprobación de Secretario General (aprobador sustituto)',
+          'Revisión y aprobación de Recursos Humanos',
+          PASO_NOTIFICACION,
+        ],
+      };
+    }
     return {
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: true,
+      requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
       mensajeFlujo: MENSAJE_JEFE,
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
       pasosProceso: [
         'Aprobación de Director de Área',
+        'Revisión y aprobación de Recursos Humanos',
+        PASO_NOTIFICACION,
+      ],
+    };
+  }
+
+  // Empleado normal
+  if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
+    return {
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: true,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: true,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: MENSAJE_EMPLEADO_SG,
+      aprobadorSegundoNivelTipo: 'secretario_general',
+      aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
+      pasosProceso: [
+        'Aprobación de Jefe Inmediato',
+        'Aprobación de Secretario General (aprobador sustituto)',
         'Revisión y aprobación de Recursos Humanos',
         PASO_NOTIFICACION,
       ],
@@ -120,10 +158,14 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
     requiereVoBoMinistro: false,
     requiereAprobacionJefe: true,
     requiereAprobacionDirector: false,
+    requiereAprobacionSecretarioGeneral: false,
     pasaDirectoRrhh: false,
     mensajeFlujo: MENSAJE_EMPLEADO,
+    aprobadorSegundoNivelTipo: 'director',
+    aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
     pasosProceso: [
       'Aprobación de Jefe Inmediato',
+      'Aprobación de Director de Área',
       'Revisión y aprobación de Recursos Humanos',
       PASO_NOTIFICACION,
     ],

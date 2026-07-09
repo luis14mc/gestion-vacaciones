@@ -21,6 +21,7 @@ import {
 import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
 import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
 import { resolverFlujoInicialSolicitud } from '@/lib/domain/solicitud-flujo-inicial';
+import { resolverAprobadorSegundoNivel } from '@/lib/domain/aprobadores';
 
 // =====================================================
 // TIPOS
@@ -272,11 +273,48 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       departamentoNombre = departamento?.nombre ?? null;
     }
 
+    // Fase 2: resolver aprobador de segundo nivel antes de calcular flujo.
+    let aprobadorSegundoNivelTipo: 'director' | 'secretario_general' | null = null;
+    let aprobadorDirectorId: number | null = null;
+    let aprobadorSecretarioId: number | null = null;
+
+    if (!esDirector) {
+      try {
+        const aprobador = await resolverAprobadorSegundoNivel({
+          departamentoId: usuario.departamentoId,
+          fechaInicio: fechaInicioFinal,
+          fechaFin: fechaFinFinal,
+        });
+        aprobadorSegundoNivelTipo = aprobador.tipoAprobador;
+        if (aprobador.tipoAprobador === 'director') {
+          aprobadorDirectorId = aprobador.usuarioId;
+        } else {
+          aprobadorSecretarioId = aprobador.usuarioId;
+        }
+      } catch (err) {
+        const mensajeError =
+          err instanceof Error
+            ? err.message
+            : 'No hay aprobador de segundo nivel configurado.';
+        throw new Error(mensajeError);
+      }
+    }
+
     const flujoInicial = resolverFlujoInicialSolicitud({
       esDirector,
       esJefe: usuario.esJefe,
-      departamentoNombre,
+      aprobadorSegundoNivelTipo,
     });
+
+    // Combinar metadata con info de aprobador (para auditoría y UI).
+    const metadataInicial = {
+      ...flujoInicial.metadataInicial,
+      ...(aprobadorSegundoNivelTipo
+        ? { aprobadorSegundoNivelTipo }
+        : {}),
+      ...(aprobadorDirectorId ? { aprobadorDirectorIdSnapshot: aprobadorDirectorId } : {}),
+      ...(aprobadorSecretarioId ? { aprobadorSecretarioIdSnapshot: aprobadorSecretarioId } : {}),
+    };
 
     // Resolver horas para permisos de salida
     // El CHECK constraint de la BD exige hora_salida y hora_regreso NOT NULL para permiso_salida
@@ -318,7 +356,12 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         comentarioEmpleado,
         documentosAdjuntos,
         estado: flujoInicial.estadoInicial,
-        metadata: flujoInicial.metadataInicial,
+        metadata: metadataInicial,
+        // Fase 2: persistir aprobador de segundo nivel esperado para
+        // que las bandejas puedan filtrar por id sin recálculo en cada
+        // request.
+        aprobadaDirectorPor: aprobadorDirectorId,
+        aprobadaSecretarioPor: aprobadorSecretarioId,
         ...(flujoInicial.autoAprobacionJefe
           ? {
               aprobadaJefePor: usuarioId,

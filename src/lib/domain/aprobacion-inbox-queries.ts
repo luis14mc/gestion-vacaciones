@@ -1,5 +1,14 @@
 /**
  * Consultas de bandeja de aprobación desde PostgreSQL.
+ *
+ * Fase 2: cada rol ve solo el tramo del flujo que le corresponde:
+ *   - Jefe:        pendiente_jefe de su equipo.
+ *   - Director:    pendiente_director donde él sea el aprobador esperado.
+ *   - Sec.Gen.:    pendiente_secretario_general donde él sea el aprobador.
+ *   - RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
+ *
+ * Reglas institucionales verificadas en la consulta SQL (no en memoria)
+ * para evitar filtrado post-construcción que pueda devolver datos sensibles.
  */
 
 import { and, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -7,6 +16,7 @@ import { db } from '@/lib/db';
 import { solicitudes } from '@/lib/db/schema';
 import type { SessionUser } from '@/types';
 import { resolverIdsEquipo } from '@/lib/domain/equipo-jefe';
+import { resolverAprobadorSegundoNivel } from '@/lib/domain/aprobadores';
 import {
   ESTADOS_ACCIONABLES_APROBACION,
   puedeAccederBandejaAprobacion,
@@ -19,6 +29,7 @@ function rolesDesdeSession(session: SessionUser): RolBandejaAprobacion {
     esRrhh: session.esRrhh,
     esJefe: session.esJefe,
     esDirector: session.esDirector,
+    esSecretarioGeneral: session.esSecretarioGeneral,
   };
 }
 
@@ -35,13 +46,14 @@ export async function construirCondicionesBandejaAprobacion(
 
   const equipoIds = await resolverIdsEquipo({
     jefeId: session.id,
-    esDirector: session.esDirector,
+    esDirector: roles.esDirector,
     departamentoId: session.departamentoId,
   });
 
   const ramas: SQL[] = [];
 
-  if (roles.esJefe || roles.esDirector) {
+  // Jefe/Director: pendiente_jefe de su equipo directo.
+  if ((roles.esJefe || roles.esDirector) && !roles.esRrhh && !roles.esAdmin) {
     if (equipoIds.length > 0) {
       ramas.push(
         and(
@@ -52,12 +64,37 @@ export async function construirCondicionesBandejaAprobacion(
     }
   }
 
-  if (roles.esAdmin) {
-    ramas.push(eq(solicitudes.estado, 'pendiente_jefe'));
+  // Director: pendiente_director donde él es el aprobador.
+  if (roles.esDirector) {
+    ramas.push(
+      and(
+        eq(solicitudes.estado, 'pendiente_director'),
+        eq(solicitudes.aprobadaDirectorPor, session.id)
+      ) as SQL
+    );
   }
 
+  // Secretario General: pendiente_secretario_general donde él es el aprobador.
+  if (roles.esSecretarioGeneral) {
+    ramas.push(
+      and(
+        eq(solicitudes.estado, 'pendiente_secretario_general'),
+        eq(solicitudes.aprobadaSecretarioPor, session.id)
+      ) as SQL
+    );
+  }
+
+  // RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
   if (roles.esRrhh || roles.esAdmin) {
-    ramas.push(eq(solicitudes.estado, 'aprobada_jefe'));
+    ramas.push(eq(solicitudes.estado, 'pendiente_rrhh') as SQL);
+    ramas.push(eq(solicitudes.estado, 'aprobada_jefe') as SQL);
+  }
+
+  // Admin bypass: ve todo el flujo pendiente.
+  if (roles.esAdmin) {
+    ramas.push(eq(solicitudes.estado, 'pendiente_jefe') as SQL);
+    ramas.push(eq(solicitudes.estado, 'pendiente_director') as SQL);
+    ramas.push(eq(solicitudes.estado, 'pendiente_secretario_general') as SQL);
   }
 
   if (ramas.length === 0) {
@@ -89,12 +126,24 @@ export async function calcularStatsBandejaAprobacion(session: SessionUser) {
     .where(inboxWhere);
 
   const aprobacionesJefe = roles.esJefe || roles.esDirector || roles.esAdmin;
+  const aprobacionesDirector = roles.esDirector || roles.esAdmin;
+  const aprobacionesSecretario = roles.esSecretarioGeneral || roles.esAdmin;
   const aprobacionesRrhh = roles.esRrhh || roles.esAdmin;
 
   const aprobadaHoyParts: SQL[] = [];
   if (aprobacionesJefe) {
     aprobadaHoyParts.push(
       sql`(${solicitudes.aprobadaJefePor} = ${session.id} AND (${solicitudes.aprobadaJefeFecha} AT TIME ZONE 'America/Tegucigalpa')::date = ${HOY_HN})`
+    );
+  }
+  if (aprobacionesDirector) {
+    aprobadaHoyParts.push(
+      sql`(${solicitudes.aprobadaDirectorPor} = ${session.id} AND (${solicitudes.aprobadaDirectorFecha} AT TIME ZONE 'America/Tegucigalpa')::date = ${HOY_HN})`
+    );
+  }
+  if (aprobacionesSecretario) {
+    aprobadaHoyParts.push(
+      sql`(${solicitudes.aprobadaSecretarioPor} = ${session.id} AND (${solicitudes.aprobadaSecretarioFecha} AT TIME ZONE 'America/Tegucigalpa')::date = ${HOY_HN})`
     );
   }
   if (aprobacionesRrhh) {
@@ -132,4 +181,37 @@ export async function calcularStatsBandejaAprobacion(session: SessionUser) {
     aprobadas_hoy,
     rechazadas_hoy: rechazadasRow?.total ?? 0,
   };
+}
+
+/**
+ * Resuelve el aprobador de segundo nivel esperado para una solicitud
+ * específica. Se usa para fijar las columnas `aprobada_director_por` /
+ * `aprobada_secretario_por` al crear la solicitud.
+ *
+ * Devuelve null si el solicitante es Director (no necesita segundo nivel)
+ * o si ya pasó por RRHH directamente.
+ */
+export async function resolverIdsAprobadoresParaNuevaSolicitud(params: {
+  esDirector: boolean;
+  esJefe: boolean;
+  departamentoId: number | null;
+}): Promise<{
+  aprobadorDirectorId: number | null;
+  aprobadorSecretarioId: number | null;
+}> {
+  if (params.esDirector) {
+    return { aprobadorDirectorId: null, aprobadorSecretarioId: null };
+  }
+
+  try {
+    const aprobador = await resolverAprobadorSegundoNivel({
+      departamentoId: params.departamentoId,
+    });
+    if (aprobador.tipoAprobador === 'director') {
+      return { aprobadorDirectorId: aprobador.usuarioId, aprobadorSecretarioId: null };
+    }
+    return { aprobadorDirectorId: null, aprobadorSecretarioId: aprobador.usuarioId };
+  } catch {
+    return { aprobadorDirectorId: null, aprobadorSecretarioId: null };
+  }
 }

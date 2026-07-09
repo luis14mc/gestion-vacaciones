@@ -42,6 +42,7 @@ export async function getSession(): Promise<SessionUser | null> {
     let esRrhhDb = false;
     let esDirectorDb = false;
     let esJefeDb = false;
+    let esSecretarioGeneralDb = false;
     let departamentoIdDb: number | null | undefined;
     let cargoDb: string | null | undefined;
     let debeCambiarPasswordDb = false;
@@ -53,6 +54,7 @@ export async function getSession(): Promise<SessionUser | null> {
           esRrhh: usuarios.esRrhh,
           esDirector: usuarios.esDirector,
           esJefe: usuarios.esJefe,
+          esSecretarioGeneral: usuarios.esSecretarioGeneral,
           departamentoId: usuarios.departamentoId,
           cargo: usuarios.cargo,
           metadata: usuarios.metadata,
@@ -66,6 +68,7 @@ export async function getSession(): Promise<SessionUser | null> {
         esRrhhDb = row.esRrhh;
         esDirectorDb = row.esDirector;
         esJefeDb = row.esJefe;
+        esSecretarioGeneralDb = row.esSecretarioGeneral;
         departamentoIdDb = row.departamentoId;
         cargoDb = row.cargo;
         const metadata = (row.metadata as Record<string, unknown>) || {};
@@ -114,6 +117,8 @@ export async function getSession(): Promise<SessionUser | null> {
       esRrhh: esRrhhDb || session.user.esRrhh || false,
       esDirector: esDirectorDb || session.user.esDirector || false,
       esJefe: esJefeDb || session.user.esJefe || false,
+      esSecretarioGeneral:
+        esSecretarioGeneralDb || session.user.esSecretarioGeneral || false,
 
       debeCambiarPassword: debeCambiarPasswordDb,
     };

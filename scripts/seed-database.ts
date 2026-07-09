@@ -47,11 +47,12 @@ const client = postgres(DATABASE_URL, {
 const db = drizzle(client);
 
 const ROLES_DATA = [
-  { codigo: 'ADMIN', nombre: 'Administrador', descripcion: 'Acceso total', nivel: 10, esRolSistema: true },
-  { codigo: 'RRHH', nombre: 'Recursos Humanos', descripcion: 'Gestion de personal', nivel: 8, esRolSistema: true },
-  { codigo: 'DIRECTOR', nombre: 'Director de Area', descripcion: 'Aprobacion nivel 1 (directores)', nivel: 6, esRolSistema: true },
-  { codigo: 'JEFE', nombre: 'Jefe de Departamento', descripcion: 'Aprobacion nivel 1', nivel: 5, esRolSistema: true },
-  { codigo: 'EMPLEADO', nombre: 'Empleado', descripcion: 'Usuario estandar', nivel: 1, esRolSistema: true },
+  { codigo: 'ADMIN',    nombre: 'Administrador',     descripcion: 'Acceso total',         nivel: 10, esRolSistema: false },
+  { codigo: 'RRHH',     nombre: 'Recursos Humanos',  descripcion: 'Gestion de personal',  nivel: 8,  esRolSistema: false },
+  { codigo: 'DIRECTOR', nombre: 'Director de Area',  descripcion: 'Aprobacion nivel 1 (directores)', nivel: 6, esRolSistema: false },
+  { codigo: 'SECRETARIO_GENERAL', nombre: 'Secretario General', descripcion: 'Aprobador sustituto de Director de Area cuando no hay Director disponible', nivel: 7, esRolSistema: false },
+  { codigo: 'JEFE',     nombre: 'Jefe de Departamento', descripcion: 'Aprobacion nivel 1', nivel: 5,  esRolSistema: false },
+  { codigo: 'EMPLEADO', nombre: 'Empleado',          descripcion: 'Usuario estandar',     nivel: 1,  esRolSistema: false },
 ];
 
 const PERMISOS_DATA = [

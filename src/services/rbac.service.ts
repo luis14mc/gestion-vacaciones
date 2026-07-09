@@ -309,11 +309,15 @@ export async function listarPermisos() {
  * `usuarios_roles` a partir de flags, evitando la divergencia
  * descrita en la auditoría (un flag activo sin su rol, o viceversa).
  */
-export const FLAG_A_ROL: Record<'esAdmin' | 'esRrhh' | 'esDirector' | 'esJefe', string> = {
+export const FLAG_A_ROL: Record<
+  'esAdmin' | 'esRrhh' | 'esDirector' | 'esJefe' | 'esSecretarioGeneral',
+  string
+> = {
   esAdmin: 'ADMIN',
   esRrhh: 'RRHH',
   esDirector: 'DIRECTOR',
   esJefe: 'JEFE',
+  esSecretarioGeneral: 'SECRETARIO_GENERAL',
 };
 
 // Roles gestionados por los flags. syncUserRoles SOLO añade/quita estos;
@@ -325,6 +329,7 @@ export interface FlagsRol {
   esRrhh?: boolean;
   esDirector?: boolean;
   esJefe?: boolean;
+  esSecretarioGeneral?: boolean;
 }
 
 /**
@@ -346,6 +351,7 @@ export async function syncUserRoles(
   if (flags.esRrhh) deseados.add('RRHH');
   if (flags.esDirector) deseados.add('DIRECTOR');
   if (flags.esJefe) deseados.add('JEFE');
+  if (flags.esSecretarioGeneral) deseados.add('SECRETARIO_GENERAL');
 
   // Cargar filas de roles relevantes (gestionados + EMPLEADO base)
   const codigosRelevantes = [...ROLES_GESTIONADOS, 'EMPLEADO'];
@@ -407,7 +413,13 @@ export async function syncUserRolesDesdeBD(usuarioId: number, tx: any = db): Pro
   if (!u) return;
   await syncUserRoles(
     usuarioId,
-    { esAdmin: u.esAdmin, esRrhh: u.esRrhh, esDirector: u.esDirector, esJefe: u.esJefe },
+    {
+      esAdmin: u.esAdmin,
+      esRrhh: u.esRrhh,
+      esDirector: u.esDirector,
+      esJefe: u.esJefe,
+      esSecretarioGeneral: u.esSecretarioGeneral,
+    },
     tx
   );
 }
@@ -429,6 +441,7 @@ export async function syncFlagsFromRoles(usuarioId: number, tx: any = db): Promi
     esRrhh: codigos.has('RRHH'),
     esDirector: codigos.has('DIRECTOR'),
     esJefe: codigos.has('JEFE'),
+    esSecretarioGeneral: codigos.has('SECRETARIO_GENERAL'),
   };
 
   await tx
@@ -438,6 +451,7 @@ export async function syncFlagsFromRoles(usuarioId: number, tx: any = db): Promi
       esRrhh: flags.esRrhh ?? false,
       esDirector: flags.esDirector ?? false,
       esJefe: flags.esJefe ?? false,
+      esSecretarioGeneral: flags.esSecretarioGeneral ?? false,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(usuarios.id, usuarioId));

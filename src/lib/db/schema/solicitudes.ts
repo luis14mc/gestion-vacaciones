@@ -63,15 +63,21 @@ export const duracionPermisoEnum = pgEnum('duracion_permiso', [
 ]);
 
 export const estadoSolicitudEnum = pgEnum('estado_solicitud', [
-  'borrador',              // Creada, no enviada
-  'pendiente_jefe',        // Esperando aprobación del jefe
-  'aprobada_jefe',         // Jefe aprobó, pendiente RRHH
-  'rechazada_jefe',        // Jefe rechazó
-  'pendiente_rrhh',        // Esperando aprobación RRHH
-  'aprobada_rrhh',         // RRHH aprobó (final)
-  'rechazada_rrhh',        // RRHH rechazó
-  'cancelada',             // Cancelada por el empleado
-  'finalizada',            // Completada y archivada
+  'borrador',                       // Creada, no enviada
+  'pendiente_jefe',                 // Esperando aprobación del jefe
+  'aprobada_jefe',                  // Jefe aprobó, pendiente RRHH (legacy)
+  'rechazada_jefe',                 // Jefe rechazó
+  'pendiente_director',             // Fase 2: esperando Director de Área
+  'aprobada_director',              // Fase 2: Director aprobó, pendiente RRHH (legacy-like)
+  'rechazada_director',             // Fase 2: Director rechazó
+  'pendiente_secretario_general',   // Fase 2: sin Director, va a SG
+  'aprobada_secretario_general',    // Fase 2: SG aprobó, pendiente RRHH
+  'rechazada_secretario_general',   // Fase 2: SG rechazó
+  'pendiente_rrhh',                 // Esperando aprobación RRHH (nuevo flujo canónico)
+  'aprobada_rrhh',                  // RRHH aprobó (final)
+  'rechazada_rrhh',                 // RRHH rechazó
+  'cancelada',                      // Cancelada por el empleado
+  'finalizada',                     // Completada y archivada
 ]);
 
 // ============================================================
@@ -166,7 +172,19 @@ export const solicitudes = pgTable(
       .references(() => usuarios.id),
     aprobadaRrhhFecha: timestamp('aprobada_rrhh_fecha', { withTimezone: true, mode: 'string' }),
     comentarioRrhh: text('comentario_rrhh'),
-    
+
+    // FIRMA Director (Fase 2)
+    aprobadaDirectorPor: bigint('aprobada_director_por', { mode: 'number' })
+      .references(() => usuarios.id),
+    aprobadaDirectorFecha: timestamp('aprobada_director_fecha', { withTimezone: true, mode: 'string' }),
+    comentarioDirector: text('comentario_director'),
+
+    // FIRMA Secretario General (Fase 2, aprobador sustituto)
+    aprobadaSecretarioPor: bigint('aprobada_secretario_por', { mode: 'number' })
+      .references(() => usuarios.id),
+    aprobadaSecretarioFecha: timestamp('aprobada_secretario_fecha', { withTimezone: true, mode: 'string' }),
+    comentarioSecretario: text('comentario_secretario'),
+
     // Rechazo (cualquier nivel)
     rechazadaPor: bigint('rechazada_por', { mode: 'number' })
       .references(() => usuarios.id),

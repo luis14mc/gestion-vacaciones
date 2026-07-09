@@ -86,8 +86,8 @@ const admin: TransicionContexto = {
 describe('State Machine - Solicitudes', () => {
   // ─── Flujo Happy Path ───
 
-  describe('Flujo completo: borrador → pendiente_jefe → aprobada_jefe → aprobada_rrhh', () => {
-    it('empleado puede enviar borrador', () => {
+  describe('Flujo completo Fase 2: pendiente_jefe → pendiente_director → pendiente_rrhh → aprobada_rrhh', () => {
+    it('empleado puede enviar borrador → pendiente_jefe', () => {
       const resultado = transicionar('borrador', 'enviar', empleado, 5);
       expect(resultado.exito).toBe(true);
       expect(resultado.estadoNuevo).toBe('pendiente_jefe');
@@ -96,19 +96,74 @@ describe('State Machine - Solicitudes', () => {
       );
     });
 
-    it('jefe puede aprobar solicitud pendiente', () => {
+    it('jefe aprueba pendiente_jefe → pendiente_director (por defecto)', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefe, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('aprobada_jefe');
+      expect(resultado.estadoNuevo).toBe('pendiente_director');
     });
 
-    it('RRHH puede aprobar solicitud aprobada por jefe', () => {
-      const resultado = transicionar('aprobada_jefe', 'aprobar_rrhh', rrhh, 5);
+    it('jefe aprueba pendiente_jefe → pendiente_secretario_general si así se indica', () => {
+      const resultado = transicionar(
+        'pendiente_jefe',
+        'aprobar_jefe',
+        { ...jefe, aprobadorSegundoNivelTipo: 'secretario_general' },
+        5
+      );
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('pendiente_secretario_general');
+    });
+
+    it('Director aprueba pendiente_director → pendiente_rrhh', () => {
+      const directorCtx: TransicionContexto = {
+        usuarioId: 50,
+        solicitanteId: 10,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        aprobadorSegundoNivelId: 50,
+        aprobadorSegundoNivelTipo: 'director',
+      };
+      const resultado = transicionar('pendiente_director', 'aprobar_director', directorCtx, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
+    });
+
+    it('Secretario General aprueba pendiente_secretario_general → pendiente_rrhh', () => {
+      const sgCtx: TransicionContexto = {
+        usuarioId: 99,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSecretarioGeneral: true,
+        aprobadorSegundoNivelId: 99,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      };
+      const resultado = transicionar(
+        'pendiente_secretario_general',
+        'aprobar_secretario_general',
+        sgCtx,
+        5
+      );
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
+    });
+
+    it('RRHH aprueba pendiente_rrhh → aprobada_rrhh', () => {
+      const resultado = transicionar('pendiente_rrhh', 'aprobar_rrhh', rrhh, 5);
       expect(resultado.exito).toBe(true);
       expect(resultado.estadoNuevo).toBe('aprobada_rrhh');
       expect(resultado.efectos).toContainEqual(
         expect.objectContaining({ tipo: 'CONFIRMAR_BALANCE' })
       );
+    });
+
+    it('Legacy: aprobada_jefe sigue aprobable por RRHH (compatibilidad hacia atrás)', () => {
+      const resultado = transicionar('aprobada_jefe', 'aprobar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('aprobada_rrhh');
     });
   });
 
@@ -124,13 +179,57 @@ describe('State Machine - Solicitudes', () => {
       );
     });
 
-    it('RRHH puede rechazar solicitud aprobada por jefe', () => {
+    it('RRHH puede rechazar solicitud aprobada por jefe (legacy)', () => {
       const resultado = transicionar('aprobada_jefe', 'rechazar_rrhh', rrhh, 5);
       expect(resultado.exito).toBe(true);
       expect(resultado.estadoNuevo).toBe('rechazada_rrhh');
       expect(resultado.efectos).toContainEqual(
         expect.objectContaining({ tipo: 'LIBERAR_BALANCE' })
       );
+    });
+
+    it('RRHH puede rechazar pendiente_rrhh', () => {
+      const resultado = transicionar('pendiente_rrhh', 'rechazar_rrhh', rrhh, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_rrhh');
+    });
+
+    it('Director puede rechazar pendiente_director', () => {
+      const directorCtx: TransicionContexto = {
+        usuarioId: 50,
+        solicitanteId: 10,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        aprobadorSegundoNivelId: 50,
+        aprobadorSegundoNivelTipo: 'director',
+      };
+      const resultado = transicionar('pendiente_director', 'rechazar_director', directorCtx, 5);
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_director');
+    });
+
+    it('SG puede rechazar pendiente_secretario_general', () => {
+      const sgCtx: TransicionContexto = {
+        usuarioId: 99,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSecretarioGeneral: true,
+        aprobadorSegundoNivelId: 99,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      };
+      const resultado = transicionar(
+        'pendiente_secretario_general',
+        'rechazar_secretario_general',
+        sgCtx,
+        5
+      );
+      expect(resultado.exito).toBe(true);
+      expect(resultado.estadoNuevo).toBe('rechazada_secretario_general');
     });
   });
 
@@ -143,14 +242,14 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.error).toContain('Jefe o Director');
     });
 
-    it('director puede aprobar solicitud pendiente', () => {
+    it('director puede aprobar solicitud pendiente_jefe → pendiente_director', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', director, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('aprobada_jefe');
+      expect(resultado.estadoNuevo).toBe('pendiente_director');
     });
 
     it('jefe NO puede aprobar como RRHH', () => {
-      const resultado = transicionar('aprobada_jefe', 'aprobar_rrhh', jefe, 5);
+      const resultado = transicionar('pendiente_rrhh', 'aprobar_rrhh', jefe, 5);
       expect(resultado.exito).toBe(false);
       expect(resultado.error).toContain('RRHH');
     });
@@ -247,7 +346,7 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.error).toContain('Director');
     });
 
-    it('el Director SI puede aprobar la solicitud de un Jefe del mismo depto', () => {
+it('el Director SI puede aprobar la solicitud de un Jefe del mismo depto', () => {
       const directorAprobador: TransicionContexto = {
         usuarioId: 15,
         solicitanteId: 25,
@@ -262,7 +361,7 @@ describe('State Machine - Solicitudes', () => {
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorAprobador, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('aprobada_jefe');
+      expect(resultado.estadoNuevo).toBe('pendiente_director');
     });
 
     it('un Jefe SI puede aprobar a un empleado normal del mismo depto', () => {
@@ -291,9 +390,9 @@ describe('State Machine - Solicitudes', () => {
       expect(transicionar('pendiente_jefe', 'aprobar_jefe', adminOtroDepto, 5).exito).toBe(true);
     });
 
-    it('admin puede hacer cualquier acción', () => {
+it('admin puede hacer cualquier acción', () => {
       expect(transicionar('pendiente_jefe', 'aprobar_jefe', admin, 5).exito).toBe(true);
-      expect(transicionar('aprobada_jefe', 'aprobar_rrhh', admin, 5).exito).toBe(true);
+      expect(transicionar('pendiente_rrhh', 'aprobar_rrhh', admin, 5).exito).toBe(true);
     });
 
     it('jefe NO puede aprobar a alguien que no es subordinado directo', () => {
@@ -317,7 +416,7 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.exito).toBe(true);
     });
 
-    it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
+it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
       const dobleRol: TransicionContexto = {
         usuarioId: 40,
         solicitanteId: 40,
@@ -329,7 +428,83 @@ describe('State Machine - Solicitudes', () => {
         departamentoSolicitante: 1,
       };
       expect(transicionar('pendiente_jefe', 'aprobar_jefe', dobleRol, 5).exito).toBe(false);
-      expect(transicionar('aprobada_jefe', 'aprobar_rrhh', dobleRol, 5).exito).toBe(false);
+      expect(transicionar('pendiente_rrhh', 'aprobar_rrhh', dobleRol, 5).exito).toBe(false);
+    });
+
+    it('Director solo puede aprobar pendiente_director de SU ID esperado', () => {
+      const directorEsperado: TransicionContexto = {
+        usuarioId: 50,
+        solicitanteId: 10,
+        esDirector: true,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        aprobadorSegundoNivelId: 50,
+        aprobadorSegundoNivelTipo: 'director',
+      };
+      const directorOtro: TransicionContexto = {
+        ...directorEsperado,
+        usuarioId: 51,
+      };
+      const ok = transicionar('pendiente_director', 'aprobar_director', directorEsperado, 5);
+      const bad = transicionar('pendiente_director', 'aprobar_director', directorOtro, 5);
+      expect(ok.exito).toBe(true);
+      expect(bad.exito).toBe(false);
+      expect(bad.error).toMatch(/no le corresponde/i);
+    });
+
+    it('Secretario General solo puede aprobar pendiente_secretario_general de SU ID', () => {
+      const sgEsperado: TransicionContexto = {
+        usuarioId: 99,
+        solicitanteId: 10,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSecretarioGeneral: true,
+        aprobadorSegundoNivelId: 99,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      };
+      const sgOtro: TransicionContexto = {
+        ...sgEsperado,
+        usuarioId: 100,
+      };
+      const ok = transicionar(
+        'pendiente_secretario_general',
+        'aprobar_secretario_general',
+        sgEsperado,
+        5
+      );
+      const bad = transicionar(
+        'pendiente_secretario_general',
+        'aprobar_secretario_general',
+        sgOtro,
+        5
+      );
+      expect(ok.exito).toBe(true);
+      expect(bad.exito).toBe(false);
+    });
+
+    it('SG NO puede aprobar su propia solicitud aunque sea aprobador', () => {
+      const sgSolicitante: TransicionContexto = {
+        usuarioId: 99,
+        solicitanteId: 99,
+        esDirector: false,
+        esJefe: false,
+        esRrhh: false,
+        esAdmin: false,
+        esSecretarioGeneral: true,
+        aprobadorSegundoNivelId: 99,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      };
+      const r = transicionar(
+        'pendiente_secretario_general',
+        'aprobar_secretario_general',
+        sgSolicitante,
+        5
+      );
+      expect(r.exito).toBe(false);
+      expect(r.error).toMatch(/propia solicitud/i);
     });
   });
 
@@ -434,6 +609,18 @@ describe('State Machine - Solicitudes', () => {
       expect(acciones).toContain('cancelar');
     });
 
+    it('obtenerAccionesDisponibles retorna acciones para pendiente_director', () => {
+      const acciones = obtenerAccionesDisponibles('pendiente_director');
+      expect(acciones).toContain('aprobar_director');
+      expect(acciones).toContain('rechazar_director');
+    });
+
+    it('obtenerAccionesDisponibles retorna acciones para pendiente_secretario_general', () => {
+      const acciones = obtenerAccionesDisponibles('pendiente_secretario_general');
+      expect(acciones).toContain('aprobar_secretario_general');
+      expect(acciones).toContain('rechazar_secretario_general');
+    });
+
     it('obtenerAccionesDisponibles retorna vacío para finalizada', () => {
       const acciones = obtenerAccionesDisponibles('finalizada');
       expect(acciones).toHaveLength(0);
@@ -452,8 +639,8 @@ describe('State Machine - Solicitudes', () => {
       expect(mapa[0]).toHaveProperty('accion');
     });
 
-    it('ESTADOS_CONFIG tiene 8 estados', () => {
-      expect(Object.keys(ESTADOS_CONFIG)).toHaveLength(8);
+    it('ESTADOS_CONFIG tiene 15 estados (Fase 2)', () => {
+      expect(Object.keys(ESTADOS_CONFIG)).toHaveLength(15);
     });
 
     it('cada estado tiene label, color y esFinal', () => {

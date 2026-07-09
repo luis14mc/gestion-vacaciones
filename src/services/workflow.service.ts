@@ -26,6 +26,7 @@ interface UsuarioAccion {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  esSecretarioGeneral?: boolean;
   departamentoId?: number | null;
 }
 
@@ -37,6 +38,7 @@ interface EjecutarAccionParams {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  esSecretarioGeneral?: boolean;
   departamentoId?: number | null;
   comentario?: string;
   motivoRechazo?: string;
@@ -93,6 +95,10 @@ export async function obtenerAccionesParaSolicitud(
     enviar: 'Enviar solicitud',
     aprobar_jefe: 'Aprobar (Jefe)',
     rechazar_jefe: 'Rechazar (Jefe)',
+    aprobar_director: 'Aprobar (Director)',
+    rechazar_director: 'Rechazar (Director)',
+    aprobar_secretario_general: 'Aprobar (Sec. General)',
+    rechazar_secretario_general: 'Rechazar (Sec. General)',
     aprobar_rrhh: 'Aprobar (RRHH)',
     rechazar_rrhh: 'Rechazar (RRHH)',
     cancelar: 'Cancelar solicitud',
@@ -106,11 +112,14 @@ export async function obtenerAccionesParaSolicitud(
     esJefe: usuario.esJefe,
     esRrhh: usuario.esRrhh,
     esAdmin: usuario.esAdmin,
+    esSecretarioGeneral: usuario.esSecretarioGeneral,
     departamentoAprobador: usuario.departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
     esSubordinadoDirecto: solicitanteInfo?.jefeSuperiorId === usuario.id,
     directorSinSubordinadosDirectos,
     solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
+    aprobadorSegundoNivelId: null,
+    aprobadorSegundoNivelTipo: null,
   };
 
   return acciones
@@ -125,7 +134,20 @@ export async function obtenerAccionesParaSolicitud(
 }
 
 export async function ejecutarAccion(params: EjecutarAccionParams): Promise<ResultadoAccion> {
-  const { solicitudId, accion, usuarioId, esDirector, esJefe, esRrhh, esAdmin, departamentoId, comentario, motivoRechazo, motivoCancelacion } = params;
+  const {
+    solicitudId,
+    accion,
+    usuarioId,
+    esDirector,
+    esJefe,
+    esRrhh,
+    esAdmin,
+    esSecretarioGeneral = false,
+    departamentoId,
+    comentario,
+    motivoRechazo,
+    motivoCancelacion,
+  } = params;
 
   const [solicitud] = await db
     .select()
@@ -142,6 +164,8 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     .select({
       departamentoId: usuarios.departamentoId,
       esJefe: usuarios.esJefe,
+      esDirector: usuarios.esDirector,
+      esSecretarioGeneral: usuarios.esSecretarioGeneral,
       jefeSuperiorId: usuarios.jefeSuperiorId,
     })
     .from(usuarios)
@@ -173,6 +197,22 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     return { exito: false, error: 'Los días solicitados deben ser mayores a cero' };
   }
 
+  // Para aprobar_director y aprobar_secretario_general, el aprobador
+  // esperado debe ser el usuario actual (se fija al crear la solicitud).
+  const aprobadorSegundoNivelId =
+    accion === 'aprobar_director' || accion === 'rechazar_director'
+      ? solicitud.aprobadaDirectorPor ?? null
+      : accion === 'aprobar_secretario_general' || accion === 'rechazar_secretario_general'
+        ? solicitud.aprobadaSecretarioPor ?? null
+        : null;
+
+  const aprobadorSegundoNivelTipo =
+    accion === 'aprobar_director' || accion === 'rechazar_director'
+      ? ('director' as const)
+      : accion === 'aprobar_secretario_general' || accion === 'rechazar_secretario_general'
+        ? ('secretario_general' as const)
+        : null;
+
   const resultado = transicionar(estadoActual, accion, {
     usuarioId,
     solicitanteId: solicitud.usuarioId,
@@ -180,11 +220,14 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     esJefe,
     esRrhh,
     esAdmin,
+    esSecretarioGeneral,
     departamentoAprobador: departamentoId ?? null,
     departamentoSolicitante: solicitanteInfo?.departamentoId ?? null,
     esSubordinadoDirecto: solicitanteInfo?.jefeSuperiorId === usuarioId,
     directorSinSubordinadosDirectos,
     solicitanteEsJefe: solicitanteInfo?.esJefe ?? false,
+    aprobadorSegundoNivelId,
+    aprobadorSegundoNivelTipo,
   }, dias);
 
   if (!resultado.exito || !resultado.estadoNuevo) {
@@ -219,6 +262,14 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     updateData.aprobadaJefePor = usuarioId;
     updateData.aprobadaJefeFecha = ahora;
     if (comentario) updateData.comentarioJefe = comentario;
+  } else if (accion === 'aprobar_director') {
+    updateData.aprobadaDirectorPor = usuarioId;
+    updateData.aprobadaDirectorFecha = ahora;
+    if (comentario) updateData.comentarioDirector = comentario;
+  } else if (accion === 'aprobar_secretario_general') {
+    updateData.aprobadaSecretarioPor = usuarioId;
+    updateData.aprobadaSecretarioFecha = ahora;
+    if (comentario) updateData.comentarioSecretario = comentario;
   } else if (accion === 'aprobar_rrhh') {
     updateData.aprobadaRrhhPor = usuarioId;
     updateData.aprobadaRrhhFecha = ahora;

@@ -3,6 +3,13 @@ export type EstadoSolicitud =
   | 'pendiente_jefe'
   | 'aprobada_jefe'
   | 'rechazada_jefe'
+  | 'pendiente_director'
+  | 'aprobada_director'
+  | 'rechazada_director'
+  | 'pendiente_secretario_general'
+  | 'aprobada_secretario_general'
+  | 'rechazada_secretario_general'
+  | 'pendiente_rrhh'
   | 'aprobada_rrhh'
   | 'rechazada_rrhh'
   | 'cancelada'
@@ -12,6 +19,10 @@ export type AccionSolicitud =
   | 'enviar'
   | 'aprobar_jefe'
   | 'rechazar_jefe'
+  | 'aprobar_director'
+  | 'rechazar_director'
+  | 'aprobar_secretario_general'
+  | 'rechazar_secretario_general'
   | 'aprobar_rrhh'
   | 'rechazar_rrhh'
   | 'cancelar'
@@ -24,6 +35,7 @@ export interface TransicionContexto {
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  esSecretarioGeneral?: boolean;
   tipo?: string;
   // Departamentos para validar alcance de aprobación (regla CNI: mismo depto)
   departamentoAprobador?: number | null;
@@ -32,6 +44,9 @@ export interface TransicionContexto {
   directorSinSubordinadosDirectos?: boolean;
   // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
   solicitanteEsJefe?: boolean;
+  // Fase 2: aprobador de segundo nivel esperado (Director o Secretario General)
+  aprobadorSegundoNivelId?: number | null;
+  aprobadorSegundoNivelTipo?: 'director' | 'secretario_general' | null;
   // Acción ejecutada por el sistema (cron/jobs), no por un usuario
   esSistema?: boolean;
 }
@@ -57,14 +72,21 @@ interface EstadoConfig {
 }
 
 export const ESTADOS_CONFIG: Record<EstadoSolicitud, EstadoConfig> = {
-  borrador:              { label: 'Borrador',              bgColor: 'bg-gray-100',   textColor: 'text-gray-700',   esFinal: false },
-  pendiente_jefe:        { label: 'Pendiente Jefe',        bgColor: 'bg-yellow-100', textColor: 'text-yellow-800', esFinal: false },
-  aprobada_jefe:         { label: 'Aprobada Jefe',         bgColor: 'bg-blue-100',   textColor: 'text-blue-800',   esFinal: false },
-  rechazada_jefe:        { label: 'Rechazada Jefe',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
-  aprobada_rrhh:         { label: 'Aprobada',              bgColor: 'bg-green-100',  textColor: 'text-green-800',  esFinal: false },
-  rechazada_rrhh:        { label: 'Rechazada RRHH',        bgColor: 'bg-red-100',    textColor: 'text-red-800',    esFinal: true  },
-  cancelada:             { label: 'Cancelada',             bgColor: 'bg-gray-100',   textColor: 'text-gray-600',   esFinal: true  },
-  finalizada:            { label: 'Finalizada',            bgColor: 'bg-emerald-100',textColor: 'text-emerald-800',esFinal: true  },
+  borrador:                       { label: 'Borrador',                bgColor: 'bg-gray-100',   textColor: 'text-gray-700',    esFinal: false },
+  pendiente_jefe:                 { label: 'Pendiente Jefe',          bgColor: 'bg-yellow-100', textColor: 'text-yellow-800',  esFinal: false },
+  aprobada_jefe:                  { label: 'Aprobada Jefe',           bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
+  rechazada_jefe:                 { label: 'Rechazada Jefe',          bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
+  pendiente_director:             { label: 'Pendiente Director',      bgColor: 'bg-yellow-100', textColor: 'text-yellow-800',  esFinal: false },
+  aprobada_director:              { label: 'Aprobada Director',       bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
+  rechazada_director:             { label: 'Rechazada Director',      bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
+  pendiente_secretario_general:   { label: 'Pendiente Sec. General',  bgColor: 'bg-amber-100',  textColor: 'text-amber-800',   esFinal: false },
+  aprobada_secretario_general:    { label: 'Aprobada Sec. General',   bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
+  rechazada_secretario_general:   { label: 'Rechazada Sec. General',  bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
+  pendiente_rrhh:                 { label: 'Pendiente RRHH',          bgColor: 'bg-yellow-100', textColor: 'text-yellow-800',  esFinal: false },
+  aprobada_rrhh:                  { label: 'Aprobada',                bgColor: 'bg-green-100',  textColor: 'text-green-800',   esFinal: false },
+  rechazada_rrhh:                 { label: 'Rechazada RRHH',          bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
+  cancelada:                      { label: 'Cancelada',               bgColor: 'bg-gray-100',   textColor: 'text-gray-600',    esFinal: true  },
+  finalizada:                     { label: 'Finalizada',              bgColor: 'bg-emerald-100',textColor: 'text-emerald-800', esFinal: true  },
 };
 
 type Guard = (ctx: TransicionContexto) => string | null;
@@ -113,6 +135,54 @@ const guardRrhh: Guard = (ctx) => {
   return null;
 };
 
+/**
+ * Director aprueba/rechaza solicitudes en estado `pendiente_director`.
+ * - Solo el Director de Área esperado (id en `aprobadorSegundoNivelId`) puede.
+ * - Si el aprobador es Admin, bypass.
+ * - Self-approval denied.
+ */
+const guardDirector: Guard = (ctx) => {
+  if (!ctx.esAdmin && !ctx.esDirector) {
+    return 'Solo el Director de Área puede realizar esta acción';
+  }
+  if (ctx.esAdmin) return null;
+  if (ctx.usuarioId === ctx.solicitanteId) {
+    return 'No puede aprobar/rechazar su propia solicitud';
+  }
+  if (
+    ctx.aprobadorSegundoNivelId != null &&
+    ctx.aprobadorSegundoNivelId !== ctx.usuarioId
+  ) {
+    return 'Esta solicitud no le corresponde aprobarla';
+  }
+  return null;
+};
+
+/**
+ * Secretario General aprueba/rechaza solicitudes en estado
+ * `pendiente_secretario_general` cuando no hay Director disponible.
+ * - Solo el SG esperado (id en `aprobadorSegundoNivelId`) puede.
+ * - Si el aprobador es Admin, bypass.
+ * - Self-approval denied (un SG no se autoaprueba; debe adjuntar VoBo
+ *   del Ministro como cualquier directivo).
+ */
+const guardSecretarioGeneral: Guard = (ctx) => {
+  if (!ctx.esAdmin && !ctx.esSecretarioGeneral) {
+    return 'Solo el Secretario General puede realizar esta acción sustituta';
+  }
+  if (ctx.esAdmin) return null;
+  if (ctx.usuarioId === ctx.solicitanteId) {
+    return 'No puede aprobar/rechazar su propia solicitud';
+  }
+  if (
+    ctx.aprobadorSegundoNivelId != null &&
+    ctx.aprobadorSegundoNivelId !== ctx.usuarioId
+  ) {
+    return 'Esta solicitud no le corresponde aprobarla';
+  }
+  return null;
+};
+
 const guardCancelar: Guard = (ctx) => {
   if (ctx.esAdmin || ctx.esRrhh || ctx.usuarioId === ctx.solicitanteId) return null;
   return 'No tiene permisos para cancelar esta solicitud';
@@ -129,7 +199,23 @@ const sinEfectos = () => [] as Efecto[];
 const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
   borrador: {
     enviar: {
-      destino: (ctx) => (ctx.esDirector ? 'aprobada_jefe' : 'pendiente_jefe'),
+      // Reglas Fase 2:
+      //   - Director que solicita vacaciones: requiere VoBo Ministro;
+      //     se crea en estado `pendiente_rrhh` (RRHH valida VoBo).
+      //   - Jefe (no Director): el aprobador de segundo nivel lo decide
+      //     resolverAprobadorSegundoNivel() → pendiente_director /
+      //     pendiente_secretario_general.
+      //   - Empleado normal: pendiente_jefe.
+      destino: (ctx) => {
+        if (ctx.esDirector) return 'pendiente_rrhh';
+        if (ctx.esJefe) {
+          if (ctx.aprobadorSegundoNivelTipo === 'secretario_general') {
+            return 'pendiente_secretario_general';
+          }
+          return 'pendiente_director';
+        }
+        return 'pendiente_jefe';
+      },
       guard: guardPropietarioOAdmin,
       efectos: (dias) => [{ tipo: 'RESERVAR_BALANCE', dias }],
     },
@@ -141,7 +227,12 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
   },
   pendiente_jefe: {
     aprobar_jefe: {
-      destino: 'aprobada_jefe',
+      // Después del Jefe inmediato: el aprobador de segundo nivel es el
+      // Director (o el Secretario General si no hay Director disponible).
+      destino: (ctx) =>
+        ctx.aprobadorSegundoNivelTipo === 'secretario_general'
+          ? 'pendiente_secretario_general'
+          : 'pendiente_director',
       guard: guardJefe,
       efectos: sinEfectos,
     },
@@ -156,6 +247,59 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
       efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
     },
   },
+  pendiente_director: {
+    aprobar_director: {
+      destino: 'pendiente_rrhh',
+      guard: guardDirector,
+      efectos: sinEfectos,
+    },
+    rechazar_director: {
+      destino: 'rechazada_director',
+      guard: guardDirector,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+    cancelar: {
+      destino: 'cancelada',
+      guard: guardCancelar,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+  },
+  pendiente_secretario_general: {
+    aprobar_secretario_general: {
+      destino: 'pendiente_rrhh',
+      guard: guardSecretarioGeneral,
+      efectos: sinEfectos,
+    },
+    rechazar_secretario_general: {
+      destino: 'rechazada_secretario_general',
+      guard: guardSecretarioGeneral,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+    cancelar: {
+      destino: 'cancelada',
+      guard: guardCancelar,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+  },
+  pendiente_rrhh: {
+    aprobar_rrhh: {
+      destino: 'aprobada_rrhh',
+      guard: guardRrhh,
+      efectos: (dias) => [{ tipo: 'CONFIRMAR_BALANCE', dias }],
+    },
+    rechazar_rrhh: {
+      destino: 'rechazada_rrhh',
+      guard: guardRrhh,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+    cancelar: {
+      destino: 'cancelada',
+      guard: guardCancelar,
+      efectos: (dias) => [{ tipo: 'LIBERAR_BALANCE', dias }],
+    },
+  },
+  // Legacy: solicitudes previas a Fase 2 que están en aprobada_jefe
+  // siguen siendo aprobables por RRHH (compatibilidad hacia atrás).
   aprobada_jefe: {
     aprobar_rrhh: {
       destino: 'aprobada_rrhh',
@@ -246,10 +390,10 @@ export function obtenerMapaTransiciones(contextoMock?: TransicionContexto): { de
 
   for (const [desde, acciones] of Object.entries(TRANSICIONES)) {
     for (const [accion, def] of Object.entries(acciones)) {
-      const destinoFinal = typeof def.destino === 'function' 
+      const destinoFinal = typeof def.destino === 'function'
         ? (contextoMock ? def.destino(contextoMock) : 'aprobada_jefe') // Fallback para diagramas
         : def.destino;
-        
+
       mapa.push({
         desde: desde as EstadoSolicitud,
         hacia: destinoFinal as EstadoSolicitud,

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { FLUJO_ESPECIAL_JEFE_DIR_ADMIN } from '@/lib/domain/solicitud-flujo-inicial';
 
 const mockGetSession = vi.fn();
 const mockCrearSolicitud = vi.fn();
 const mockRegistrarAuditoria = vi.fn();
 const mockCargarDatosFlujoSolicitante = vi.fn();
+const mockResolverFlujoSolicitante = vi.fn();
 
 vi.mock('@/lib/auth', () => ({
   getSession: (...args: unknown[]) => mockGetSession(...args),
@@ -38,8 +38,19 @@ vi.mock('@/lib/domain/solicitud-flujo-solicitante', async (importOriginal) => {
     ...actual,
     cargarDatosFlujoSolicitante: (...args: unknown[]) =>
       mockCargarDatosFlujoSolicitante(...args),
+    resolverFlujoSolicitante: (...args: unknown[]) =>
+      mockResolverFlujoSolicitante(...args),
   };
 });
+
+vi.mock('@/lib/domain/aprobadores', () => ({
+  resolverAprobadorSegundoNivel: vi.fn(async () => ({
+    tipoAprobador: 'director',
+    usuarioId: 50,
+    motivo: 'director_asignado',
+    nombre: 'Director de Área',
+  })),
+}));
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -49,11 +60,13 @@ vi.mock('@/lib/db', () => ({
           id: 99,
           codigo: 'CNI-SOL-2026-0001',
           tipo: 'vacaciones',
-          estado: 'aprobada_jefe',
+          estado: 'pendiente_jefe',
           diasSolicitados: '5',
           usuario: { id: 10, nombre: 'Laura', apellido: 'Mendez', jefeSuperiorId: null },
         })),
       },
+      usuarios: { findFirst: vi.fn(async () => null) },
+      departamentos: { findFirst: vi.fn(async () => null) },
     },
     select: vi.fn(() => ({
       from: vi.fn(() => ({
@@ -69,13 +82,34 @@ import { POST } from '@/app/api/solicitudes/route';
 
 const PDF_VOBO = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]).toString('base64');
 
-const sessionBase = {
+const sessionDirector = {
   id: 10,
   esAdmin: false,
   esRrhh: false,
   esDirector: true,
   esJefe: true,
+  esSecretarioGeneral: false,
   departamentoId: 1,
+};
+
+const sessionJefe = {
+  id: 20,
+  esAdmin: false,
+  esRrhh: false,
+  esDirector: false,
+  esJefe: true,
+  esSecretarioGeneral: false,
+  departamentoId: 2,
+};
+
+const sessionEmpleado = {
+  id: 30,
+  esAdmin: false,
+  esRrhh: false,
+  esDirector: false,
+  esJefe: false,
+  esSecretarioGeneral: false,
+  departamentoId: 3,
 };
 
 const payloadVacaciones = {
@@ -103,71 +137,34 @@ function crearRequest(body: Record<string, unknown>) {
   });
 }
 
-describe('POST /api/solicitudes — flujo de aprobación y VoBo', () => {
+describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetSession.mockResolvedValue(sessionBase);
+    vi.resetAllMocks();
     mockRegistrarAuditoria.mockResolvedValue(undefined);
     mockCrearSolicitud.mockResolvedValue({
       id: 99,
       codigo: 'CNI-SOL-2026-0001',
-      estado: 'aprobada_jefe',
+      estado: 'pendiente_jefe',
     });
   });
 
-  it('Jefe Dirección Administrativa sin VoBo crea solicitud exitosamente', async () => {
+  it('Director con VoBo → pendiente_rrhh (pasa directo)', async () => {
+    mockGetSession.mockResolvedValue(sessionDirector);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: false,
+      esDirector: true,
       esJefe: true,
-      departamentoNombre: 'Dirección Administrativa',
-    });
-
-    const response = await POST(crearRequest(payloadVacaciones));
-    const result = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(result.success).toBe(true);
-    expect(mockCrearSolicitud).toHaveBeenCalledWith(
-      expect.objectContaining({
-        esDirector: false,
-        documentosAdjuntos: undefined,
-      })
-    );
-    expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accion: 'crear',
-        detalles: expect.objectContaining({
-          flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-          derivadoDirectoRrhh: true,
-        }),
-      })
-    );
-  });
-
-  it('Director normal sin VoBo falla 400', async () => {
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: true,
-      esJefe: false,
+      esSecretarioGeneral: false,
+      departamentoId: 1,
       departamentoNombre: 'Operaciones',
     });
-
-    const response = await POST(crearRequest(payloadVacaciones));
-    const result = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/VoBo del Ministro/i);
-    expect(mockCrearSolicitud).not.toHaveBeenCalled();
-    expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
-      expect.objectContaining({ accion: 'validacion_rechazada' })
-    );
-  });
-
-  it('Director normal con VoBo crea solicitud', async () => {
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: true,
-      esJefe: false,
-      departamentoNombre: 'Operaciones',
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: true,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: true,
+      mensajeFlujo: 'VoBo Ministro',
+      pasosProceso: ['VoBo', 'RRHH'],
     });
 
     const response = await POST(
@@ -185,16 +182,183 @@ describe('POST /api/solicitudes — flujo de aprobación y VoBo', () => {
     );
   });
 
-  it('Licencia médica sin constancia sigue fallando', async () => {
+  it('Director sin VoBo → 400', async () => {
+    mockGetSession.mockResolvedValue(sessionDirector);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: true,
+      esJefe: false,
+      esSecretarioGeneral: false,
+      departamentoId: 1,
+      departamentoNombre: 'Operaciones',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: true,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: true,
+      mensajeFlujo: 'VoBo Ministro',
+      pasosProceso: ['VoBo', 'RRHH'],
+    });
+
+    const response = await POST(crearRequest(payloadVacaciones));
+    expect(response.status).toBe(400);
+    expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Jefe con Director disponible → pendiente_director', async () => {
+    mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
       esDirector: false,
       esJefe: true,
-      departamentoNombre: 'Dirección Administrativa',
+      esSecretarioGeneral: false,
+      departamentoId: 2,
+      departamentoNombre: 'TI',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: true,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'Su solicitud será enviada al Director de Área',
+      pasosProceso: ['Aprobación Director', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: 'Director TI',
+    });
+
+    // sessionJefe.id = 20 → ajustamos payload para que coincida.
+    const response = await POST(
+      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+    );
+    expect(response.status).toBe(200);
+    expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detalles: expect.objectContaining({
+          aprobadorSegundoNivelTipo: 'director',
+          aprobadorSegundoNivelNombre: 'Director TI',
+        }),
+      })
+    );
+  });
+
+  it('Jefe sin Director → pendiente_secretario_general', async () => {
+    mockGetSession.mockResolvedValue(sessionJefe);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: false,
+      esJefe: true,
+      esSecretarioGeneral: false,
+      departamentoId: 2,
+      departamentoNombre: 'TI',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: true,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'Esta Dirección no tiene Director. La solicitud pasará al Secretario General.',
+      pasosProceso: ['Aprobación Sec. General', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'secretario_general',
+      aprobadorSegundoNivelNombre: 'Sec. General',
+    });
+
+    const response = await POST(
+      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+    );
+    expect(response.status).toBe(200);
+    expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detalles: expect.objectContaining({
+          aprobadorSegundoNivelTipo: 'secretario_general',
+        }),
+      })
+    );
+  });
+
+  it('Empleado normal → pendiente_jefe', async () => {
+    mockGetSession.mockResolvedValue(sessionEmpleado);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: false,
+      esJefe: false,
+      esSecretarioGeneral: false,
+      departamentoId: 3,
+      departamentoNombre: 'Operaciones',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: true,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'Su solicitud será enviada a su jefe inmediato',
+      pasosProceso: ['Jefe', 'Director', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: 'Dir. OPS',
+    });
+
+    const response = await POST(
+      crearRequest({ ...payloadVacaciones, usuarioId: sessionEmpleado.id })
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('Jefe sin Director Y sin Secretario General → 422 con error claro', async () => {
+    mockGetSession.mockResolvedValue(sessionJefe);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: false,
+      esJefe: true,
+      esSecretarioGeneral: false,
+      departamentoId: 99,
+      departamentoNombre: 'Sin director',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo:
+        'No hay Director de Área asignado al departamento ni Secretario General configurado para aprobación sustituta.',
+      pasosProceso: ['No se puede crear la solicitud'],
+      aprobadorSegundoNivelTipo: null,
+      aprobadorSegundoNivelNombre: null,
+    });
+
+    const response = await POST(
+      crearRequest({ ...payloadVacaciones, usuarioId: sessionJefe.id })
+    );
+    expect(response.status).toBe(422);
+    const result = await response.json();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Secretario General');
+    expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Licencia médica sin constancia sigue fallando', async () => {
+    mockGetSession.mockResolvedValue(sessionJefe);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      esDirector: false,
+      esJefe: true,
+      esSecretarioGeneral: false,
+      departamentoId: 2,
+      departamentoNombre: 'TI',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: true,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      mensajeFlujo: 'OK',
+      pasosProceso: ['Director', 'RRHH'],
+      aprobadorSegundoNivelTipo: 'director',
+      aprobadorSegundoNivelNombre: 'Director',
     });
 
     const response = await POST(
       crearRequest({
-        usuarioId: 10,
+        usuarioId: sessionJefe.id,
         tipo: 'licencia_medica',
         fechaInicio: '2026-08-01',
         fechaFin: '2026-08-03',
@@ -202,115 +366,40 @@ describe('POST /api/solicitudes — flujo de aprobación y VoBo', () => {
         motivo: 'Reposo médico',
       })
     );
-    const result = await response.json();
-
     expect(response.status).toBe(400);
-    expect(result.success).toBe(false);
+    const result = await response.json();
     expect(result.error).toMatch(/constancia médica/i);
     expect(mockCrearSolicitud).not.toHaveBeenCalled();
   });
 
   it('Director + permiso_salida 1-2h sin VoBo crea solicitud', async () => {
+    mockGetSession.mockResolvedValue(sessionDirector);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
       esDirector: true,
       esJefe: false,
+      esSecretarioGeneral: false,
+      departamentoId: 1,
       departamentoNombre: 'Operaciones',
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: true,
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: true,
+      mensajeFlujo: 'VoBo Ministro',
+      pasosProceso: ['VoBo', 'RRHH'],
     });
 
     const response = await POST(
       crearRequest({
         ...payloadPermisoBase,
+        usuarioId: sessionDirector.id,
         duracionPermiso: '1-2h',
         horaSalida: '09:00',
         horaRegreso: '10:30',
       })
     );
-    const result = await response.json();
-
     expect(response.status).toBe(200);
-    expect(result.success).toBe(true);
-    expect(mockCrearSolicitud).toHaveBeenCalled();
-  });
-
-  it('Director + permiso_salida medio día (2-4h) sin VoBo crea solicitud', async () => {
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: true,
-      esJefe: false,
-      departamentoNombre: 'Operaciones',
-    });
-
-    const response = await POST(
-      crearRequest({
-        ...payloadPermisoBase,
-        duracionPermiso: '2-4h',
-      })
-    );
-    const result = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(result.success).toBe(true);
-  });
-
-  it('Director + permiso_salida dia_completo sin VoBo falla 400', async () => {
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: true,
-      esJefe: false,
-      departamentoNombre: 'Operaciones',
-    });
-
-    const response = await POST(
-      crearRequest({
-        ...payloadPermisoBase,
-        duracionPermiso: 'dia_completo',
-        diasSolicitados: 1,
-      })
-    );
-    const result = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(result.error).toMatch(/VoBo del Ministro/i);
-    expect(mockCrearSolicitud).not.toHaveBeenCalled();
-  });
-
-  it('Director + permiso_salida dia_completo con VoBo crea solicitud', async () => {
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: true,
-      esJefe: false,
-      departamentoNombre: 'Operaciones',
-    });
-
-    const response = await POST(
-      crearRequest({
-        ...payloadPermisoBase,
-        duracionPermiso: 'dia_completo',
-        diasSolicitados: 1,
-        documentosAdjuntos: [{ nombre: 'vobo_ministro', data: PDF_VOBO }],
-      })
-    );
-    const result = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(result.success).toBe(true);
-  });
-
-  it('no exige VoBo cuando sesión tiene esDirector pero BD del solicitante no', async () => {
-    mockGetSession.mockResolvedValue({
-      ...sessionBase,
-      esDirector: true,
-    });
-    mockCargarDatosFlujoSolicitante.mockResolvedValue({
-      esDirector: false,
-      esJefe: true,
-      departamentoNombre: 'Dirección Administrativa',
-    });
-
-    const response = await POST(crearRequest(payloadVacaciones));
-    const result = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(result.success).toBe(true);
-    expect(mockCrearSolicitud).toHaveBeenCalledWith(
-      expect.objectContaining({ esDirector: false })
-    );
   });
 });

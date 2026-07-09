@@ -1,82 +1,50 @@
 import { describe, it, expect } from 'vitest';
-import {
-  resolverFlujoInicialSolicitud,
-  COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN,
-  FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-  esDepartamentoDireccionAdministrativa,
-} from '@/lib/domain/solicitud-flujo-inicial';
+import { resolverFlujoInicialSolicitud } from '@/lib/domain/solicitud-flujo-inicial';
 
-describe('solicitud-flujo-inicial', () => {
-  describe('esDepartamentoDireccionAdministrativa', () => {
-    it('acepta variaciones de acentos y mayúsculas', () => {
-      expect(esDepartamentoDireccionAdministrativa('Dirección Administrativa')).toBe(true);
-      expect(esDepartamentoDireccionAdministrativa('Direccion Administrativa')).toBe(true);
-      expect(esDepartamentoDireccionAdministrativa('  direccion administrativa  ')).toBe(true);
-      expect(esDepartamentoDireccionAdministrativa('Tecnología')).toBe(false);
-    });
-  });
-
+describe('solicitud-flujo-inicial — Fase 2', () => {
   describe('resolverFlujoInicialSolicitud', () => {
-    it('Jefe de Dirección Administrativa → aprobada_jefe con metadata de excepción', () => {
-      const flujo = resolverFlujoInicialSolicitud({
-        esDirector: false,
-        esJefe: true,
-        departamentoNombre: 'Dirección Administrativa',
-      });
-
-      expect(flujo.estadoInicial).toBe('aprobada_jefe');
-      expect(flujo.autoAprobacionJefe?.comentarioJefe).toBe(COMENTARIO_JEFE_EXCEPCION_DIR_ADMIN);
-      expect(flujo.metadataInicial).toEqual({
-        flujoEspecial: FLUJO_ESPECIAL_JEFE_DIR_ADMIN,
-        derivadoDirectoRrhh: true,
-      });
-    });
-
-    it('Empleado normal de Dirección Administrativa → pendiente_jefe', () => {
+    it('Empleado normal → pendiente_jefe', () => {
       const flujo = resolverFlujoInicialSolicitud({
         esDirector: false,
         esJefe: false,
-        departamentoNombre: 'Dirección Administrativa',
+        aprobadorSegundoNivelTipo: 'director',
       });
 
       expect(flujo.estadoInicial).toBe('pendiente_jefe');
       expect(flujo.autoAprobacionJefe).toBeUndefined();
-      expect(flujo.metadataInicial).toEqual({});
     });
 
-    it('Jefe de otro departamento → pendiente_jefe', () => {
+    it('Jefe con Director disponible → pendiente_director', () => {
       const flujo = resolverFlujoInicialSolicitud({
         esDirector: false,
         esJefe: true,
-        departamentoNombre: 'Tecnología',
+        aprobadorSegundoNivelTipo: 'director',
       });
 
-      expect(flujo.estadoInicial).toBe('pendiente_jefe');
-      expect(flujo.autoAprobacionJefe).toBeUndefined();
+      expect(flujo.estadoInicial).toBe('pendiente_director');
+      expect(flujo.metadataInicial.aprobadorSegundoNivelTipo).toBe('director');
     });
 
-    it('Director de cualquier departamento → aprobada_jefe (flujo actual)', () => {
+    it('Jefe sin Director → pendiente_secretario_general', () => {
+      const flujo = resolverFlujoInicialSolicitud({
+        esDirector: false,
+        esJefe: true,
+        aprobadorSegundoNivelTipo: 'secretario_general',
+      });
+
+      expect(flujo.estadoInicial).toBe('pendiente_secretario_general');
+      expect(flujo.metadataInicial.aprobadorSegundoNivelTipo).toBe('secretario_general');
+    });
+
+    it('Director → pendiente_rrhh (VoBo Ministro validado por RRHH)', () => {
       const flujo = resolverFlujoInicialSolicitud({
         esDirector: true,
         esJefe: true,
-        departamentoNombre: 'Dirección Administrativa',
       });
 
-      expect(flujo.estadoInicial).toBe('aprobada_jefe');
-      expect(flujo.autoAprobacionJefe?.comentarioJefe).toBe(
-        'Auto-aprobado (solicitud creada por Director)'
-      );
-      expect(flujo.metadataInicial).toEqual({});
-    });
-
-    it('no aplica excepción si esJefe es false aunque el nombre del departamento coincida', () => {
-      const flujo = resolverFlujoInicialSolicitud({
-        esDirector: false,
-        esJefe: false,
-        departamentoNombre: 'Direccion Administrativa',
-      });
-
-      expect(flujo.estadoInicial).toBe('pendiente_jefe');
+      expect(flujo.estadoInicial).toBe('pendiente_rrhh');
+      expect(flujo.metadataInicial.flujoAprobacion).toBe('director_con_vobo_ministro');
+      expect(flujo.metadataInicial.requiereVoBoMinistro).toBe(true);
     });
   });
 });

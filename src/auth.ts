@@ -25,6 +25,7 @@ const CODIGOS_ROL = {
   RRHH: "RRHH",
   DIRECTOR: "DIRECTOR",
   JEFE: "JEFE",
+  SECRETARIO_GENERAL: "SECRETARIO_GENERAL",
 } as const;
 
 function resolverFlagsDesdeRoles(
@@ -34,6 +35,7 @@ function resolverFlagsDesdeRoles(
     esRrhh: boolean;
     esDirector: boolean;
     esJefe: boolean;
+    esSecretarioGeneral: boolean;
   }
 ) {
   return {
@@ -41,6 +43,8 @@ function resolverFlagsDesdeRoles(
     esRrhh: codigosRol.includes(CODIGOS_ROL.RRHH) || usuario.esRrhh,
     esDirector: codigosRol.includes(CODIGOS_ROL.DIRECTOR) || usuario.esDirector,
     esJefe: codigosRol.includes(CODIGOS_ROL.JEFE) || usuario.esJefe,
+    esSecretarioGeneral:
+      codigosRol.includes(CODIGOS_ROL.SECRETARIO_GENERAL) || usuario.esSecretarioGeneral,
   };
 }
 
@@ -154,6 +158,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         slimToken.esJefe = user.esJefe;
         slimToken.esRrhh = user.esRrhh;
         slimToken.esAdmin = user.esAdmin;
+        slimToken.esSecretarioGeneral = user.esSecretarioGeneral;
 
         delete slimToken.name;
         delete slimToken.picture;
@@ -176,6 +181,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           esJefe: slimToken.esJefe ?? false,
           esRrhh: slimToken.esRrhh ?? false,
           esAdmin: slimToken.esAdmin ?? false,
+          esSecretarioGeneral: slimToken.esSecretarioGeneral ?? false,
         });
       }
       return session;

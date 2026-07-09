@@ -25,6 +25,7 @@ declare module "next-auth" {
       esJefe: boolean;
       esRrhh: boolean;
       esAdmin: boolean;
+      esSecretarioGeneral: boolean;
     };
   }
 
@@ -36,6 +37,7 @@ declare module "next-auth" {
     esJefe: boolean;
     esRrhh: boolean;
     esAdmin: boolean;
+    esSecretarioGeneral: boolean;
   }
 }
 
@@ -50,6 +52,7 @@ export interface SlimAuthJwt {
   esJefe?: boolean;
   esRrhh?: boolean;
   esAdmin?: boolean;
+  esSecretarioGeneral?: boolean;
   absExp?: number;
   name?: string;
   picture?: string;
@@ -157,15 +160,16 @@ export interface SessionUser {
   departamentoId?: number | null;
   departamentoNombre?: string;
   cargo?: string;
-  
+
   // 🆕 Sistema RBAC
   roles: RolUsuario[];
   permisos: string[];
-  
+
   esDirector: boolean;
   esJefe: boolean;
   esRrhh: boolean;
   esAdmin: boolean;
+  esSecretarioGeneral: boolean;
 
   /** El usuario debe cambiar su contraseña antes de usar el sistema */
   debeCambiarPassword?: boolean;

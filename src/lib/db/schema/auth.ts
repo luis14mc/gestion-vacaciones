@@ -53,6 +53,7 @@ export const usuarios = pgTable(
     esJefe: boolean('es_jefe').notNull().default(false),
     esRrhh: boolean('es_rrhh').notNull().default(false),
     esAdmin: boolean('es_admin').notNull().default(false),
+    esSecretarioGeneral: boolean('es_secretario_general').notNull().default(false),
     
     // Jerarquía: quién aprueba las solicitudes de este usuario
     jefeSuperiorId: bigint('jefe_superior_id', { mode: 'number' })
@@ -84,6 +85,7 @@ export const usuarios = pgTable(
     idxJefe: index('idx_usuarios_jefe').on(table.esJefe, table.activo),
     idxRrhh: index('idx_usuarios_rrhh').on(table.esRrhh, table.activo),
     idxJefeSuperior: index('idx_usuarios_jefe_superior').on(table.jefeSuperiorId),
+    idxSecretarioGeneral: index('idx_usuarios_secretario_general').on(table.esSecretarioGeneral, table.activo),
   })
 );
 

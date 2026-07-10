@@ -9,7 +9,7 @@
 
 import { db } from '@/lib/db';
 import { usuarios, usuariosRoles, roles } from '@/lib/db/schema';
-import { eq, and, or, sql, ilike, isNull } from 'drizzle-orm';
+import { eq, and, or, ilike } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { validarPasswordPolitica } from '@/lib/config/password-policy';
 import { metadataConPasswordActualizada } from '@/lib/config/password-expiry';

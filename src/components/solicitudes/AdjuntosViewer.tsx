@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Image as ImageIcon, Download, X, ExternalLink, AlertTriangle } from 'lucide-react';
+import { FileText, Image as ImageIcon, Download, ExternalLink, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,

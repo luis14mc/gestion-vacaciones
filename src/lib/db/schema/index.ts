@@ -26,3 +26,9 @@ export * from './balances';
 
 // Auditoria
 export * from './auditoria';
+
+// Fase 5 — Notificaciones in-app
+export * from './notificaciones';
+
+// Fase 5 — Asignación mensual automática
+export * from './historial-asignaciones-mensuales';

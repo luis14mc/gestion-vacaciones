@@ -75,3 +75,28 @@ export async function liberarBalanceUsada(
       AND tipo_ausencia = 'vacaciones'
   `);
 }
+
+/**
+ * Fase 5: acredita el proporcional mensual a `cantidad_acumulada`. El
+ * trigger de BD (`drizzle/0005_balance_trigger.sql`) recalcula
+ * `cantidad_disponible` automáticamente.
+ *
+ * No modifica `cantidad_inicial` (que sigue siendo el total anual
+ * vencido) ni `cantidad_usada` ni `cantidad_pendiente`.
+ */
+export async function acreditarBalanceMensualVacaciones(
+  tx: { execute: (query: ReturnType<typeof sql>) => Promise<unknown> },
+  params: { usuarioId: number; anoLaboralId: number; dias: number }
+): Promise<void> {
+  const dias = Number(params.dias);
+  if (dias <= 0) return;
+
+  await tx.execute(sql`
+    UPDATE balances
+    SET cantidad_acumulada = cantidad_acumulada + ${dias},
+        updated_at = NOW()
+    WHERE usuario_id = ${params.usuarioId}
+      AND ano_laboral_id = ${params.anoLaboralId}
+      AND tipo_ausencia = 'vacaciones'
+  `);
+}

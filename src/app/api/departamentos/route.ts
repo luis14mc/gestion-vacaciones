@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { departamentos, usuarios } from '@/lib/db/schema';
 import { isNull, asc, eq, inArray, and, sql } from 'drizzle-orm';
-import { getSession, tienePermiso } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { withErrorHandler } from '@/lib/api-handler';
 import { syncUserRolesDesdeBD } from '@/services/rbac.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
@@ -50,7 +50,7 @@ async function enriquecerConJefes(deps: any[]) {
 }
 
 // GET: Listar departamentos
-export const GET = withErrorHandler(async (request: NextRequest) => {
+export const GET = withErrorHandler(async (_request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json(

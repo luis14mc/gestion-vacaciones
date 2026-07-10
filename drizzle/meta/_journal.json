@@ -64,6 +64,13 @@
       "when": 1780000005000,
       "tag": "0008_secretario_general",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780000006000,
+      "tag": "0009_asignacion_mensual",
+      "breakpoints": true
     }
   ]
 }

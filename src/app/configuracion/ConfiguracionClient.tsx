@@ -25,18 +25,21 @@ import {
   KeyRound,
   BellRing,
   Users,
-  CalendarDays,
   Globe,
   Wrench,
   Server,
   MailCheck,
   Play,
   Info,
+  CalendarClock,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
 import { CONFIG_KEYS, filtrarConfigCatalogo } from "@/lib/config/catalog";
-import { REGLAS_ASIGNACION_ANTIGUEDAD } from "@/lib/domain/asignacion-antiguedad";
+import {
+  REGLAS_ASIGNACION_MENSUAL_VACACIONES,
+} from "@/lib/domain/vacaciones-asignacion";
+import type { ResumenAsignacionMensual } from "@/services/asignacion-vacaciones.service";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -49,6 +52,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -297,9 +307,12 @@ const SMTP_CLAVES =
 const CLAVE_FALLBACK_DIAS_ANUALES = "vacaciones.dias_anuales_default";
 
 interface ResultadoAsignacion {
-  asignados: number;
-  actualizados: number;
-  omitidos: number;
+  anio: number;
+  mes: number;
+  usuariosProcesados: number;
+  asignacionesCreadas: number;
+  usuariosOmitidos: number;
+  totalDiasAsignados: number;
 }
 
 // ─── Componente Principal ─────────────────────────────
@@ -313,6 +326,12 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [ejecutandoAsignacion, setEjecutandoAsignacion] = useState(false);
   const [resultadoAsignacion, setResultadoAsignacion] = useState<ResultadoAsignacion | null>(null);
+  const [anioAsignacionMensual, setAnioAsignacionMensual] = useState<number>(
+    new Date().getFullYear()
+  );
+  const [mesAsignacionMensual, setMesAsignacionMensual] = useState<number>(
+    new Date().getMonth() + 1
+  );
 
   const puedeEjecutarAsignacion =
     Boolean(session.user?.esAdmin) || Boolean(session.user?.esRrhh);
@@ -451,21 +470,39 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       setEjecutandoAsignacion(true);
       setResultadoAsignacion(null);
 
-      const res = await fetch("/api/admin/asignar-dias", { method: "POST" });
+      const res = await fetch("/api/admin/asignacion-mensual-vacaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          anio: anioAsignacionMensual,
+          mes: mesAsignacionMensual,
+          modo: "manual",
+        }),
+      });
       const data = await res.json();
 
-      if (data.success) {
-        setResultadoAsignacion(data.resultados);
-        const { asignados, actualizados, omitidos } = data.resultados;
+      if (data.success && data.data) {
+        const r = data.data as ResumenAsignacionMensual;
+        setResultadoAsignacion({
+          anio: r.anio,
+          mes: r.mes,
+          usuariosProcesados: r.usuariosProcesados,
+          asignacionesCreadas: r.asignacionesCreadas,
+          usuariosOmitidos: r.usuariosOmitidos,
+          totalDiasAsignados: r.totalDiasAsignados,
+        });
         notify.success(
-          "Asignación completada",
-          `${asignados} nuevos, ${actualizados} actualizados, ${omitidos} omitidos`
+          "Asignación mensual completada",
+          `${r.asignacionesCreadas} asignaciones creadas · ${r.usuariosOmitidos} omitidos · ${r.totalDiasAsignados.toFixed(4)} días`
         );
       } else {
-        notify.error("Error", data.error || "No se pudo ejecutar la asignación automática");
+        notify.error(
+          "Error",
+          data.error || "No se pudo ejecutar la asignación mensual"
+        );
       }
     } catch {
-      notify.error("Error", "No se pudo ejecutar la asignación automática");
+      notify.error("Error", "No se pudo ejecutar la asignación mensual");
     } finally {
       setEjecutandoAsignacion(false);
     }
@@ -613,6 +650,10 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                     puedeEjecutar={puedeEjecutarAsignacion}
                     ejecutando={ejecutandoAsignacion}
                     resultado={resultadoAsignacion}
+                    anio={anioAsignacionMensual}
+                    mes={mesAsignacionMensual}
+                    onAnioChange={setAnioAsignacionMensual}
+                    onMesChange={setMesAsignacionMensual}
                     onEjecutar={ejecutarAsignacionAutomatica}
                   />
                 )}
@@ -735,13 +776,36 @@ interface AsignacionAntiguedadCardProps {
   puedeEjecutar: boolean;
   ejecutando: boolean;
   resultado: ResultadoAsignacion | null;
+  anio: number;
+  mes: number;
+  onAnioChange: (anio: number) => void;
+  onMesChange: (mes: number) => void;
   onEjecutar: () => void;
 }
+
+const MESES_LABEL: Record<number, string> = {
+  1: "Enero",
+  2: "Febrero",
+  3: "Marzo",
+  4: "Abril",
+  5: "Mayo",
+  6: "Junio",
+  7: "Julio",
+  8: "Agosto",
+  9: "Septiembre",
+  10: "Octubre",
+  11: "Noviembre",
+  12: "Diciembre",
+};
 
 function AsignacionAntiguedadCard({
   puedeEjecutar,
   ejecutando,
   resultado,
+  anio,
+  mes,
+  onAnioChange,
+  onMesChange,
   onEjecutar,
 }: AsignacionAntiguedadCardProps) {
   return (
@@ -749,34 +813,58 @@ function AsignacionAntiguedadCard({
       <CardHeader className="pb-4">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className="p-1.5 rounded-lg bg-muted">
-            <CalendarDays className="w-4 h-4 text-muted-foreground" />
+            <CalendarClock className="w-4 h-4 text-muted-foreground" />
           </div>
           <div className="min-w-0">
             <CardTitle className="text-[14px] font-semibold">
-              Asignación Automática por Antigüedad
+              {REGLAS_ASIGNACION_MENSUAL_VACACIONES.titulo}
             </CardTitle>
             <CardDescription className="text-[12px] mt-0.5">
-              La asignación se calcula automáticamente usando la Fecha de Ingreso del colaborador.
+              {REGLAS_ASIGNACION_MENSUAL_VACACIONES.descripcion}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
         <Separator className="mb-5" />
+
+        <Alert className="border-blue-200 bg-blue-50/50 text-blue-950 mb-5">
+          <Info className="text-blue-600" />
+          <AlertTitle className="text-blue-900 text-[12px]">
+            Código de Trabajo
+          </AlertTitle>
+          <AlertDescription className="text-blue-800/90 text-[11px]">
+            Los días se asignan mes a mes según la antigüedad del colaborador. Un mismo
+            (colaborador, año, mes) no puede asignarse dos veces.
+          </AlertDescription>
+        </Alert>
+
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="text-[12px]">Antigüedad</TableHead>
-                <TableHead className="text-[12px] text-right w-28">Días asignados</TableHead>
+                <TableHead className="text-[12px] text-right w-24">Días/año</TableHead>
+                <TableHead className="text-[12px] text-right w-28">Días/mes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {REGLAS_ASIGNACION_ANTIGUEDAD.map((regla) => (
-                <TableRow key={regla.antiguedad}>
-                  <TableCell className="text-[13px]">{regla.antiguedad}</TableCell>
+              {REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas.map((regla) => (
+                <TableRow key={regla.aniosCumplidos}>
+                  <TableCell className="text-[13px]">
+                    {regla.aniosCumplidos === 0
+                      ? "Menos de 1 año"
+                      : regla.aniosCumplidos === 1
+                        ? "1 año cumplido"
+                        : regla.aniosCumplidos < 4
+                          ? `${regla.aniosCumplidos} años cumplidos`
+                          : "4 años o más"}
+                  </TableCell>
                   <TableCell className="text-[13px] text-right font-medium tabular-nums">
-                    {regla.dias}
+                    {regla.diasAnuales}
+                  </TableCell>
+                  <TableCell className="text-[13px] text-right font-medium tabular-nums">
+                    {regla.diasMensuales.toFixed(4).replace(/\.?0+$/, "") || "0"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -785,28 +873,75 @@ function AsignacionAntiguedadCard({
         </div>
 
         {resultado && (
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
-              <p className="text-[11px] text-muted-foreground">Asignados</p>
-              <p className="text-lg font-semibold tabular-nums">{resultado.asignados}</p>
+              <p className="text-[11px] text-muted-foreground">Procesados</p>
+              <p className="text-lg font-semibold tabular-nums">
+                {resultado.usuariosProcesados}
+              </p>
             </div>
-            <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
-              <p className="text-[11px] text-muted-foreground">Actualizados</p>
-              <p className="text-lg font-semibold tabular-nums">{resultado.actualizados}</p>
+            <div className="rounded-lg border bg-emerald-50/40 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">Asignaciones</p>
+              <p className="text-lg font-semibold tabular-nums text-emerald-700">
+                {resultado.asignacionesCreadas}
+              </p>
             </div>
-            <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+            <div className="rounded-lg border bg-amber-50/40 px-3 py-2.5">
               <p className="text-[11px] text-muted-foreground">Omitidos</p>
-              <p className="text-lg font-semibold tabular-nums">{resultado.omitidos}</p>
+              <p className="text-lg font-semibold tabular-nums text-amber-700">
+                {resultado.usuariosOmitidos}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-blue-50/40 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">Total días</p>
+              <p className="text-lg font-semibold tabular-nums text-blue-700">
+                {resultado.totalDiasAsignados.toFixed(2)}
+              </p>
             </div>
           </div>
         )}
 
         <Separator className="my-5" />
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-muted-foreground">
-            Ejecuta la asignación para el año laboral activo. Los colaboradores sin fecha de
-            ingreso o con menos de un año se omiten.
-          </p>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex flex-col gap-1">
+              <Label className="text-[11px] text-muted-foreground">Año</Label>
+              <Select
+                value={anio.toString()}
+                onValueChange={(val) => onAnioChange(Number(val))}
+              >
+                <SelectTrigger className="h-9 w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                    <SelectItem key={y} value={y.toString()}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-[11px] text-muted-foreground">Mes</Label>
+              <Select
+                value={mes.toString()}
+                onValueChange={(val) => onMesChange(Number(val))}
+              >
+                <SelectTrigger className="h-9 w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(MESES_LABEL).map(([numero, nombre]) => (
+                    <SelectItem key={numero} value={numero}>
+                      {nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <Button
             type="button"
             size="sm"
@@ -819,9 +954,15 @@ function AsignacionAntiguedadCard({
             ) : (
               <Play className="w-4 h-4" />
             )}
-            Ejecutar asignación automática
+            Ejecutar asignación mensual
           </Button>
         </div>
+
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Asigna los días proporcionales del mes seleccionado a cada colaborador activo
+          con al menos 1 año de antigüedad. Si el mes ya fue asignado, se omite
+          (protección contra duplicados).
+        </p>
       </CardContent>
     </Card>
   );

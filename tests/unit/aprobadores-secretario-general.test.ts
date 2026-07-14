@@ -54,6 +54,7 @@ describe('aprobadores.ts — Fase 2 Director de Secretaría General', () => {
                 id: 99,
                 nombre: 'Dir.',
                 apellido: 'SG',
+                esDirector: true,
                 activo: true,
                 deletedAt: null,
               },
@@ -67,6 +68,87 @@ describe('aprobadores.ts — Fase 2 Director de Secretaría General', () => {
   });
 
   describe('resolverFlujoAprobacionSolicitud', () => {
+    it('empleado en depto sin Director pero con jefeSuperiorId → pendiente_jefe', async () => {
+      vi.doMock(
+        '@/lib/db',
+        () =>
+          mockSelectSequence([
+            [
+              {
+                id: 20,
+                nombre: 'Jefe',
+                apellido: 'Operaciones',
+                activo: true,
+                deletedAt: null,
+              },
+            ],
+          ])
+      );
+
+      const { resolverFlujoAprobacionSolicitud } = await import('@/lib/domain/aprobadores');
+      const flujo = await resolverFlujoAprobacionSolicitud({
+        id: 30,
+        esDirector: false,
+        esJefe: false,
+        departamentoId: 5,
+        jefeSuperiorId: 20,
+      });
+
+      expect(flujo.errorFlujo).toBe(false);
+      expect(flujo.aprobadorInicialTipo).toBe('jefe');
+      expect(flujo.requiereAprobacionDirector).toBe(false);
+      expect(flujo.requiereAprobacionSecretariaGeneral).toBe(false);
+    });
+
+    it('empleado sin jefeSuperiorId usa jefeId del departamento', async () => {
+      vi.doMock(
+        '@/lib/db',
+        () =>
+          mockSelectSequence([
+            [{ jefeId: 20 }],
+            [
+              {
+                id: 20,
+                nombre: 'Jefe',
+                apellido: 'Depto',
+                activo: true,
+                deletedAt: null,
+              },
+            ],
+          ])
+      );
+
+      const { resolverFlujoAprobacionSolicitud } = await import('@/lib/domain/aprobadores');
+      const flujo = await resolverFlujoAprobacionSolicitud({
+        id: 30,
+        esDirector: false,
+        esJefe: false,
+        departamentoId: 5,
+        jefeSuperiorId: null,
+      });
+
+      expect(flujo.errorFlujo).toBe(false);
+      expect(flujo.aprobadorInicialId).toBe(20);
+    });
+
+    it('Director → VoBo Ministro y pasa directo a RRHH', async () => {
+      vi.doMock('@/lib/db', () => mockSelectSequence([]));
+
+      const { resolverFlujoAprobacionSolicitud } = await import('@/lib/domain/aprobadores');
+      const flujo = await resolverFlujoAprobacionSolicitud({
+        id: 10,
+        esDirector: true,
+        esJefe: true,
+        departamentoId: 1,
+        jefeSuperiorId: null,
+      });
+
+      expect(flujo.errorFlujo).toBe(false);
+      expect(flujo.requiereVoBoMinistro).toBe(true);
+      expect(flujo.pasaDirectoRrhh).toBe(true);
+      expect(flujo.aprobadorInicialTipo).toBe('rrhh');
+    });
+
     it('empleado con jefe → requiereAprobacionJefe, sin Director ni SG', async () => {
       vi.doMock(
         '@/lib/db',
@@ -187,6 +269,7 @@ describe('aprobadores.ts — Fase 2 Director de Secretaría General', () => {
                 id: 77,
                 nombre: 'Dir',
                 apellido: 'SG',
+                esDirector: true,
                 activo: true,
                 deletedAt: null,
               },

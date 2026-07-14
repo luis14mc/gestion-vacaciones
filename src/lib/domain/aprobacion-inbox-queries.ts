@@ -27,7 +27,6 @@ function rolesDesdeSession(session: SessionUser): RolBandejaAprobacion {
     esRrhh: session.esRrhh,
     esJefe: session.esJefe,
     esDirector: session.esDirector,
-    esSecretarioGeneral: session.esSecretarioGeneral,
   };
 }
 
@@ -80,16 +79,6 @@ export async function construirCondicionesBandejaAprobacion(
     );
   }
 
-  // Compat legacy: flag esSecretarioGeneral (si aún existe en algún usuario).
-  if (roles.esSecretarioGeneral && !roles.esDirector) {
-    ramas.push(
-      and(
-        eq(solicitudes.estado, 'pendiente_secretario_general'),
-        eq(solicitudes.aprobadaSecretarioPor, session.id)
-      ) as SQL
-    );
-  }
-
   // RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
   if (roles.esRrhh || roles.esAdmin) {
     ramas.push(eq(solicitudes.estado, 'pendiente_rrhh') as SQL);
@@ -134,8 +123,7 @@ export async function calcularStatsBandejaAprobacion(session: SessionUser) {
   const aprobacionesJefe = roles.esJefe || roles.esDirector || roles.esAdmin;
   const aprobacionesDirector = roles.esDirector || roles.esAdmin;
   // Dir. SG aprueba vía columnas de secretario (mismo Director con asignación).
-  const aprobacionesSecretario =
-    roles.esDirector || roles.esSecretarioGeneral || roles.esAdmin;
+  const aprobacionesSecretario = roles.esDirector || roles.esAdmin;
   const aprobacionesRrhh = roles.esRrhh || roles.esAdmin;
 
   const aprobadaHoyParts: SQL[] = [];

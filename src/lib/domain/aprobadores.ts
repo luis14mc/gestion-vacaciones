@@ -193,12 +193,42 @@ export async function obtenerDirectorSecretariaGeneral(): Promise<{
     throw new Error(ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL);
   }
 
-  const director = await buscarUsuarioActivo(depto.jefeId);
+  const director = await buscarUsuarioDirectorActivo(depto.jefeId);
   if (!director) {
     throw new Error(ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL);
   }
 
   return director;
+}
+
+/**
+ * Resuelve el jefe superior de un empleado normal.
+ * Preferencia: `jefeSuperiorId` del usuario; fallback al `jefeId` del departamento.
+ * No exige que el departamento tenga Director de Área.
+ */
+export async function obtenerJefeSuperiorEmpleado(params: {
+  usuarioId: number;
+  jefeSuperiorId: number | null | undefined;
+  departamentoId: number | null | undefined;
+}): Promise<{ id: number; nombre: string } | null> {
+  if (params.jefeSuperiorId && params.jefeSuperiorId !== params.usuarioId) {
+    const jefe = await buscarUsuarioActivo(params.jefeSuperiorId);
+    if (jefe) return jefe;
+  }
+
+  if (!params.departamentoId) return null;
+
+  const [depto] = await db
+    .select({ jefeId: departamentos.jefeId })
+    .from(departamentos)
+    .where(
+      and(eq(departamentos.id, params.departamentoId), isNull(departamentos.deletedAt))
+    )
+    .limit(1);
+
+  if (!depto?.jefeId || depto.jefeId === params.usuarioId) return null;
+
+  return buscarUsuarioActivo(depto.jefeId);
 }
 
 /**
@@ -321,12 +351,11 @@ export async function resolverFlujoAprobacionSolicitud(
 
   // Cumpleaños / licencia médica de Director: flujo de empleado (jefe → RRHH).
   if (usuarioSolicitante.esDirector && (esCumpleanos || tipo === 'licencia_medica')) {
-    if (!usuarioSolicitante.jefeSuperiorId) {
-      return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
-        requiereAprobacionJefe: true,
-      });
-    }
-    const jefe = await buscarUsuarioActivo(usuarioSolicitante.jefeSuperiorId);
+    const jefe = await obtenerJefeSuperiorEmpleado({
+      usuarioId: usuarioSolicitante.id,
+      jefeSuperiorId: usuarioSolicitante.jefeSuperiorId,
+      departamentoId: usuarioSolicitante.departamentoId,
+    });
     if (!jefe) {
       return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
         requiereAprobacionJefe: true,
@@ -397,13 +426,11 @@ export async function resolverFlujoAprobacionSolicitud(
   }
 
   // A. Empleado normal: requiere jefe superior; NO busca Director/SG.
-  if (!usuarioSolicitante.jefeSuperiorId) {
-    return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
-      requiereAprobacionJefe: true,
-    });
-  }
-
-  const jefe = await buscarUsuarioActivo(usuarioSolicitante.jefeSuperiorId);
+  const jefe = await obtenerJefeSuperiorEmpleado({
+    usuarioId: usuarioSolicitante.id,
+    jefeSuperiorId: usuarioSolicitante.jefeSuperiorId,
+    departamentoId: usuarioSolicitante.departamentoId,
+  });
   if (!jefe) {
     return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
       requiereAprobacionJefe: true,

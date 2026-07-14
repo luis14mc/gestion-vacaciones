@@ -26,18 +26,10 @@ export interface RolBandejaAprobacion {
   esRrhh: boolean;
   esJefe: boolean;
   esDirector: boolean;
-  /** Legacy; la bandeja de sustituto ya no depende de este flag. */
-  esSecretarioGeneral?: boolean;
 }
 
 export function puedeAccederBandejaAprobacion(roles: RolBandejaAprobacion): boolean {
-  return (
-    roles.esAdmin ||
-    roles.esRrhh ||
-    roles.esJefe ||
-    roles.esDirector ||
-    Boolean(roles.esSecretarioGeneral)
-  );
+  return roles.esAdmin || roles.esRrhh || roles.esJefe || roles.esDirector;
 }
 
 export function esEstadoAccionableAprobacion(estado: string): estado is EstadoAccionableAprobacion {
@@ -102,11 +94,8 @@ export function solicitudVisibleEnBandeja(
   }
 
   // Director de Secretaría General (sustituto): filtrado por query SQL
-  // vía aprobadaSecretarioPor. Aquí permitimos a Directores (y legacy SG).
-  if (
-    (context.roles.esDirector || context.roles.esSecretarioGeneral) &&
-    solicitud.estado === 'pendiente_secretario_general'
-  ) {
+  // vía aprobadaSecretarioPor. Es un Director del depto Secretaría General.
+  if (context.roles.esDirector && solicitud.estado === 'pendiente_secretario_general') {
     return true;
   }
 

@@ -88,7 +88,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         esRrhh: sessionUser.esRrhh,
         esJefe: sessionUser.esJefe,
         esDirector: sessionUser.esDirector,
-        esSecretarioGeneral: sessionUser.esSecretarioGeneral,
       })
     ) {
       return NextResponse.json(

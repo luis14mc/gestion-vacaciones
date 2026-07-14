@@ -137,7 +137,7 @@ describe('aprobacion-inbox — Fase 2', () => {
       ).toBe(true);
     });
 
-    it('NO ve pendiente_director ni pendiente_rrhh', () => {
+    it('sin flag esSecretarioGeneral no accede a bandeja ni ve SG pendiente', () => {
       const ctx = {
         sessionId: 99,
         equipoIds: [],
@@ -146,14 +146,13 @@ describe('aprobacion-inbox — Fase 2', () => {
           esRrhh: false,
           esJefe: false,
           esDirector: false,
-          esSecretarioGeneral: true,
         },
       };
       expect(
-        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_director' }, ctx)
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_secretario_general' }, ctx)
       ).toBe(false);
       expect(
-        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_rrhh' }, ctx)
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_director' }, ctx)
       ).toBe(false);
     });
   });

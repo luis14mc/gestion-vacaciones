@@ -21,7 +21,7 @@ import {
 import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
 import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
 import { resolverFlujoInicialSolicitud } from '@/lib/domain/solicitud-flujo-inicial';
-import { resolverAprobadorSegundoNivel } from '@/lib/domain/aprobadores';
+import { resolverAprobadorSegundoNivel, obtenerJefeSuperiorEmpleado } from '@/lib/domain/aprobadores';
 
 // =====================================================
 // TIPOS
@@ -282,7 +282,12 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     let aprobadorSecretarioId: number | null = null;
 
     if (!esDirector && !usuario.esJefe) {
-      if (!usuario.jefeSuperiorId) {
+      const jefe = await obtenerJefeSuperiorEmpleado({
+        usuarioId,
+        jefeSuperiorId: usuario.jefeSuperiorId,
+        departamentoId: usuario.departamentoId,
+      });
+      if (!jefe) {
         throw new Error(
           'El empleado no tiene jefe superior asignado. Contacte a RRHH/Admin.'
         );

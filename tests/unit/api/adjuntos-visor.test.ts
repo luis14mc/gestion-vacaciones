@@ -105,7 +105,7 @@ describe('POST /api/solicitudes/[id]/adjuntos/[idx]/ver — visor de adjuntos', 
     expect(res.status).toBe(404);
   });
 
-  it('devuelve 403 si el usuario no es dueño ni aprobador', async () => {
+  it('devuelve 403 si el usuario no es dueño ni aprobador ni uploader', async () => {
     mockGetSession.mockResolvedValueOnce({
       id: 50,
       esAdmin: false,
@@ -118,7 +118,7 @@ describe('POST /api/solicitudes/[id]/adjuntos/[idx]/ver — visor de adjuntos', 
       solicitud: {
         id: 1,
         usuarioId: 99,
-        documentosAdjuntos: [{ tipo: 'vobo_jefe', data: 'data:...' }],
+        documentosAdjuntos: [{ tipo: 'vobo_jefe', data: 'data:...', uploadedBy: 88 }],
       },
     });
     vi.doMock('@/lib/db', () => ({ db: dbMock }));
@@ -132,6 +132,45 @@ describe('POST /api/solicitudes/[id]/adjuntos/[idx]/ver — visor de adjuntos', 
       params: Promise.resolve({ id: '1', idx: '0' }),
     });
     expect(res.status).toBe(403);
+  });
+
+  it('permite al usuario que subió el adjunto aunque no sea aprobador', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      id: 30,
+      esAdmin: false,
+      esJefe: false,
+      esDirector: false,
+      esRrhh: false,
+      esSecretarioGeneral: false,
+    });
+    const dbMock = crearDbMock({
+      solicitud: {
+        id: 1,
+        usuarioId: 99,
+        documentosAdjuntos: [{ tipo: 'vobo_jefe', data: 'data:...', uploadedBy: 30 }],
+      },
+    });
+    vi.doMock('@/lib/db', () => ({ db: dbMock }));
+    vi.doMock('@/lib/domain/aprobacion-inbox-queries', () => ({
+      construirCondicionesBandejaAprobacion: vi.fn(async () => ({ where: null, vacio: true })),
+    }));
+    mockRegistrarAuditoria.mockResolvedValueOnce(undefined);
+
+    const mod = await import('@/app/api/solicitudes/[id]/adjuntos/[idx]/ver/route');
+    const res = await mod.POST(crearRequest('http://localhost/api/solicitudes/1/adjuntos/0/ver'), {
+      params: Promise.resolve({ id: '1', idx: '0' }),
+    });
+    expect(res.status).toBe(200);
+    expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accion: 'adjunto_visualizado',
+        detalles: expect.objectContaining({
+          visualizadorEsUploader: true,
+          uploadedBy: 30,
+          visualizadoPor: 30,
+        }),
+      })
+    );
   });
 
   it('permite al dueño ver su propio adjunto', async () => {
@@ -167,6 +206,8 @@ describe('POST /api/solicitudes/[id]/adjuntos/[idx]/ver — visor de adjuntos', 
         detalles: expect.objectContaining({
           tipoAdjunto: 'vobo_jefe',
           indice: 0,
+          visualizadorEsSolicitante: true,
+          visualizadoPor: 99,
         }),
       })
     );
@@ -208,7 +249,7 @@ describe('POST /api/solicitudes/[id]/adjuntos/[idx]/ver — visor de adjuntos', 
         accion: 'adjunto_visualizado',
         detalles: expect.objectContaining({
           tipoAdjunto: 'vobo_ministro',
-          solicitanteEsAprobador: true,
+          visualizadorEsAprobador: true,
         }),
       })
     );

@@ -23,6 +23,7 @@ export interface AdjuntoVisor {
   size?: number;
   uploadedAt?: string;
   uploadedBy?: number;
+  uploadedByNombre?: string;
   /** Índice en documentosAdjuntos original (para auditoría). */
   indiceOriginal?: number;
 }
@@ -66,6 +67,16 @@ function dataUrlHref(adj: AdjuntoVisor): string | null {
   return `data:${mime};base64,${adj.data}`;
 }
 
+function etiquetaSubidoPor(adj: AdjuntoVisor): string | null {
+  if (adj.uploadedByNombre) {
+    return `Subido por: ${adj.uploadedByNombre}`;
+  }
+  if (typeof adj.uploadedBy === 'number') {
+    return `Subido por usuario ID: ${adj.uploadedBy}`;
+  }
+  return null;
+}
+
 export function AdjuntosViewer({
   adjuntos,
   onAdjuntoVisualizado,
@@ -103,6 +114,7 @@ export function AdjuntosViewer({
           const esImagen = mime.startsWith('image/');
           const tamKB = adj.size ? Math.round(adj.size / 1024) : null;
           const indiceAuditoria = adj.indiceOriginal ?? idx;
+          const subidoPor = etiquetaSubidoPor(adj);
 
           return (
             <div
@@ -127,6 +139,11 @@ export function AdjuntosViewer({
                   {adj.uploadedAt && (
                     <p className="text-[10px] text-muted-foreground">
                       Subido: {new Date(adj.uploadedAt).toLocaleString('es-HN')}
+                    </p>
+                  )}
+                  {subidoPor && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {subidoPor}
                     </p>
                   )}
                 </div>

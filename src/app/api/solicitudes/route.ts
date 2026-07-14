@@ -27,6 +27,7 @@ import {
   resolverRequisitosAdjuntosSolicitud,
   validarAdjuntosObligatorios,
 } from '@/lib/domain/requisitos-adjuntos';
+import { enriquecerAdjuntosSolicitudes } from '@/lib/domain/solicitud-adjuntos-display';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -122,37 +123,39 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       dia_cumpleanos: 'Día libre por cumpleaños',
     };
 
-    const solicitudesDetalle = results.map((sol: any) => ({
-      id: sol.id,
-      codigo: sol.codigo,
-      usuarioId: sol.usuarioId,
-      tipo: sol.tipo,
-      fechaInicio: sol.fechaInicio,
-      fechaFin: sol.fechaFin,
-      cantidad: sol.diasSolicitados,
-      motivo: sol.motivo,
-      estado: sol.estado,
-      createdAt: sol.createdAt,
-      documentosAdjuntos: sol.documentosAdjuntos,
-      aprobadaJefePor: sol.aprobadaJefePor,
-      aprobadaDirectorPor: sol.aprobadaDirectorPor,
-      aprobadaSecretarioPor: sol.aprobadaSecretarioPor,
-      aprobadaRrhhPor: sol.aprobadaRrhhPor,
-      usuario: sol.usuario
-        ? {
-            id: sol.usuario.id,
-            nombre: sol.usuario.nombre,
-            apellido: sol.usuario.apellido,
-            email: sol.usuario.email,
-          }
-        : { id: 0, nombre: 'Desconocido', apellido: '', email: '' },
-      tipoAusencia: {
-        id: sol.tipo,
-        nombre: tiposMapParaAprobar[sol.tipo] || sol.tipo,
+    const solicitudesDetalle = await enriquecerAdjuntosSolicitudes(
+      results.map((sol: any) => ({
+        id: sol.id,
+        codigo: sol.codigo,
+        usuarioId: sol.usuarioId,
         tipo: sol.tipo,
-      },
-      metadata: sol.metadata,
-    }));
+        fechaInicio: sol.fechaInicio,
+        fechaFin: sol.fechaFin,
+        cantidad: sol.diasSolicitados,
+        motivo: sol.motivo,
+        estado: sol.estado,
+        createdAt: sol.createdAt,
+        documentosAdjuntos: sol.documentosAdjuntos,
+        aprobadaJefePor: sol.aprobadaJefePor,
+        aprobadaDirectorPor: sol.aprobadaDirectorPor,
+        aprobadaSecretarioPor: sol.aprobadaSecretarioPor,
+        aprobadaRrhhPor: sol.aprobadaRrhhPor,
+        usuario: sol.usuario
+          ? {
+              id: sol.usuario.id,
+              nombre: sol.usuario.nombre,
+              apellido: sol.usuario.apellido,
+              email: sol.usuario.email,
+            }
+          : { id: 0, nombre: 'Desconocido', apellido: '', email: '' },
+        tipoAusencia: {
+          id: sol.tipo,
+          nombre: tiposMapParaAprobar[sol.tipo] || sol.tipo,
+          tipo: sol.tipo,
+        },
+        metadata: sol.metadata,
+      }))
+    );
 
     return NextResponse.json({
       success: true,
@@ -215,7 +218,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     dia_cumpleanos: 'Día libre por cumpleaños',
   };
 
-  const solicitudesListado = results.map((sol: any) => ({
+  const solicitudesListadoRaw = results.map((sol: any) => ({
     id: sol.id,
     codigo: sol.codigo,
     usuarioId: sol.usuarioId,
@@ -240,7 +243,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     metadata: sol.metadata,
   }));
 
-  const solicitudesDetalle = results.map((sol: any) => ({
+  const solicitudesDetalleRaw = results.map((sol: any) => ({
     id: sol.id,
     codigo: sol.codigo,
     usuarioId: sol.usuarioId,
@@ -262,6 +265,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     tipoAusencia: { id: sol.tipo, nombre: tiposMap[sol.tipo] || sol.tipo, tipo: sol.tipo },
     metadata: sol.metadata,
   }));
+
+  const [solicitudesListado, solicitudesDetalle] = await Promise.all([
+    enriquecerAdjuntosSolicitudes(solicitudesListadoRaw),
+    enriquecerAdjuntosSolicitudes(solicitudesDetalleRaw),
+  ]);
 
   return NextResponse.json({
     success: true,

@@ -8,28 +8,112 @@ interface SolicitudAdjuntosAcceso {
   aprobadaRrhhPor?: number | null;
 }
 
+interface AdjuntoAcceso {
+  uploadedBy?: number | null;
+}
+
+function participoEnFlujoAprobacion(
+  sessionId: number,
+  solicitud: SolicitudAdjuntosAcceso
+): boolean {
+  return (
+    solicitud.aprobadaJefePor === sessionId ||
+    solicitud.aprobadaDirectorPor === sessionId ||
+    solicitud.aprobadaSecretarioPor === sessionId ||
+    solicitud.aprobadaRrhhPor === sessionId
+  );
+}
+
+function tieneRolAprobadorActivo(
+  session: Pick<
+    SessionUser,
+    'esJefe' | 'esDirector' | 'esSecretarioGeneral'
+  >
+): boolean {
+  return Boolean(session.esJefe || session.esDirector || session.esSecretarioGeneral);
+}
+
+export function usuarioSubioAdjunto(
+  sessionId: number,
+  adjunto: AdjuntoAcceso | null | undefined
+): boolean {
+  return (
+    typeof adjunto?.uploadedBy === 'number' && adjunto.uploadedBy === sessionId
+  );
+}
+
+export function usuarioSubioAlgúnAdjunto(
+  sessionId: number,
+  documentosAdjuntos: unknown
+): boolean {
+  if (!Array.isArray(documentosAdjuntos)) return false;
+  return documentosAdjuntos.some((a) =>
+    usuarioSubioAdjunto(sessionId, a as AdjuntoAcceso)
+  );
+}
+
 /**
- * Determina si el usuario puede ver los adjuntos institucionales de una solicitud.
+ * Determina si el usuario puede ver la sección de adjuntos institucionales.
  */
 export function puedeVerAdjuntosSolicitud(
   session: Pick<
     SessionUser,
     'id' | 'esAdmin' | 'esRrhh' | 'esJefe' | 'esDirector' | 'esSecretarioGeneral'
   > | null | undefined,
-  solicitud: SolicitudAdjuntosAcceso
+  solicitud: SolicitudAdjuntosAcceso,
+  documentosAdjuntos?: unknown
 ): boolean {
   if (!session) return false;
   if (solicitud.usuarioId === session.id) return true;
   if (session.esAdmin || session.esRrhh) return true;
+  if (usuarioSubioAlgúnAdjunto(session.id, documentosAdjuntos)) return true;
+  if (participoEnFlujoAprobacion(session.id, solicitud)) return true;
+  return tieneRolAprobadorActivo(session);
+}
 
-  const participoEnFlujo =
-    solicitud.aprobadaJefePor === session.id ||
-    solicitud.aprobadaDirectorPor === session.id ||
-    solicitud.aprobadaSecretarioPor === session.id ||
-    solicitud.aprobadaRrhhPor === session.id;
+export interface EvaluacionAccesoAdjunto {
+  autorizado: boolean;
+  visualizadorEsSolicitante: boolean;
+  visualizadorEsUploader: boolean;
+  visualizadorEsAprobador: boolean;
+  uploadedBy?: number;
+}
 
-  if (participoEnFlujo) return true;
+/**
+ * Evalúa acceso a un adjunto concreto (visor + auditoría).
+ */
+export function evaluarAccesoAdjuntoInstitucional(params: {
+  session: Pick<
+    SessionUser,
+    'id' | 'esAdmin' | 'esRrhh' | 'esJefe' | 'esDirector' | 'esSecretarioGeneral'
+  >;
+  solicitud: SolicitudAdjuntosAcceso;
+  adjunto: AdjuntoAcceso;
+  enBandejaAprobacion?: boolean;
+}): EvaluacionAccesoAdjunto {
+  const { session, solicitud, adjunto, enBandejaAprobacion = false } = params;
 
-  // Jefe/Director/SG activos en flujos de aprobación (bandeja).
-  return Boolean(session.esJefe || session.esDirector || session.esSecretarioGeneral);
+  const visualizadorEsSolicitante = solicitud.usuarioId === session.id;
+  const uploadedBy =
+    typeof adjunto.uploadedBy === 'number' ? adjunto.uploadedBy : undefined;
+  const visualizadorEsUploader = uploadedBy === session.id;
+  const esRrhhAdmin = session.esAdmin || session.esRrhh;
+  const visualizadorEsAprobador =
+    enBandejaAprobacion ||
+    participoEnFlujoAprobacion(session.id, solicitud) ||
+    tieneRolAprobadorActivo(session) ||
+    esRrhhAdmin;
+
+  const autorizado =
+    visualizadorEsSolicitante ||
+    visualizadorEsUploader ||
+    visualizadorEsAprobador;
+
+  return {
+    autorizado,
+    visualizadorEsSolicitante,
+    visualizadorEsUploader,
+    visualizadorEsAprobador,
+    uploadedBy,
+  };
 }

@@ -236,6 +236,7 @@ export function normalizarAdjuntosHistoricos(
   size?: number;
   uploadedAt?: string;
   uploadedBy?: number;
+  uploadedByNombre?: string;
   indiceOriginal: number;
 }> {
   if (!Array.isArray(adjuntos)) return [];
@@ -259,6 +260,8 @@ export function normalizarAdjuntosHistoricos(
         size: typeof a.size === 'number' ? a.size : undefined,
         uploadedAt: typeof a.uploadedAt === 'string' ? a.uploadedAt : undefined,
         uploadedBy: typeof a.uploadedBy === 'number' ? a.uploadedBy : undefined,
+        uploadedByNombre:
+          typeof a.uploadedByNombre === 'string' ? a.uploadedByNombre : undefined,
         indiceOriginal: index,
       };
     });

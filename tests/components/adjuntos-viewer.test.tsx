@@ -45,6 +45,41 @@ describe('AdjuntosViewer', () => {
     ).toBeTruthy();
   });
 
+  it('muestra nombre del usuario que subió el adjunto', () => {
+    render(
+      <AdjuntosViewer
+        autorizado
+        adjuntos={[
+          {
+            tipo: 'vobo_jefe',
+            nombre: 'vobo.pdf',
+            data: PDF_DATA,
+            uploadedBy: 5,
+            uploadedByNombre: 'Ana López',
+          },
+        ]}
+      />
+    );
+    expect(screen.getByText('Subido por: Ana López')).toBeTruthy();
+  });
+
+  it('muestra ID cuando no hay nombre del uploader', () => {
+    render(
+      <AdjuntosViewer
+        autorizado
+        adjuntos={[
+          {
+            tipo: 'vobo_jefe',
+            nombre: 'vobo.pdf',
+            data: PDF_DATA,
+            uploadedBy: 5,
+          },
+        ]}
+      />
+    );
+    expect(screen.getByText('Subido por usuario ID: 5')).toBeTruthy();
+  });
+
   it('invoca callback con índice original al visualizar', () => {
     const onVisualizar = vi.fn();
     render(

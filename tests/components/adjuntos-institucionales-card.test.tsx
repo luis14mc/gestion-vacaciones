@@ -67,6 +67,26 @@ describe('AdjuntosInstitucionalesCard', () => {
     expect(screen.getByText('Sin adjunto registrado.')).toBeTruthy();
   });
 
+  it('muestra adjuntos para usuario que subió el VoBo', () => {
+    render(
+      <AdjuntosInstitucionalesCard
+        solicitudId={103}
+        autorizado
+        documentosAdjuntos={[
+          {
+            tipo: 'vobo_jefe',
+            nombre: 'vobo.pdf',
+            data: PDF_DATA,
+            uploadedBy: 30,
+            uploadedByNombre: 'Jefe Inmediato',
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Subido por: Jefe Inmediato')).toBeTruthy();
+  });
+
   it('registra auditoría al visualizar adjunto', () => {
     render(
       <AdjuntosInstitucionalesCard

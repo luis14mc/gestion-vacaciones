@@ -708,7 +708,7 @@ export default function AprobarSolicitudesClient({
                       aprobadaDirectorPor: solicitudSeleccionada.aprobadaDirectorPor,
                       aprobadaSecretarioPor: solicitudSeleccionada.aprobadaSecretarioPor,
                       aprobadaRrhhPor: solicitudSeleccionada.aprobadaRrhhPor,
-                    })}
+                    }, solicitudSeleccionada.documentosAdjuntos)}
                     className="mt-4 border-border shadow-none"
                   />
 

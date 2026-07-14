@@ -14,7 +14,7 @@ import {
   datosPeticion,
 } from '@/services/auditoria.service';
 import { construirCondicionesBandejaAprobacion } from '@/lib/domain/aprobacion-inbox-queries';
-import { puedeVerAdjuntosSolicitud } from '@/lib/domain/solicitud-adjuntos-acceso';
+import { evaluarAccesoAdjuntoInstitucional } from '@/lib/domain/solicitud-adjuntos-acceso';
 
 export const runtime = 'nodejs';
 
@@ -66,34 +66,42 @@ export const POST = withErrorHandler(async (
     );
   }
 
-  let autorizado = puedeVerAdjuntosSolicitud(session, solicitud);
+  const adjunto = adjuntos[adjIdx] as Record<string, unknown>;
 
-  if (!autorizado) {
-    const { where: inboxWhere } = await construirCondicionesBandejaAprobacion(session);
-    if (inboxWhere) {
-      const match = await db
-        .select({ id: solicitudes.id })
-        .from(solicitudes)
-        .where(
-          and(
-            eq(solicitudes.id, solicitudId),
-            isNull(solicitudes.deletedAt),
-            inboxWhere
-          )
+  let enBandejaAprobacion = false;
+  const { where: inboxWhere } = await construirCondicionesBandejaAprobacion(session);
+  if (inboxWhere) {
+    const match = await db
+      .select({ id: solicitudes.id })
+      .from(solicitudes)
+      .where(
+        and(
+          eq(solicitudes.id, solicitudId),
+          isNull(solicitudes.deletedAt),
+          inboxWhere
         )
-        .limit(1);
-      autorizado = match.length > 0;
-    }
+      )
+      .limit(1);
+    enBandejaAprobacion = match.length > 0;
   }
 
-  if (!autorizado) {
+  const acceso = evaluarAccesoAdjuntoInstitucional({
+    session,
+    solicitud,
+    adjunto: {
+      uploadedBy:
+        typeof adjunto.uploadedBy === 'number' ? adjunto.uploadedBy : undefined,
+    },
+    enBandejaAprobacion,
+  });
+
+  if (!acceso.autorizado) {
     return NextResponse.json(
       { success: false, error: 'No autorizado para ver este adjunto' },
       { status: 403 }
     );
   }
 
-  const adjunto = adjuntos[adjIdx] as Record<string, unknown>;
   const tipoAdjunto =
     typeof adjunto?.tipo === 'string'
       ? adjunto.tipo
@@ -112,10 +120,15 @@ export const POST = withErrorHandler(async (
     tablaAfectada: 'solicitudes',
     registroId: solicitudId,
     detalles: {
+      solicitudId,
       tipoAdjunto,
       indice: adjIdx,
+      uploadedBy: acceso.uploadedBy,
+      visualizadoPor: session.id,
+      visualizadorEsSolicitante: acceso.visualizadorEsSolicitante,
+      visualizadorEsUploader: acceso.visualizadorEsUploader,
+      visualizadorEsAprobador: acceso.visualizadorEsAprobador,
       solicitudUsuarioId: solicitud.usuarioId,
-      solicitanteEsAprobador: solicitud.usuarioId !== session.id,
     },
     ipAddress,
     userAgent,

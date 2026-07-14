@@ -678,7 +678,7 @@ export default function SolicitudesClient({ session }: Props) {
                     aprobadaDirectorPor: solicitudSeleccionada.aprobadaDirectorPor,
                     aprobadaSecretarioPor: solicitudSeleccionada.aprobadaSecretarioPor,
                     aprobadaRrhhPor: solicitudSeleccionada.aprobadaRrhhPor,
-                  })}
+                  }, solicitudSeleccionada.documentosAdjuntos)}
                   className="rounded-xl border-border shadow-none"
                 />
 

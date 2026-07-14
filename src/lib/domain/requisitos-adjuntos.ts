@@ -228,11 +228,23 @@ export function validarAdjuntosObligatorios(params: {
  */
 export function normalizarAdjuntosHistoricos(
   adjuntos: unknown
-): Array<{ tipo: string; nombre: string; data: string }> {
+): Array<{
+  tipo: string;
+  nombre: string;
+  data: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+  uploadedBy?: number;
+  indiceOriginal: number;
+}> {
   if (!Array.isArray(adjuntos)) return [];
   return adjuntos
-    .filter((a: any) => a && typeof a === 'object' && typeof a.data === 'string')
-    .map((a: any) => {
+    .map((a: any, index: number) => ({ a, index }))
+    .filter(
+      ({ a }) => a && typeof a === 'object' && typeof a.data === 'string' && a.data.length > 0
+    )
+    .map(({ a, index }) => {
       const tipo =
         (typeof a.tipo === 'string' && a.tipo) ||
         (typeof a.nombre === 'string'
@@ -247,6 +259,7 @@ export function normalizarAdjuntosHistoricos(
         size: typeof a.size === 'number' ? a.size : undefined,
         uploadedAt: typeof a.uploadedAt === 'string' ? a.uploadedAt : undefined,
         uploadedBy: typeof a.uploadedBy === 'number' ? a.uploadedBy : undefined,
+        indiceOriginal: index,
       };
     });
 }

@@ -17,14 +17,24 @@ vi.mock('@/services/auditoria.service', () => ({
 function crearDbMock(opts: {
   solicitud?: any;
 }) {
+  const solicitud = opts.solicitud
+    ? {
+        aprobadaJefePor: null,
+        aprobadaDirectorPor: null,
+        aprobadaSecretarioPor: null,
+        aprobadaRrhhPor: null,
+        ...opts.solicitud,
+      }
+    : null;
+
   return {
     query: {
-      solicitudes: { findFirst: vi.fn(async () => opts.solicitud ?? null) },
+      solicitudes: { findFirst: vi.fn(async () => solicitud) },
     },
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => ({
-          limit: vi.fn(() => Promise.resolve(opts.solicitud ? [opts.solicitud] : [])),
+          limit: vi.fn(() => Promise.resolve(solicitud ? [solicitud] : [])),
         })),
       })),
     })),

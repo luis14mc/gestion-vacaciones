@@ -57,6 +57,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { AdjuntosInstitucionalesCard } from "@/components/solicitudes/AdjuntosInstitucionalesCard";
+import { puedeVerAdjuntosSolicitud } from "@/lib/domain/solicitud-adjuntos-acceso";
 
 interface Solicitud {
   id: number;
@@ -71,9 +73,14 @@ interface Solicitud {
   comentariosRrhh: string | null;
   aprobadoPorJefeId: number | null;
   aprobadoPorRrhhId: number | null;
+  aprobadaJefePor?: number | null;
+  aprobadaDirectorPor?: number | null;
+  aprobadaSecretarioPor?: number | null;
+  aprobadaRrhhPor?: number | null;
   fechaAprobacionJefe: string | null;
   fechaAprobacionRrhh: string | null;
   fechaCreacion: string;
+  documentosAdjuntos?: unknown;
   usuario: string;
   tipoAusencia: string;
   aprobadorJefe: string | null;
@@ -661,6 +668,19 @@ export default function SolicitudesClient({ session }: Props) {
                     </p>
                   </div>
                 )}
+
+                <AdjuntosInstitucionalesCard
+                  solicitudId={solicitudSeleccionada.id}
+                  documentosAdjuntos={solicitudSeleccionada.documentosAdjuntos}
+                  autorizado={puedeVerAdjuntosSolicitud(session?.user, {
+                    usuarioId: solicitudSeleccionada.usuarioId,
+                    aprobadaJefePor: solicitudSeleccionada.aprobadaJefePor,
+                    aprobadaDirectorPor: solicitudSeleccionada.aprobadaDirectorPor,
+                    aprobadaSecretarioPor: solicitudSeleccionada.aprobadaSecretarioPor,
+                    aprobadaRrhhPor: solicitudSeleccionada.aprobadaRrhhPor,
+                  })}
+                  className="rounded-xl border-border shadow-none"
+                />
 
                 {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
                   <div className="space-y-2 mt-4">

@@ -253,6 +253,15 @@ describe('requisitos-adjuntos — Fase 3 VoBo obligatorio', () => {
       expect(out[0].nombre).toBe('correo.pdf');
     });
 
+    it('preserva indiceOriginal del arreglo original', () => {
+      const out = normalizarAdjuntosHistoricos([
+        { nombre: 'sin-data' },
+        { nombre: 'con-data', data: 'data:...' },
+      ]);
+      expect(out).toHaveLength(1);
+      expect(out[0].indiceOriginal).toBe(1);
+    });
+
     it('filtra adjuntos sin data', () => {
       const out = normalizarAdjuntosHistoricos([
         { nombre: 'sin-data' },

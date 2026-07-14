@@ -1,12 +1,7 @@
 /**
  * API: POST /api/solicitudes/[id]/adjuntos/[idx]/ver
  * Registra el evento de auditoría `adjunto_visualizado` cuando un
- * aprobador abre un adjunto de VoBo/Constancia para revisarlo antes
- * de aprobar o rechazar.
- *
- * No devuelve el adjunto (el visor usa data URLs embebidos en la
- * solicitud original). El endpoint existe exclusivamente para dejar
- * huella de auditoría institucional.
+ * usuario autorizado abre un adjunto de VoBo/Constancia.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -15,13 +10,11 @@ import { db } from '@/lib/db';
 import { solicitudes } from '@/lib/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import {
-  registrarAuditoria,
   registrarEventoAuditoria,
   datosPeticion,
 } from '@/services/auditoria.service';
-import {
-  construirCondicionesBandejaAprobacion,
-} from '@/lib/domain/aprobacion-inbox-queries';
+import { construirCondicionesBandejaAprobacion } from '@/lib/domain/aprobacion-inbox-queries';
+import { puedeVerAdjuntosSolicitud } from '@/lib/domain/solicitud-adjuntos-acceso';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +39,10 @@ export const POST = withErrorHandler(async (
       id: solicitudes.id,
       usuarioId: solicitudes.usuarioId,
       documentosAdjuntos: solicitudes.documentosAdjuntos,
+      aprobadaJefePor: solicitudes.aprobadaJefePor,
+      aprobadaDirectorPor: solicitudes.aprobadaDirectorPor,
+      aprobadaSecretarioPor: solicitudes.aprobadaSecretarioPor,
+      aprobadaRrhhPor: solicitudes.aprobadaRrhhPor,
     })
     .from(solicitudes)
     .where(and(eq(solicitudes.id, solicitudId), isNull(solicitudes.deletedAt)))
@@ -62,7 +59,6 @@ export const POST = withErrorHandler(async (
     ? (solicitud.documentosAdjuntos as unknown[])
     : [];
 
-  // Verificar que el adjunto exista.
   if (adjIdx < 0 || adjIdx >= adjuntos.length) {
     return NextResponse.json(
       { success: false, error: 'Adjunto no encontrado' },
@@ -70,16 +66,11 @@ export const POST = withErrorHandler(async (
     );
   }
 
-  // Verificar autorización: solo el dueño, los aprobadores con inbox
-  // válido, RRHH/Admin pueden visualizar. Si es el dueño, también
-  // registramos el evento (es el solicitante revisando su propio adjunto).
-  const esDueno = solicitud.usuarioId === session.id;
-  let autorizado = esDueno;
+  let autorizado = puedeVerAdjuntosSolicitud(session, solicitud);
 
   if (!autorizado) {
     const { where: inboxWhere } = await construirCondicionesBandejaAprobacion(session);
     if (inboxWhere) {
-      const { sql } = await import('drizzle-orm');
       const match = await db
         .select({ id: solicitudes.id })
         .from(solicitudes)
@@ -124,7 +115,7 @@ export const POST = withErrorHandler(async (
       tipoAdjunto,
       indice: adjIdx,
       solicitudUsuarioId: solicitud.usuarioId,
-      solicitanteEsAprobador: !esDueno,
+      solicitanteEsAprobador: solicitud.usuarioId !== session.id,
     },
     ipAddress,
     userAgent,

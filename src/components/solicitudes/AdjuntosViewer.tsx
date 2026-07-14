@@ -23,12 +23,14 @@ export interface AdjuntoVisor {
   size?: number;
   uploadedAt?: string;
   uploadedBy?: number;
+  /** Índice en documentosAdjuntos original (para auditoría). */
+  indiceOriginal?: number;
 }
 
 interface AdjuntosViewerProps {
   adjuntos: AdjuntoVisor[] | null | undefined;
   /** Para registrar el evento "adjunto_visualizado" en auditoría. */
-  onAdjuntoVisualizado?: (adj: AdjuntoVisor) => void;
+  onAdjuntoVisualizado?: (adj: AdjuntoVisor, index: number) => void;
   /** Si es true, permite que solo usuarios autorizados vean los adjuntos. */
   autorizado: boolean;
   /** Solo mostrar metadatos (modo "sin visor"). */
@@ -86,8 +88,7 @@ export function AdjuntosViewer({
   if (lista.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Sin adjunto registrado. (Solicitud anterior a Fase 3 — el aprobador
-        puede aprobar/rechazar sin VoBo.)
+        Sin adjunto registrado.
       </div>
     );
   }
@@ -101,6 +102,7 @@ export function AdjuntosViewer({
           const esPdf = mime === 'application/pdf';
           const esImagen = mime.startsWith('image/');
           const tamKB = adj.size ? Math.round(adj.size / 1024) : null;
+          const indiceAuditoria = adj.indiceOriginal ?? idx;
 
           return (
             <div
@@ -140,7 +142,7 @@ export function AdjuntosViewer({
                       size="sm"
                       onClick={() => {
                         setAdjuntoAbierto(adj);
-                        onAdjuntoVisualizado?.(adj);
+                        onAdjuntoVisualizado?.(adj, indiceAuditoria);
                       }}
                       title="Visualizar"
                     >
@@ -151,7 +153,7 @@ export function AdjuntosViewer({
                       download={adj.nombre ?? `adjunto-${tipo}.bin`}
                       target="_blank"
                       rel="noreferrer"
-                      onClick={() => onAdjuntoVisualizado?.(adj)}
+                      onClick={() => onAdjuntoVisualizado?.(adj, indiceAuditoria)}
                       title="Descargar"
                     >
                       <Button variant="ghost" size="sm" type="button" asChild={false}>

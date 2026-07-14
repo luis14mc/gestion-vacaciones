@@ -133,6 +133,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       motivo: sol.motivo,
       estado: sol.estado,
       createdAt: sol.createdAt,
+      documentosAdjuntos: sol.documentosAdjuntos,
+      aprobadaJefePor: sol.aprobadaJefePor,
+      aprobadaDirectorPor: sol.aprobadaDirectorPor,
+      aprobadaSecretarioPor: sol.aprobadaSecretarioPor,
+      aprobadaRrhhPor: sol.aprobadaRrhhPor,
       usuario: sol.usuario
         ? {
             id: sol.usuario.id,
@@ -224,9 +229,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     comentarioRrhh: sol.comentarioRrhh,
     aprobadaJefePor: sol.aprobadaJefePor,
     aprobadaRrhhPor: sol.aprobadaRrhhPor,
+    aprobadaDirectorPor: sol.aprobadaDirectorPor,
+    aprobadaSecretarioPor: sol.aprobadaSecretarioPor,
     aprobadaJefeFecha: sol.aprobadaJefeFecha,
     aprobadaRrhhFecha: sol.aprobadaRrhhFecha,
     fechaCreacion: sol.createdAt,
+    documentosAdjuntos: sol.documentosAdjuntos,
     usuario: sol.usuario ? `${sol.usuario.nombre} ${sol.usuario.apellido}` : 'Desconocido',
     tipoAusencia: tiposMap[sol.tipo] || sol.tipo,
     metadata: sol.metadata,
@@ -243,6 +251,11 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     motivo: sol.motivo,
     estado: sol.estado,
     createdAt: sol.createdAt,
+    documentosAdjuntos: sol.documentosAdjuntos,
+    aprobadaJefePor: sol.aprobadaJefePor,
+    aprobadaDirectorPor: sol.aprobadaDirectorPor,
+    aprobadaSecretarioPor: sol.aprobadaSecretarioPor,
+    aprobadaRrhhPor: sol.aprobadaRrhhPor,
     usuario: sol.usuario
       ? { id: sol.usuario.id, nombre: sol.usuario.nombre, apellido: sol.usuario.apellido, email: sol.usuario.email }
       : { id: 0, nombre: 'Desconocido', apellido: '', email: '' },

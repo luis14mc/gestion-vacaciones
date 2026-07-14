@@ -1,38 +1,39 @@
 /**
- * Resolución de aprobadores institucionales (Fase 2).
+ * Resolución de aprobadores institucionales (Fase 2 — corrección).
  *
  * Reglas CNI:
- *   - Empleado normal:
- *       pendiente_jefe -> pendiente_director (o pendiente_secretario_general)
- *       -> pendiente_rrhh -> aprobada_rrhh.
- *   - Jefe (no Director):
- *       pendiente_director (o pendiente_secretario_general) -> pendiente_rrhh.
+ *   - Empleado normal (con jefe superior):
+ *       pendiente_jefe → pendiente_rrhh → aprobada_rrhh.
+ *       NO pasa por Director ni Secretaría General.
+ *   - Jefe con Director superior (depto o jefeSuperiorId):
+ *       pendiente_director → pendiente_rrhh.
+ *   - Jefe sin Director:
+ *       pendiente_secretario_general → pendiente_rrhh,
+ *       aprobador = Director del departamento "Secretaría General".
  *   - Director: requiere VoBo Ministro; pasa directo a pendiente_rrhh.
- *   - Secretario General: requiere VoBo Ministro; pasa directo a
- *     pendiente_rrhh (no se autoaprueba).
  *
- * "Director disponible" (versión inicial):
- *   - existe
- *   - activo = true
- *   - deletedAt IS NULL
- *
- * Cuando se requiera cubrir la disponibilidad por vacaciones del Director,
- * el helper `estaUsuarioDisponible(usuarioId, fechaInicio, fechaFin)` se
- * puede extender para revisar solicitudes aprobadas_rrhh/finalizadas que
- * cubran el período. En esta primera versión solo se verifica
- * activo/deletedAt, suficiente para la regla institucional actual.
+ * El aprobador sustituto NO es un rol/flag `esSecretarioGeneral`.
+ * Se identifica como el Director (jefeId) del departamento
+ * "Secretaría General" / "Secretaria General".
  */
 import { db } from '@/lib/db';
 import { usuarios, departamentos } from '@/lib/db/schema';
-import { and, eq, isNull } from 'drizzle-orm';
-import type { SessionUser } from '@/types';
+import { and, eq, ilike, isNull, or } from 'drizzle-orm';
 
-export type TipoAprobadorSegundoNivel = 'director' | 'secretario_general';
+export type TipoAprobadorSegundoNivel =
+  | 'director'
+  | 'director_secretaria_general';
 
 export type MotivoAprobadorSegundoNivel =
   | 'director_asignado'
   | 'sin_director'
   | 'director_no_disponible';
+
+export type AprobadorInicialTipo =
+  | 'jefe'
+  | 'director'
+  | 'director_secretaria_general'
+  | 'rrhh';
 
 export interface AprobadorSegundoNivel {
   tipoAprobador: TipoAprobadorSegundoNivel;
@@ -42,9 +43,42 @@ export interface AprobadorSegundoNivel {
   nombre?: string;
 }
 
+export interface UsuarioSolicitanteFlujo {
+  id: number;
+  esDirector: boolean;
+  esJefe: boolean;
+  departamentoId: number | null;
+  jefeSuperiorId: number | null;
+}
+
+export interface FlujoAprobacionSolicitud {
+  requiereAprobacionJefe: boolean;
+  requiereAprobacionDirector: boolean;
+  requiereAprobacionSecretariaGeneral: boolean;
+  requiereVoBoMinistro: boolean;
+  pasaDirectoRrhh: boolean;
+  aprobadorInicialTipo: AprobadorInicialTipo;
+  aprobadorInicialId: number | null;
+  aprobadorInicialNombre: string | null;
+  aprobadorSegundoNivelTipo: TipoAprobadorSegundoNivel | null;
+  siguienteDespuesDeAprobacion: 'rrhh' | null;
+  mensajeFlujo: string;
+  pasosProceso: string[];
+  /** Si true, no se puede crear la solicitud (falta aprobador). */
+  errorFlujo: boolean;
+}
+
+export const ERROR_SIN_JEFE_SUPERIOR =
+  'El empleado no tiene jefe superior asignado. Contacte a RRHH/Admin.';
+
+export const ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL =
+  'No hay Director asignado al departamento Secretaría General para aprobación sustituta.';
+
+const PASO_NOTIFICACION = 'Notificación al solicitante';
+
 /**
  * Busca al Director de Área asociado al departamento del solicitante.
- * Usa el flag `esDirector` y la asignación `departamentos.jefeId`.
+ * Usa la asignación `departamentos.jefeId` y el flag `esDirector`.
  * Devuelve null si no hay director activo disponible.
  */
 export async function obtenerDirectorDeDepartamento(
@@ -64,8 +98,7 @@ export async function obtenerDirectorDeDepartamento(
     if (dir) return dir;
   }
 
-  // 2) Fallback: cualquier usuario con esDirector=true en ese departamento
-  //    y activo (cubre desalineamientos histórico ↔ depto.jefeId).
+  // 2) Fallback: cualquier usuario con esDirector=true en ese departamento.
   const [fallback] = await db
     .select({ id: usuarios.id, nombre: usuarios.nombre, apellido: usuarios.apellido })
     .from(usuarios)
@@ -103,50 +136,74 @@ async function buscarUsuarioDirectorActivo(
   return { id: row.id, nombre: `${row.nombre} ${row.apellido}`.trim() };
 }
 
-/**
- * Busca al Secretario General activo (debe existir máximo uno).
- * Lanza error controlado si hay más de uno activo para forzar limpieza
- * administrativa, en lugar de elegir uno arbitrariamente.
- */
-export async function obtenerSecretarioGeneral(): Promise<{
-  id: number;
-  nombre: string;
-} | null> {
-  const rows = await db
+async function buscarUsuarioActivo(
+  usuarioId: number
+): Promise<{ id: number; nombre: string } | null> {
+  const [row] = await db
     .select({
       id: usuarios.id,
       nombre: usuarios.nombre,
       apellido: usuarios.apellido,
+      activo: usuarios.activo,
+      deletedAt: usuarios.deletedAt,
     })
     .from(usuarios)
+    .where(eq(usuarios.id, usuarioId))
+    .limit(1);
+
+  if (!row || !row.activo || row.deletedAt) return null;
+  return { id: row.id, nombre: `${row.nombre} ${row.apellido}`.trim() };
+}
+
+/**
+ * Obtiene el Director del departamento "Secretaría General" / "Secretaria General".
+ * Es el aprobador sustituto institucional cuando un depto no tiene Director.
+ *
+ * Lanza Error con mensaje controlado si el departamento no existe o no tiene
+ * Director activo asignado.
+ */
+export async function obtenerDirectorSecretariaGeneral(): Promise<{
+  id: number;
+  nombre: string;
+}> {
+  const [depto] = await db
+    .select({
+      id: departamentos.id,
+      jefeId: departamentos.jefeId,
+      nombre: departamentos.nombre,
+    })
+    .from(departamentos)
     .where(
       and(
-        eq(usuarios.esSecretarioGeneral, true),
-        eq(usuarios.activo, true),
-        isNull(usuarios.deletedAt)
+        isNull(departamentos.deletedAt),
+        eq(departamentos.activo, true),
+        or(
+          ilike(departamentos.nombre, 'Secretaría General'),
+          ilike(departamentos.nombre, 'Secretaria General')
+        )
       )
-    );
+    )
+    .limit(1);
 
-  if (rows.length === 0) return null;
-
-  if (rows.length > 1) {
-    // Política CNI: solo puede haber un Secretario General activo.
-    // Lanzar evita selección arbitraria; el llamador decide cómo
-    // manejarlo (error al crear solicitud + auditoría).
-    throw new Error(
-      `Hay ${rows.length} Secretarios Generales activos. Debe existir máximo uno.`
-    );
+  if (!depto) {
+    throw new Error(ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL);
   }
 
-  const r = rows[0];
-  if (!r) return null;
-  return { id: r.id, nombre: `${r.nombre} ${r.apellido}`.trim() };
+  if (!depto.jefeId) {
+    throw new Error(ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL);
+  }
+
+  const director = await buscarUsuarioActivo(depto.jefeId);
+  if (!director) {
+    throw new Error(ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL);
+  }
+
+  return director;
 }
 
 /**
  * Determina si un usuario está disponible para aprobar en una fecha dada.
  * Versión inicial: solo verifica activo/deletedAt.
- * Punto de extensión: cruzar con solicitudes aprobadas que cubran el rango.
  */
 export async function estaUsuarioDisponible(
   usuarioId: number,
@@ -166,29 +223,48 @@ export async function estaUsuarioDisponible(
 }
 
 /**
- * Resuelve quién es el aprobador de segundo nivel para una solicitud nueva
- * del empleado solicitante. Devuelve el tipo y usuarioId concreto.
+ * Resuelve el Director superior de un Jefe:
+ *   1. Si `jefeSuperiorId` apunta a un Director activo → ese.
+ *   2. Si no, el Director del departamento del solicitante.
+ */
+export async function obtenerDirectorSuperiorJefe(params: {
+  jefeSuperiorId: number | null | undefined;
+  departamentoId: number | null | undefined;
+}): Promise<{ id: number; nombre: string } | null> {
+  if (params.jefeSuperiorId) {
+    const superior = await buscarUsuarioDirectorActivo(params.jefeSuperiorId);
+    if (superior) return superior;
+  }
+  return obtenerDirectorDeDepartamento(params.departamentoId);
+}
+
+/**
+ * Resuelve quién es el aprobador de segundo nivel (Director o Director de
+ * Secretaría General) para un Jefe. NO debe llamarse para empleados normales.
  *
  * Reglas:
- *   1. Si hay Director activo en el departamento del solicitante →
- *      tipo='director', motivo='director_asignado'.
- *   2. Si no hay Director activo → busca Secretario General →
- *      tipo='secretario_general', motivo='sin_director'.
- *      Si tampoco hay SG configurado → lanza error con mensaje claro.
- *
- * Si el solicitante es el propio Director, su aprobador de segundo nivel
- * sigue siendo RRHH (no entra a esta lógica): ver
- * `resolverFlujoSolicitante()` en solicitud-flujo-aprobacion.ts.
+ *   1. Si hay Director superior activo → tipo='director'.
+ *   2. Si no → Director de Secretaría General →
+ *      tipo='director_secretaria_general'.
+ *      Si tampoco hay → lanza error controlado.
  */
 export async function resolverAprobadorSegundoNivel(input: {
   departamentoId: number | null | undefined;
+  jefeSuperiorId?: number | null;
   fechaInicio?: string | null;
   fechaFin?: string | null;
 }): Promise<AprobadorSegundoNivel> {
-  const director = await obtenerDirectorDeDepartamento(input.departamentoId);
+  const director = await obtenerDirectorSuperiorJefe({
+    jefeSuperiorId: input.jefeSuperiorId,
+    departamentoId: input.departamentoId,
+  });
 
   if (director) {
-    const disponible = await estaUsuarioDisponible(director.id, input.fechaInicio, input.fechaFin);
+    const disponible = await estaUsuarioDisponible(
+      director.id,
+      input.fechaInicio,
+      input.fechaFin
+    );
     if (disponible) {
       return {
         tipoAprobador: 'director',
@@ -197,48 +273,200 @@ export async function resolverAprobadorSegundoNivel(input: {
         nombre: director.nombre,
       };
     }
-
-    // Director existe pero no disponible; cae a Secretario General.
-    const sg = await obtenerSecretarioGeneral();
-    if (!sg) {
-      throw new Error(
-        'El Director del departamento no está disponible y no hay Secretario General configurado para aprobación sustituta.'
-      );
-    }
-    return {
-      tipoAprobador: 'secretario_general',
-      usuarioId: sg.id,
-      motivo: 'director_no_disponible',
-      nombre: sg.nombre,
-    };
   }
 
-  // Sin Director: cae a Secretario General.
-  const sg = await obtenerSecretarioGeneral();
-  if (!sg) {
-    throw new Error(
-      'No hay Director de Área asignado al departamento ni Secretario General configurado para aprobación sustituta.'
-    );
-  }
+  // Sin Director (o no disponible): cae a Director de Secretaría General.
+  const dirSg = await obtenerDirectorSecretariaGeneral();
   return {
-    tipoAprobador: 'secretario_general',
-    usuarioId: sg.id,
-    motivo: 'sin_director',
-    nombre: sg.nombre,
+    tipoAprobador: 'director_secretaria_general',
+    usuarioId: dirSg.id,
+    motivo: director ? 'director_no_disponible' : 'sin_director',
+    nombre: dirSg.nombre,
   };
 }
 
 /**
- * Helper para cargar Secretario General desde sesión (modo cache de proceso).
- * Si la sesión es del propio Secretario General, devuelve sus datos.
+ * Función central: resuelve el flujo de aprobación completo para un
+ * usuario solicitante según las reglas institucionales Fase 2.
  */
-export function esSecretarioGeneral(user: SessionUser | null | undefined): boolean {
-  return Boolean(user?.esSecretarioGeneral);
+export async function resolverFlujoAprobacionSolicitud(
+  usuarioSolicitante: UsuarioSolicitanteFlujo,
+  tipo: string = 'vacaciones'
+): Promise<FlujoAprobacionSolicitud> {
+  const esCumpleanos = tipo === 'dia_cumpleanos';
+
+  // D. Director → VoBo Ministro → RRHH (excepto tipos que no exigen VoBo).
+  if (usuarioSolicitante.esDirector && !esCumpleanos && tipo !== 'licencia_medica') {
+    return {
+      requiereAprobacionJefe: false,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
+      requiereVoBoMinistro: true,
+      pasaDirectoRrhh: true,
+      aprobadorInicialTipo: 'rrhh',
+      aprobadorInicialId: null,
+      aprobadorInicialNombre: null,
+      aprobadorSegundoNivelTipo: null,
+      siguienteDespuesDeAprobacion: null,
+      mensajeFlujo:
+        'Como Director, debe adjuntar el VoBo del Ministro. La solicitud será revisada por Recursos Humanos.',
+      pasosProceso: [
+        'VoBo Ministro (mediante documento adjunto)',
+        'Revisión y validación de Recursos Humanos',
+        PASO_NOTIFICACION,
+      ],
+      errorFlujo: false,
+    };
+  }
+
+  // Cumpleaños / licencia médica de Director: flujo de empleado (jefe → RRHH).
+  if (usuarioSolicitante.esDirector && (esCumpleanos || tipo === 'licencia_medica')) {
+    if (!usuarioSolicitante.jefeSuperiorId) {
+      return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
+        requiereAprobacionJefe: true,
+      });
+    }
+    const jefe = await buscarUsuarioActivo(usuarioSolicitante.jefeSuperiorId);
+    if (!jefe) {
+      return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
+        requiereAprobacionJefe: true,
+      });
+    }
+    return flujoEmpleadoConJefe(jefe, esCumpleanos);
+  }
+
+  // B / C. Jefe (no Director).
+  if (usuarioSolicitante.esJefe) {
+    try {
+      const aprobador = await resolverAprobadorSegundoNivel({
+        departamentoId: usuarioSolicitante.departamentoId,
+        jefeSuperiorId: usuarioSolicitante.jefeSuperiorId,
+      });
+
+      if (aprobador.tipoAprobador === 'director') {
+        return {
+          requiereAprobacionJefe: false,
+          requiereAprobacionDirector: true,
+          requiereAprobacionSecretariaGeneral: false,
+          requiereVoBoMinistro: false,
+          pasaDirectoRrhh: false,
+          aprobadorInicialTipo: 'director',
+          aprobadorInicialId: aprobador.usuarioId,
+          aprobadorInicialNombre: aprobador.nombre ?? null,
+          aprobadorSegundoNivelTipo: 'director',
+          siguienteDespuesDeAprobacion: 'rrhh',
+          mensajeFlujo:
+            'Su solicitud será revisada por su Director y luego pasará a Recursos Humanos.',
+          pasosProceso: [
+            'Aprobación de Director de Área',
+            'Revisión y aprobación de Recursos Humanos',
+            PASO_NOTIFICACION,
+          ],
+          errorFlujo: false,
+        };
+      }
+
+      return {
+        requiereAprobacionJefe: false,
+        requiereAprobacionDirector: false,
+        requiereAprobacionSecretariaGeneral: true,
+        requiereVoBoMinistro: false,
+        pasaDirectoRrhh: false,
+        aprobadorInicialTipo: 'director_secretaria_general',
+        aprobadorInicialId: aprobador.usuarioId,
+        aprobadorInicialNombre: aprobador.nombre ?? null,
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
+        siguienteDespuesDeAprobacion: 'rrhh',
+        mensajeFlujo:
+          'Su departamento no tiene Director asignado. Su solicitud será revisada por el Director de Secretaría General y luego pasará a Recursos Humanos.',
+        pasosProceso: [
+          'Aprobación del Director de Secretaría General (aprobador sustituto)',
+          'Revisión y aprobación de Recursos Humanos',
+          PASO_NOTIFICACION,
+        ],
+        errorFlujo: false,
+      };
+    } catch (err) {
+      const mensaje =
+        err instanceof Error ? err.message : ERROR_SIN_DIRECTOR_SECRETARIA_GENERAL;
+      return flujoError(mensaje, {
+        requiereAprobacionDirector: false,
+        requiereAprobacionSecretariaGeneral: true,
+      });
+    }
+  }
+
+  // A. Empleado normal: requiere jefe superior; NO busca Director/SG.
+  if (!usuarioSolicitante.jefeSuperiorId) {
+    return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
+      requiereAprobacionJefe: true,
+    });
+  }
+
+  const jefe = await buscarUsuarioActivo(usuarioSolicitante.jefeSuperiorId);
+  if (!jefe) {
+    return flujoError(ERROR_SIN_JEFE_SUPERIOR, {
+      requiereAprobacionJefe: true,
+    });
+  }
+
+  return flujoEmpleadoConJefe(jefe, esCumpleanos);
 }
 
-/**
- * Para uso en bandejas: ¿el usuario es aprobador sustituto (Secretario General)?
- */
-export function usuarioEsSecretarioGeneralActivo(user: SessionUser | null | undefined): boolean {
-  return esSecretarioGeneral(user);
+function flujoEmpleadoConJefe(
+  jefe: { id: number; nombre: string },
+  esCumpleanos: boolean
+): FlujoAprobacionSolicitud {
+  return {
+    requiereAprobacionJefe: true,
+    requiereAprobacionDirector: false,
+    requiereAprobacionSecretariaGeneral: false,
+    requiereVoBoMinistro: false,
+    pasaDirectoRrhh: false,
+    aprobadorInicialTipo: 'jefe',
+    aprobadorInicialId: jefe.id,
+    aprobadorInicialNombre: jefe.nombre,
+    aprobadorSegundoNivelTipo: null,
+    siguienteDespuesDeAprobacion: 'rrhh',
+    mensajeFlujo: esCumpleanos
+      ? 'Su día libre por cumpleaños será revisado por su jefe y luego por Recursos Humanos.'
+      : 'Su solicitud será revisada por su jefe superior y luego pasará a Recursos Humanos.',
+    pasosProceso: [
+      esCumpleanos
+        ? 'Aprobación de Jefe Inmediato / Director de Área'
+        : 'Aprobación de Jefe Inmediato',
+      'Revisión y aprobación de Recursos Humanos',
+      PASO_NOTIFICACION,
+    ],
+    errorFlujo: false,
+  };
+}
+
+function flujoError(
+  mensaje: string,
+  flags: Partial<
+    Pick<
+      FlujoAprobacionSolicitud,
+      | 'requiereAprobacionJefe'
+      | 'requiereAprobacionDirector'
+      | 'requiereAprobacionSecretariaGeneral'
+    >
+  >
+): FlujoAprobacionSolicitud {
+  return {
+    requiereAprobacionJefe: flags.requiereAprobacionJefe ?? false,
+    requiereAprobacionDirector: flags.requiereAprobacionDirector ?? false,
+    requiereAprobacionSecretariaGeneral:
+      flags.requiereAprobacionSecretariaGeneral ?? false,
+    requiereVoBoMinistro: false,
+    pasaDirectoRrhh: false,
+    aprobadorInicialTipo: 'rrhh',
+    aprobadorInicialId: null,
+    aprobadorInicialNombre: null,
+    aprobadorSegundoNivelTipo: null,
+    siguienteDespuesDeAprobacion: null,
+    mensajeFlujo: mensaje,
+    pasosProceso: ['No se puede crear la solicitud'],
+    errorFlujo: true,
+  };
 }

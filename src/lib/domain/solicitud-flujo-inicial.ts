@@ -1,10 +1,15 @@
 /**
  * Resolución del estado inicial y auto-aprobación al crear solicitudes.
  *
- * Fase 2: cuando el solicitante es un Jefe, el aprobador de segundo nivel
- * lo decide `resolverAprobadorSegundoNivel()` (Director o Secretario General).
- * Ya NO hay excepción hardcoded por nombre de departamento.
+ * Fase 2 (corrección):
+ *   - Empleado → pendiente_jefe (luego RRHH; sin Director).
+ *   - Jefe con Director → pendiente_director.
+ *   - Jefe sin Director → pendiente_secretario_general
+ *     (aprobador = Director de Secretaría General).
+ *   - Director → pendiente_rrhh (VoBo Ministro).
  */
+
+import type { TipoAprobadorSegundoNivel } from '@/lib/domain/aprobadores';
 
 export type EstadoInicialSolicitud =
   | 'aprobada_jefe'
@@ -22,22 +27,12 @@ export interface FlujoInicialSolicitud {
 }
 
 /**
- * Determina el estado inicial y campos de auto-aprobación al crear una solicitud.
- *
- * Reglas (Fase 2):
- *   - Director que solicita vacaciones → pendiente_rrhh (VoBo Ministro
- *     validado por RRHH).
- *   - Jefe (no Director) → pendiente_director o pendiente_secretario_general
- *     según `aprobadorSegundoNivelTipo`.
- *   - Empleado normal → pendiente_jefe.
- *
- * No auto-aprueba solicitudes de Jefe (la jerarquía institucional requiere
- * siempre una aprobación de segundo nivel).
+ * Determina el estado inicial al crear una solicitud.
  */
 export function resolverFlujoInicialSolicitud(params: {
   esDirector: boolean;
   esJefe: boolean;
-  aprobadorSegundoNivelTipo?: 'director' | 'secretario_general' | null;
+  aprobadorSegundoNivelTipo?: TipoAprobadorSegundoNivel | null;
 }): FlujoInicialSolicitud {
   if (params.esDirector) {
     return {
@@ -50,12 +45,12 @@ export function resolverFlujoInicialSolicitud(params: {
   }
 
   if (params.esJefe) {
-    if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
+    if (params.aprobadorSegundoNivelTipo === 'director_secretaria_general') {
       return {
         estadoInicial: 'pendiente_secretario_general',
         metadataInicial: {
           flujoAprobacion: 'jefe_sin_director',
-          aprobadorSegundoNivelTipo: 'secretario_general',
+          aprobadorSegundoNivelTipo: 'director_secretaria_general',
         },
       };
     }
@@ -70,6 +65,8 @@ export function resolverFlujoInicialSolicitud(params: {
 
   return {
     estadoInicial: 'pendiente_jefe',
-    metadataInicial: {},
+    metadataInicial: {
+      flujoAprobacion: 'empleado_jefe_rrhh',
+    },
   };
 }

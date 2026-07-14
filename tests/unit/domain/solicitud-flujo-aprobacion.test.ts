@@ -4,7 +4,7 @@ import {
   mensajeFlujoVisible,
 } from '@/lib/domain/solicitud-flujo-aprobacion';
 
-describe('solicitud-flujo-aprobacion — Fase 2', () => {
+describe('solicitud-flujo-aprobacion — Fase 2 (corrección)', () => {
   describe('Director', () => {
     it('Director normal: requiere VoBo del Ministro', () => {
       const flujo = resolverFlujoAprobacionNuevaSolicitud({
@@ -16,7 +16,8 @@ describe('solicitud-flujo-aprobacion — Fase 2', () => {
       expect(flujo.requiereVoBoMinistro).toBe(true);
       expect(flujo.pasaDirectoRrhh).toBe(true);
       expect(flujo.requiereAprobacionDirector).toBe(false);
-      expect(flujo.requiereAprobacionSecretarioGeneral).toBe(false);
+      expect(flujo.requiereAprobacionSecretariaGeneral).toBe(false);
+      expect(flujo.aprobadorInicialTipo).toBe('rrhh');
       expect(flujo.pasosProceso[0]).toMatch(/VoBo Ministro/i);
     });
 
@@ -64,28 +65,31 @@ describe('solicitud-flujo-aprobacion — Fase 2', () => {
       });
 
       expect(flujo.requiereAprobacionDirector).toBe(true);
-      expect(flujo.requiereAprobacionSecretarioGeneral).toBe(false);
+      expect(flujo.requiereAprobacionSecretariaGeneral).toBe(false);
+      expect(flujo.aprobadorInicialTipo).toBe('director');
+      expect(flujo.siguienteDespuesDeAprobacion).toBe('rrhh');
       expect(flujo.aprobadorSegundoNivelTipo).toBe('director');
       expect(flujo.pasosProceso[0]).toMatch(/Director de Área/i);
     });
 
-    it('Jefe sin Director: cae a Secretario General', () => {
+    it('Jefe sin Director: cae a Director de Secretaría General', () => {
       const flujo = resolverFlujoAprobacionNuevaSolicitud({
         esDirector: false,
         esJefe: true,
-        aprobadorSegundoNivelTipo: 'secretario_general',
-        aprobadorSegundoNivelNombre: 'Sec. General',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
+        aprobadorSegundoNivelNombre: 'Dir. SG',
         tipo: 'vacaciones',
       });
 
-      expect(flujo.requiereAprobacionSecretarioGeneral).toBe(true);
+      expect(flujo.requiereAprobacionSecretariaGeneral).toBe(true);
       expect(flujo.requiereAprobacionDirector).toBe(false);
-      expect(flujo.aprobadorSegundoNivelTipo).toBe('secretario_general');
-      expect(flujo.mensajeFlujo).toMatch(/Secretario General/i);
-      expect(flujo.pasosProceso[0]).toMatch(/Secretario General/i);
+      expect(flujo.aprobadorInicialTipo).toBe('director_secretaria_general');
+      expect(flujo.aprobadorSegundoNivelTipo).toBe('director_secretaria_general');
+      expect(flujo.mensajeFlujo).toMatch(/Director de Secretaría General/i);
+      expect(flujo.pasosProceso[0]).toMatch(/Secretaría General/i);
     });
 
-    it('Jefe en cumpleaños: no requiere VoBo y va por Director', () => {
+    it('Jefe en cumpleaños: no requiere VoBo y va por jefe', () => {
       const flujo = resolverFlujoAprobacionNuevaSolicitud({
         esDirector: false,
         esJefe: true,
@@ -99,35 +103,22 @@ describe('solicitud-flujo-aprobacion — Fase 2', () => {
   });
 
   describe('Empleado', () => {
-    it('Empleado con Director: flujo Jefe → Director → RRHH', () => {
+    it('Empleado normal: flujo Jefe → RRHH (sin Director)', () => {
       const flujo = resolverFlujoAprobacionNuevaSolicitud({
         esDirector: false,
         esJefe: false,
-        aprobadorSegundoNivelTipo: 'director',
-        aprobadorSegundoNivelNombre: 'Dir. OPS',
         tipo: 'vacaciones',
       });
 
       expect(flujo.requiereAprobacionJefe).toBe(true);
       expect(flujo.requiereAprobacionDirector).toBe(false);
-      expect(flujo.requiereAprobacionSecretarioGeneral).toBe(false);
+      expect(flujo.requiereAprobacionSecretariaGeneral).toBe(false);
+      expect(flujo.aprobadorInicialTipo).toBe('jefe');
+      expect(flujo.siguienteDespuesDeAprobacion).toBe('rrhh');
+      expect(flujo.aprobadorSegundoNivelTipo).toBeNull();
       expect(flujo.pasosProceso[0]).toMatch(/Jefe Inmediato/i);
-      expect(flujo.pasosProceso[1]).toMatch(/Director de Área/i);
-    });
-
-    it('Empleado sin Director: flujo Jefe → Sec. General → RRHH', () => {
-      const flujo = resolverFlujoAprobacionNuevaSolicitud({
-        esDirector: false,
-        esJefe: false,
-        aprobadorSegundoNivelTipo: 'secretario_general',
-        aprobadorSegundoNivelNombre: 'Sec. General',
-        tipo: 'vacaciones',
-      });
-
-      expect(flujo.requiereAprobacionJefe).toBe(true);
-      expect(flujo.requiereAprobacionSecretarioGeneral).toBe(true);
-      expect(flujo.mensajeFlujo).toMatch(/Secretario General/i);
-      expect(flujo.pasosProceso[1]).toMatch(/Secretario General/i);
+      expect(flujo.pasosProceso[1]).toMatch(/Recursos Humanos/i);
+      expect(flujo.pasosProceso.join(' ')).not.toMatch(/Director de Área/i);
     });
   });
 

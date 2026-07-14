@@ -179,18 +179,21 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
   it('Director con VoBo → pendiente_rrhh (pasa directo)', async () => {
     mockGetSession.mockResolvedValue(sessionDirector);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionDirector.id,
       esDirector: true,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 1,
       departamentoNombre: 'Operaciones',
+      jefeSuperiorId: null,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: true,
+      errorFlujo: false,
       mensajeFlujo: 'VoBo Ministro',
       pasosProceso: ['VoBo', 'RRHH'],
     });
@@ -213,18 +216,21 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
   it('Director sin VoBo → 400', async () => {
     mockGetSession.mockResolvedValue(sessionDirector);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionDirector.id,
       esDirector: true,
       esJefe: false,
-      esSecretarioGeneral: false,
       departamentoId: 1,
       departamentoNombre: 'Operaciones',
+      jefeSuperiorId: null,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: true,
+      errorFlujo: false,
       mensajeFlujo: 'VoBo Ministro',
       pasosProceso: ['VoBo', 'RRHH'],
     });
@@ -237,20 +243,25 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
   it('Jefe con Director disponible → pendiente_director', async () => {
     mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionJefe.id,
       esDirector: false,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 2,
       departamentoNombre: 'TI',
+      jefeSuperiorId: 50,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: true,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
-      mensajeFlujo: 'Su solicitud será enviada al Director de Área',
+      errorFlujo: false,
+      mensajeFlujo: 'Su solicitud será revisada por su Director',
       pasosProceso: ['Aprobación Director', 'RRHH'],
+      aprobadorInicialTipo: 'director',
+      siguienteDespuesDeAprobacion: 'rrhh',
       aprobadorSegundoNivelTipo: 'director',
       aprobadorSegundoNivelNombre: 'Director TI',
     });
@@ -274,25 +285,31 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     );
   });
 
-  it('Jefe sin Director → pendiente_secretario_general', async () => {
+  it('Jefe sin Director → pendiente_secretario_general (Dir. SG)', async () => {
     mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionJefe.id,
       esDirector: false,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 2,
       departamentoNombre: 'TI',
+      jefeSuperiorId: null,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: true,
       requiereAprobacionSecretarioGeneral: true,
       pasaDirectoRrhh: false,
-      mensajeFlujo: 'Esta Dirección no tiene Director. La solicitud pasará al Secretario General.',
-      pasosProceso: ['Aprobación Sec. General', 'RRHH'],
-      aprobadorSegundoNivelTipo: 'secretario_general',
-      aprobadorSegundoNivelNombre: 'Sec. General',
+      errorFlujo: false,
+      mensajeFlujo:
+        'Su departamento no tiene Director asignado. Su solicitud será revisada por el Director de Secretaría General.',
+      pasosProceso: ['Aprobación Dir. Sec. General', 'RRHH'],
+      aprobadorInicialTipo: 'director_secretaria_general',
+      siguienteDespuesDeAprobacion: 'rrhh',
+      aprobadorSegundoNivelTipo: 'director_secretaria_general',
+      aprobadorSegundoNivelNombre: 'Dir. SG',
     });
 
     const response = await POST(
@@ -306,31 +323,36 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     expect(mockRegistrarAuditoria).toHaveBeenCalledWith(
       expect.objectContaining({
         detalles: expect.objectContaining({
-          aprobadorSegundoNivelTipo: 'secretario_general',
+          aprobadorSegundoNivelTipo: 'director_secretaria_general',
         }),
       })
     );
   });
 
-  it('Empleado normal → pendiente_jefe', async () => {
+  it('Empleado normal con jefe → pendiente_jefe (sin buscar Director/SG)', async () => {
     mockGetSession.mockResolvedValue(sessionEmpleado);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionEmpleado.id,
       esDirector: false,
       esJefe: false,
-      esSecretarioGeneral: false,
       departamentoId: 3,
       departamentoNombre: 'Operaciones',
+      jefeSuperiorId: 20,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: true,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
-      mensajeFlujo: 'Su solicitud será enviada a su jefe inmediato',
-      pasosProceso: ['Jefe', 'Director', 'RRHH'],
-      aprobadorSegundoNivelTipo: 'director',
-      aprobadorSegundoNivelNombre: 'Dir. OPS',
+      errorFlujo: false,
+      mensajeFlujo: 'Su solicitud será revisada por su jefe superior',
+      pasosProceso: ['Jefe', 'RRHH'],
+      aprobadorInicialTipo: 'jefe',
+      siguienteDespuesDeAprobacion: 'rrhh',
+      aprobadorSegundoNivelTipo: null,
+      aprobadorSegundoNivelNombre: null,
     });
 
     const response = await POST(
@@ -343,23 +365,63 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
     expect(response.status).toBe(200);
   });
 
-  it('Jefe sin Director Y sin Secretario General → 422 con error claro', async () => {
+  it('Empleado normal sin jefe → 400 controlado', async () => {
+    mockGetSession.mockResolvedValue(sessionEmpleado);
+    mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionEmpleado.id,
+      esDirector: false,
+      esJefe: false,
+      departamentoId: 3,
+      departamentoNombre: 'Operaciones',
+      jefeSuperiorId: null,
+    });
+    mockResolverFlujoSolicitante.mockResolvedValue({
+      requiereVoBoMinistro: false,
+      requiereAprobacionJefe: true,
+      requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
+      requiereAprobacionSecretarioGeneral: false,
+      pasaDirectoRrhh: false,
+      errorFlujo: true,
+      mensajeFlujo:
+        'El empleado no tiene jefe superior asignado. Contacte a RRHH/Admin.',
+      pasosProceso: ['No se puede crear la solicitud'],
+      aprobadorSegundoNivelTipo: null,
+    });
+
+    const response = await POST(
+      crearRequest({
+        ...payloadVacaciones,
+        usuarioId: sessionEmpleado.id,
+        documentosAdjuntos: [adjuntoVoboJefe],
+      })
+    );
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toContain('jefe superior');
+    expect(mockCrearSolicitud).not.toHaveBeenCalled();
+  });
+
+  it('Jefe sin Director Y sin Dir. SG → 400 controlado', async () => {
     mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionJefe.id,
       esDirector: false,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 99,
       departamentoNombre: 'Sin director',
+      jefeSuperiorId: null,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
-      requiereAprobacionSecretarioGeneral: false,
+      requiereAprobacionSecretariaGeneral: true,
+      requiereAprobacionSecretarioGeneral: true,
       pasaDirectoRrhh: false,
+      errorFlujo: true,
       mensajeFlujo:
-        'No hay Director de Área asignado al departamento ni Secretario General configurado para aprobación sustituta.',
+        'No hay Director asignado al departamento Secretaría General para aprobación sustituta.',
       pasosProceso: ['No se puede crear la solicitud'],
       aprobadorSegundoNivelTipo: null,
       aprobadorSegundoNivelNombre: null,
@@ -369,35 +431,34 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
       crearRequest({
         ...payloadVacaciones,
         usuarioId: sessionJefe.id,
-        // Sin adjuntos: ya fallaría en VoBo antes de llegar al 422.
-        // Como el flujo se rompe antes (aprobadorSegundoNivelTipo=null),
-        // el orden de checks del backend hace que el 422 se devuelva
-        // ANTES de evaluar adjuntos — pero igualmente mandamos VoBo.
         documentosAdjuntos: [adjuntoVoboSecretario],
       })
     );
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(400);
     const result = await response.json();
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Secretario General');
+    expect(result.error).toContain('Secretaría General');
     expect(mockCrearSolicitud).not.toHaveBeenCalled();
   });
 
   it('Licencia médica sin constancia sigue fallando', async () => {
     mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionJefe.id,
       esDirector: false,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 2,
       departamentoNombre: 'TI',
+      jefeSuperiorId: 50,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: true,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
+      errorFlujo: false,
       mensajeFlujo: 'OK',
       pasosProceso: ['Director', 'RRHH'],
       aprobadorSegundoNivelTipo: 'director',
@@ -425,18 +486,21 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
   it('Licencia médica con VoBo + constancia crea solicitud', async () => {
     mockGetSession.mockResolvedValue(sessionJefe);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionJefe.id,
       esDirector: false,
       esJefe: true,
-      esSecretarioGeneral: false,
       departamentoId: 2,
       departamentoNombre: 'TI',
+      jefeSuperiorId: 50,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: true,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
+      errorFlujo: false,
       mensajeFlujo: 'OK',
       pasosProceso: ['Director', 'RRHH'],
       aprobadorSegundoNivelTipo: 'director',
@@ -460,18 +524,21 @@ describe('POST /api/solicitudes — Fase 2 (flujo Director/Secretario General)',
   it('Director + permiso_salida 1-2h sin VoBo crea solicitud', async () => {
     mockGetSession.mockResolvedValue(sessionDirector);
     mockCargarDatosFlujoSolicitante.mockResolvedValue({
+      id: sessionDirector.id,
       esDirector: true,
       esJefe: false,
-      esSecretarioGeneral: false,
       departamentoId: 1,
       departamentoNombre: 'Operaciones',
+      jefeSuperiorId: null,
     });
     mockResolverFlujoSolicitante.mockResolvedValue({
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: true,
+      errorFlujo: false,
       mensajeFlujo: 'VoBo Ministro',
       pasosProceso: ['VoBo', 'RRHH'],
     });

@@ -44,9 +44,9 @@ export interface TransicionContexto {
   directorSinSubordinadosDirectos?: boolean;
   // Jerarquía: si el solicitante es Jefe, solo el Director puede aprobarlo
   solicitanteEsJefe?: boolean;
-  // Fase 2: aprobador de segundo nivel esperado (Director o Secretario General)
+  // Fase 2: aprobador de segundo nivel esperado (Director o Dir. Secretaría General)
   aprobadorSegundoNivelId?: number | null;
-  aprobadorSegundoNivelTipo?: 'director' | 'secretario_general' | null;
+  aprobadorSegundoNivelTipo?: 'director' | 'director_secretaria_general' | 'secretario_general' | null;
   // Acción ejecutada por el sistema (cron/jobs), no por un usuario
   esSistema?: boolean;
 }
@@ -79,9 +79,9 @@ export const ESTADOS_CONFIG: Record<EstadoSolicitud, EstadoConfig> = {
   pendiente_director:             { label: 'Pendiente Director',      bgColor: 'bg-yellow-100', textColor: 'text-yellow-800',  esFinal: false },
   aprobada_director:              { label: 'Aprobada Director',       bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
   rechazada_director:             { label: 'Rechazada Director',      bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
-  pendiente_secretario_general:   { label: 'Pendiente Sec. General',  bgColor: 'bg-amber-100',  textColor: 'text-amber-800',   esFinal: false },
-  aprobada_secretario_general:    { label: 'Aprobada Sec. General',   bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
-  rechazada_secretario_general:   { label: 'Rechazada Sec. General',  bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
+  pendiente_secretario_general:   { label: 'Pendiente Dir. Sec. General', bgColor: 'bg-amber-100',  textColor: 'text-amber-800',   esFinal: false },
+  aprobada_secretario_general:    { label: 'Aprobada Dir. Sec. General',  bgColor: 'bg-blue-100',   textColor: 'text-blue-800',    esFinal: false },
+  rechazada_secretario_general:   { label: 'Rechazada Dir. Sec. General', bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
   pendiente_rrhh:                 { label: 'Pendiente RRHH',          bgColor: 'bg-yellow-100', textColor: 'text-yellow-800',  esFinal: false },
   aprobada_rrhh:                  { label: 'Aprobada',                bgColor: 'bg-green-100',  textColor: 'text-green-800',   esFinal: false },
   rechazada_rrhh:                 { label: 'Rechazada RRHH',          bgColor: 'bg-red-100',    textColor: 'text-red-800',     esFinal: true  },
@@ -159,28 +159,28 @@ const guardDirector: Guard = (ctx) => {
 };
 
 /**
- * Secretario General aprueba/rechaza solicitudes en estado
- * `pendiente_secretario_general` cuando no hay Director disponible.
- * - Solo el SG esperado (id en `aprobadorSegundoNivelId`) puede.
- * - Si el aprobador es Admin, bypass.
- * - Self-approval denied (un SG no se autoaprueba; debe adjuntar VoBo
- *   del Ministro como cualquier directivo).
+ * Director de Secretaría General (aprobador sustituto) aprueba/rechaza
+ * solicitudes en `pendiente_secretario_general` cuando no hay Director.
+ * - Solo el aprobador asignado (`aprobadorSegundoNivelId`) puede.
+ * - No depende del flag/rol `esSecretarioGeneral`.
+ * - Admin bypass. Self-approval denied.
  */
 const guardSecretarioGeneral: Guard = (ctx) => {
-  if (!ctx.esAdmin && !ctx.esSecretarioGeneral) {
-    return 'Solo el Secretario General puede realizar esta acción sustituta';
-  }
   if (ctx.esAdmin) return null;
   if (ctx.usuarioId === ctx.solicitanteId) {
     return 'No puede aprobar/rechazar su propia solicitud';
   }
   if (
     ctx.aprobadorSegundoNivelId != null &&
-    ctx.aprobadorSegundoNivelId !== ctx.usuarioId
+    ctx.aprobadorSegundoNivelId === ctx.usuarioId
   ) {
-    return 'Esta solicitud no le corresponde aprobarla';
+    return null;
   }
-  return null;
+  // Compat: solicitudes legacy que aún usaban el flag esSecretarioGeneral.
+  if (ctx.esSecretarioGeneral && ctx.aprobadorSegundoNivelId == null) {
+    return null;
+  }
+  return 'Solo el Director de Secretaría General asignado puede realizar esta acción sustituta';
 };
 
 const guardCancelar: Guard = (ctx) => {
@@ -199,17 +199,18 @@ const sinEfectos = () => [] as Efecto[];
 const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
   borrador: {
     enviar: {
-      // Reglas Fase 2:
-      //   - Director que solicita vacaciones: requiere VoBo Ministro;
-      //     se crea en estado `pendiente_rrhh` (RRHH valida VoBo).
-      //   - Jefe (no Director): el aprobador de segundo nivel lo decide
-      //     resolverAprobadorSegundoNivel() → pendiente_director /
-      //     pendiente_secretario_general.
-      //   - Empleado normal: pendiente_jefe.
+      // Reglas Fase 2 (corrección):
+      //   - Director: pendiente_rrhh (VoBo Ministro).
+      //   - Jefe: pendiente_director o pendiente_secretario_general
+      //     (Director de Secretaría General como sustituto).
+      //   - Empleado normal: pendiente_jefe → luego RRHH.
       destino: (ctx) => {
         if (ctx.esDirector) return 'pendiente_rrhh';
         if (ctx.esJefe) {
-          if (ctx.aprobadorSegundoNivelTipo === 'secretario_general') {
+          if (
+            ctx.aprobadorSegundoNivelTipo === 'director_secretaria_general' ||
+            ctx.aprobadorSegundoNivelTipo === 'secretario_general'
+          ) {
             return 'pendiente_secretario_general';
           }
           return 'pendiente_director';
@@ -227,12 +228,9 @@ const TRANSICIONES: Record<string, Record<string, TransicionDef>> = {
   },
   pendiente_jefe: {
     aprobar_jefe: {
-      // Después del Jefe inmediato: el aprobador de segundo nivel es el
-      // Director (o el Secretario General si no hay Director disponible).
-      destino: (ctx) =>
-        ctx.aprobadorSegundoNivelTipo === 'secretario_general'
-          ? 'pendiente_secretario_general'
-          : 'pendiente_director',
+      // Empleado normal: tras el jefe inmediato pasa directo a RRHH.
+      // Ya no se exige Director ni Secretaría General en este tramo.
+      destino: 'pendiente_rrhh',
       guard: guardJefe,
       efectos: sinEfectos,
     },

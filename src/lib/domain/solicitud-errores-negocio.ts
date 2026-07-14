@@ -27,6 +27,8 @@ const PATRONES_VALIDACION_NEGOCIO = [
   /^Balance insuficiente\./,
   /^Los Directores deben adjuntar obligatoriamente el correo con el VoBo del Ministro\.$/,
   /^Para Directores es obligatorio adjuntar el VoBo del Ministro\.$/,
+  /^El empleado no tiene jefe superior asignado\. Contacte a RRHH\/Admin\.$/,
+  /^No hay Director asignado al departamento Secretaría General para aprobación sustituta\.$/,
 ] as const;
 
 const PATRONES_ERROR_TECNICO = [

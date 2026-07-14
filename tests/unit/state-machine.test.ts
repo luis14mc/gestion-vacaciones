@@ -86,7 +86,7 @@ const admin: TransicionContexto = {
 describe('State Machine - Solicitudes', () => {
   // ─── Flujo Happy Path ───
 
-  describe('Flujo completo Fase 2: pendiente_jefe → pendiente_director → pendiente_rrhh → aprobada_rrhh', () => {
+  describe('Flujo completo Fase 2: empleado pendiente_jefe → pendiente_rrhh → aprobada_rrhh', () => {
     it('empleado puede enviar borrador → pendiente_jefe', () => {
       const resultado = transicionar('borrador', 'enviar', empleado, 5);
       expect(resultado.exito).toBe(true);
@@ -96,21 +96,10 @@ describe('State Machine - Solicitudes', () => {
       );
     });
 
-    it('jefe aprueba pendiente_jefe → pendiente_director (por defecto)', () => {
+    it('jefe aprueba pendiente_jefe → pendiente_rrhh (sin Director)', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', jefe, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('pendiente_director');
-    });
-
-    it('jefe aprueba pendiente_jefe → pendiente_secretario_general si así se indica', () => {
-      const resultado = transicionar(
-        'pendiente_jefe',
-        'aprobar_jefe',
-        { ...jefe, aprobadorSegundoNivelTipo: 'secretario_general' },
-        5
-      );
-      expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('pendiente_secretario_general');
+      expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
     });
 
     it('Director aprueba pendiente_director → pendiente_rrhh', () => {
@@ -129,17 +118,17 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
     });
 
-    it('Secretario General aprueba pendiente_secretario_general → pendiente_rrhh', () => {
+    it('Director de Secretaría General aprueba pendiente_secretario_general → pendiente_rrhh', () => {
       const sgCtx: TransicionContexto = {
         usuarioId: 99,
         solicitanteId: 10,
-        esDirector: false,
+        esDirector: true,
         esJefe: false,
         esRrhh: false,
         esAdmin: false,
-        esSecretarioGeneral: true,
+        esSecretarioGeneral: false,
         aprobadorSegundoNivelId: 99,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
       };
       const resultado = transicionar(
         'pendiente_secretario_general',
@@ -210,17 +199,17 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.estadoNuevo).toBe('rechazada_director');
     });
 
-    it('SG puede rechazar pendiente_secretario_general', () => {
+    it('Dir. Secretaría General puede rechazar pendiente_secretario_general', () => {
       const sgCtx: TransicionContexto = {
         usuarioId: 99,
         solicitanteId: 10,
-        esDirector: false,
+        esDirector: true,
         esJefe: false,
         esRrhh: false,
         esAdmin: false,
-        esSecretarioGeneral: true,
+        esSecretarioGeneral: false,
         aprobadorSegundoNivelId: 99,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
       };
       const resultado = transicionar(
         'pendiente_secretario_general',
@@ -242,10 +231,10 @@ describe('State Machine - Solicitudes', () => {
       expect(resultado.error).toContain('Jefe o Director');
     });
 
-    it('director puede aprobar solicitud pendiente_jefe → pendiente_director', () => {
+    it('director puede aprobar solicitud pendiente_jefe → pendiente_rrhh', () => {
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', director, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('pendiente_director');
+      expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
     });
 
     it('jefe NO puede aprobar como RRHH', () => {
@@ -361,7 +350,7 @@ it('el Director SI puede aprobar la solicitud de un Jefe del mismo depto', () =>
       };
       const resultado = transicionar('pendiente_jefe', 'aprobar_jefe', directorAprobador, 5);
       expect(resultado.exito).toBe(true);
-      expect(resultado.estadoNuevo).toBe('pendiente_director');
+      expect(resultado.estadoNuevo).toBe('pendiente_rrhh');
     });
 
     it('un Jefe SI puede aprobar a un empleado normal del mismo depto', () => {
@@ -453,17 +442,17 @@ it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
       expect(bad.error).toMatch(/no le corresponde/i);
     });
 
-    it('Secretario General solo puede aprobar pendiente_secretario_general de SU ID', () => {
+    it('Dir. Secretaría General solo puede aprobar pendiente_secretario_general de SU ID', () => {
       const sgEsperado: TransicionContexto = {
         usuarioId: 99,
         solicitanteId: 10,
-        esDirector: false,
+        esDirector: true,
         esJefe: false,
         esRrhh: false,
         esAdmin: false,
-        esSecretarioGeneral: true,
+        esSecretarioGeneral: false,
         aprobadorSegundoNivelId: 99,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
       };
       const sgOtro: TransicionContexto = {
         ...sgEsperado,
@@ -485,17 +474,17 @@ it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
       expect(bad.exito).toBe(false);
     });
 
-    it('SG NO puede aprobar su propia solicitud aunque sea aprobador', () => {
+    it('Dir. SG NO puede aprobar su propia solicitud aunque sea aprobador', () => {
       const sgSolicitante: TransicionContexto = {
         usuarioId: 99,
         solicitanteId: 99,
-        esDirector: false,
+        esDirector: true,
         esJefe: false,
         esRrhh: false,
         esAdmin: false,
-        esSecretarioGeneral: true,
+        esSecretarioGeneral: false,
         aprobadorSegundoNivelId: 99,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
       };
       const r = transicionar(
         'pendiente_secretario_general',
@@ -576,13 +565,13 @@ it('usuario con rol Jefe y RRHH NO puede aprobar su propia solicitud', () => {
       const sgCtx: TransicionContexto = {
         usuarioId: 99,
         solicitanteId: 10,
-        esDirector: false,
+        esDirector: true,
         esJefe: false,
         esRrhh: false,
         esAdmin: false,
-        esSecretarioGeneral: true,
+        esSecretarioGeneral: false,
         aprobadorSegundoNivelId: 99,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
       };
       const resultado = transicionar(
         'pendiente_secretario_general',

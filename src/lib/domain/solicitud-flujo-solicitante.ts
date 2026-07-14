@@ -1,18 +1,19 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { usuarios, departamentos } from '@/lib/db/schema';
+import type { FlujoAprobacionNuevaSolicitud } from '@/lib/domain/solicitud-flujo-aprobacion';
 import {
-  resolverFlujoAprobacionNuevaSolicitud,
-  type FlujoAprobacionNuevaSolicitud,
-} from '@/lib/domain/solicitud-flujo-aprobacion';
-import { resolverAprobadorSegundoNivel } from '@/lib/domain/aprobadores';
+  resolverFlujoAprobacionSolicitud,
+  type FlujoAprobacionSolicitud,
+} from '@/lib/domain/aprobadores';
 
 export interface DatosFlujoSolicitante {
+  id: number;
   esDirector: boolean;
   esJefe: boolean;
-  esSecretarioGeneral: boolean;
   departamentoId: number | null;
   departamentoNombre: string | null;
+  jefeSuperiorId: number | null;
 }
 
 export async function cargarDatosFlujoSolicitante(
@@ -20,10 +21,11 @@ export async function cargarDatosFlujoSolicitante(
 ): Promise<DatosFlujoSolicitante | null> {
   const [usuario] = await db
     .select({
+      id: usuarios.id,
       esDirector: usuarios.esDirector,
       esJefe: usuarios.esJefe,
-      esSecretarioGeneral: usuarios.esSecretarioGeneral,
       departamentoId: usuarios.departamentoId,
+      jefeSuperiorId: usuarios.jefeSuperiorId,
     })
     .from(usuarios)
     .where(eq(usuarios.id, usuarioId))
@@ -44,66 +46,56 @@ export async function cargarDatosFlujoSolicitante(
   }
 
   return {
+    id: usuario.id,
     esDirector: usuario.esDirector,
     esJefe: usuario.esJefe,
-    esSecretarioGeneral: usuario.esSecretarioGeneral,
     departamentoId: usuario.departamentoId,
     departamentoNombre,
+    jefeSuperiorId: usuario.jefeSuperiorId,
+  };
+}
+
+function aFlujoUi(flujo: FlujoAprobacionSolicitud): FlujoAprobacionNuevaSolicitud {
+  return {
+    requiereVoBoMinistro: flujo.requiereVoBoMinistro,
+    requiereAprobacionJefe: flujo.requiereAprobacionJefe,
+    requiereAprobacionDirector: flujo.requiereAprobacionDirector,
+    requiereAprobacionSecretariaGeneral: flujo.requiereAprobacionSecretariaGeneral,
+    // Alias legacy para consumidores que aún lean el nombre anterior.
+    requiereAprobacionSecretarioGeneral: flujo.requiereAprobacionSecretariaGeneral,
+    pasaDirectoRrhh: flujo.pasaDirectoRrhh,
+    mensajeFlujo: flujo.mensajeFlujo,
+    pasosProceso: flujo.pasosProceso,
+    aprobadorInicialTipo: flujo.aprobadorInicialTipo,
+    siguienteDespuesDeAprobacion: flujo.siguienteDespuesDeAprobacion,
+    aprobadorSegundoNivelTipo: flujo.aprobadorSegundoNivelTipo,
+    aprobadorSegundoNivelNombre: flujo.aprobadorInicialNombre,
+    aprobadorInicialId: flujo.aprobadorInicialId,
+    errorFlujo: flujo.errorFlujo,
   };
 }
 
 /**
  * Resuelve el flujo completo para una solicitud nueva del usuario.
- * Para Jefe/Empleado evalúa también quién sería el aprobador de segundo
- * nivel (Director vs Secretario General) llamando al helper institucional.
+ * Delega en `resolverFlujoAprobacionSolicitud` (fuente canónica).
  *
- * Si el resultado indica falta de Director + falta de Secretario General
- * configurado, devuelve un flujo "error" con `requiereAprobacionSecretarioGeneral = false`
- * y `mensajeFlujo` describiendo el problema; el llamador (crear solicitud)
- * debe convertir esto en 422 con el mensaje.
+ * Si falta jefe (empleado) o Director de Secretaría General (jefe sin
+ * Director), `errorFlujo=true` y `mensajeFlujo` describe el problema;
+ * el llamador debe responder 400.
  */
 export async function resolverFlujoSolicitante(
   datos: DatosFlujoSolicitante,
   tipo: string
 ): Promise<FlujoAprobacionNuevaSolicitud> {
-  let aprobadorSegundoNivelTipo: 'director' | 'secretario_general' | null = null;
-  let aprobadorSegundoNivelNombre: string | null = null;
-
-  // Solo Jefes y Empleados pasan por aprobador de segundo nivel.
-  // Directores van directo a RRHH (VoBo Ministro).
-  if (!datos.esDirector) {
-    try {
-      const aprobador = await resolverAprobadorSegundoNivel({
-        departamentoId: datos.departamentoId,
-      });
-      aprobadorSegundoNivelTipo = aprobador.tipoAprobador;
-      aprobadorSegundoNivelNombre = aprobador.nombre ?? null;
-    } catch (err) {
-      // Sin Director y sin SG configurado: el flujo se reporta "roto"
-      // para que el caller rechace la creación de la solicitud con 422.
-      const mensajeError =
-        err instanceof Error
-          ? err.message
-          : 'No hay aprobador de segundo nivel configurado.';
-      return {
-        requiereVoBoMinistro: false,
-        requiereAprobacionJefe: !datos.esJefe,
-        requiereAprobacionDirector: false,
-        requiereAprobacionSecretarioGeneral: false,
-        pasaDirectoRrhh: false,
-        mensajeFlujo: mensajeError,
-        pasosProceso: ['No se puede crear la solicitud'],
-        aprobadorSegundoNivelTipo: null,
-        aprobadorSegundoNivelNombre: null,
-      };
-    }
-  }
-
-  return resolverFlujoAprobacionNuevaSolicitud({
-    esDirector: datos.esDirector,
-    esJefe: datos.esJefe,
-    aprobadorSegundoNivelTipo,
-    aprobadorSegundoNivelNombre,
-    tipo,
-  });
+  const flujo = await resolverFlujoAprobacionSolicitud(
+    {
+      id: datos.id,
+      esDirector: datos.esDirector,
+      esJefe: datos.esJefe,
+      departamentoId: datos.departamentoId,
+      jefeSuperiorId: datos.jefeSuperiorId,
+    },
+    tipo
+  );
+  return aFlujoUi(flujo);
 }

@@ -91,7 +91,7 @@ describe('aprobacion-inbox — Fase 2', () => {
       ).toBe(true);
     });
 
-    it('NO ve pendiente_rrhh ni pendiente_secretario_general', () => {
+    it('NO ve pendiente_rrhh (sí puede ver pendiente_secretario_general si es Dir. SG)', () => {
       const ctx = {
         sessionId: 50,
         equipoIds: [],
@@ -106,17 +106,18 @@ describe('aprobacion-inbox — Fase 2', () => {
       expect(
         solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_rrhh' }, ctx)
       ).toBe(false);
+      // Director de Secretaría General (esDirector) ve sustituciones filtradas por SQL.
       expect(
         solicitudVisibleEnBandeja(
           { usuarioId: 20, estado: 'pendiente_secretario_general' },
           ctx
         )
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 
-  describe('Secretario General', () => {
-    it('ve pendiente_secretario_general', () => {
+  describe('Director de Secretaría General (sustituto)', () => {
+    it('ve pendiente_secretario_general asignadas como sustituto', () => {
       const ctx = {
         sessionId: 99,
         equipoIds: [],
@@ -124,8 +125,8 @@ describe('aprobacion-inbox — Fase 2', () => {
           esAdmin: false,
           esRrhh: false,
           esJefe: false,
-          esDirector: false,
-          esSecretarioGeneral: true,
+          esDirector: true,
+          esSecretarioGeneral: false,
         },
       };
       expect(

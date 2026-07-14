@@ -27,11 +27,28 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   try {
     const flujo = await resolverFlujoSolicitante(datosSolicitante, tipo);
 
+    if (flujo.errorFlujo) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: flujo.mensajeFlujo,
+          data: {
+            ...flujo,
+            requiereVoBo: false,
+            tipoVoBoRequerido: null,
+            etiquetaVoBo: null,
+            requiereConstanciaMedica: false,
+            adjuntosRequeridos: [],
+          },
+        },
+        { status: 400 }
+      );
+    }
+
     const requisitos = resolverRequisitosAdjuntosSolicitud({
       usuarioSolicitante: {
         esDirector: datosSolicitante.esDirector,
         esJefe: datosSolicitante.esJefe,
-        esSecretarioGeneral: datosSolicitante.esSecretarioGeneral,
       },
       tipoSolicitud: tipo,
       duracionPermiso,
@@ -62,7 +79,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         success: false,
         error: mensajeError,
       },
-      { status: 422 }
+      { status: 400 }
     );
   }
 });

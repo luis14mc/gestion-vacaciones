@@ -51,22 +51,27 @@ vi.mock('@/lib/domain/solicitud-flujo-solicitante', async (importOriginal) => {
   return {
     ...actual,
     cargarDatosFlujoSolicitante: vi.fn(async () => ({
+      id: 10,
       esDirector: false,
       esJefe: false,
-      esSecretarioGeneral: false,
       departamentoId: 1,
       departamentoNombre: 'Tecnología',
+      jefeSuperiorId: 20,
     })),
     resolverFlujoSolicitante: vi.fn(async () => ({
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: true,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
+      errorFlujo: false,
       mensajeFlujo: 'OK',
-      pasosProceso: ['Jefe', 'Director', 'RRHH'],
-      aprobadorSegundoNivelTipo: 'director',
-      aprobadorSegundoNivelNombre: 'Director',
+      pasosProceso: ['Jefe', 'RRHH'],
+      aprobadorInicialTipo: 'jefe',
+      siguienteDespuesDeAprobacion: 'rrhh',
+      aprobadorSegundoNivelTipo: null,
+      aprobadorSegundoNivelNombre: null,
     })),
   };
 });

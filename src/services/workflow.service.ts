@@ -105,8 +105,8 @@ export async function obtenerAccionesParaSolicitud(
     rechazar_jefe: 'Rechazar (Jefe)',
     aprobar_director: 'Aprobar (Director)',
     rechazar_director: 'Rechazar (Director)',
-    aprobar_secretario_general: 'Aprobar (Sec. General)',
-    rechazar_secretario_general: 'Rechazar (Sec. General)',
+    aprobar_secretario_general: 'Aprobar (Dir. Sec. General)',
+    rechazar_secretario_general: 'Rechazar (Dir. Sec. General)',
     aprobar_rrhh: 'Aprobar (RRHH)',
     rechazar_rrhh: 'Rechazar (RRHH)',
     cancelar: 'Cancelar solicitud',
@@ -218,7 +218,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
     accion === 'aprobar_director' || accion === 'rechazar_director'
       ? ('director' as const)
       : accion === 'aprobar_secretario_general' || accion === 'rechazar_secretario_general'
-        ? ('secretario_general' as const)
+        ? ('director_secretaria_general' as const)
         : null;
 
   const resultado = transicionar(estadoActual, accion, {
@@ -373,7 +373,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
               ? 'Jefe'
               : nuevoEstado === 'rechazada_director'
                 ? 'Director'
-                : 'Secretario General';
+                : 'Director de Secretaría General';
 
           for (const rrhh of rrhhUsers) {
             if (rrhh.email) {

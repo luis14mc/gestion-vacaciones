@@ -344,21 +344,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
   const flujo = await resolverFlujoSolicitante(datosSolicitante, tipo);
 
-  // Si el helper de flujo reportó error por falta de aprobador de segundo
-  // nivel (Director + Secretario General ausentes), rechazamos la creación
-  // con 422 y mensaje claro.
-  if (
-    flujo.aprobadorSegundoNivelTipo == null &&
-    !flujo.pasaDirectoRrhh &&
-    datosSolicitante.esJefe
-  ) {
+  // Errores de flujo controlados (sin jefe / sin Dir. Secretaría General).
+  if (flujo.errorFlujo) {
     await registrarAuditoria({
       usuarioId: sessionUser.id,
       accion: 'validacion_rechazada',
       tablaAfectada: 'solicitudes',
       detalles: {
         tipo,
-        motivo: 'sin_aprobador_segundo_nivel',
+        motivo: 'flujo_aprobacion_incompleto',
         mensajeFlujo: flujo.mensajeFlujo,
       },
     });
@@ -367,18 +361,16 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         success: false,
         error: flujo.mensajeFlujo,
       },
-      { status: 422 }
+      { status: 400 }
     );
   }
 
   // Fase 3: resolver requisitos de adjuntos según rol/flujo del
-// solicitante. La regla canónica vive en `requisitos-adjuntos.ts`.
-// Esto reemplaza las reglas hardcoded por rol/tipo del esquema previo.
+  // solicitante. La regla canónica vive en `requisitos-adjuntos.ts`.
   const requisitosAdjuntos = resolverRequisitosAdjuntosSolicitud({
     usuarioSolicitante: {
       esDirector: datosSolicitante.esDirector,
       esJefe: datosSolicitante.esJefe,
-      esSecretarioGeneral: datosSolicitante.esSecretarioGeneral,
     },
     tipoSolicitud: tipo,
     duracionPermiso,
@@ -506,7 +498,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       aprobadorSegundoNivelTipo: flujo.aprobadorSegundoNivelTipo ?? null,
       aprobadorSegundoNivelNombre: flujo.aprobadorSegundoNivelNombre ?? null,
       requiereAprobacionDirector: flujo.requiereAprobacionDirector,
-      requiereAprobacionSecretarioGeneral: flujo.requiereAprobacionSecretarioGeneral,
+      requiereAprobacionSecretariaGeneral: flujo.requiereAprobacionSecretariaGeneral,
+      aprobadorInicialTipo: flujo.aprobadorInicialTipo ?? null,
       adjuntosRequeridos: requisitosAdjuntos.adjuntosRequeridos.map((r) => r.tipo),
       adjuntosSubidos: adjuntosParaAuditoria.map((a) => ({
         tipo: a.tipo ?? a.nombre,

@@ -2,26 +2,37 @@
  * Flujo de aprobación para nueva solicitud (UI + API).
  * Fuente única para no duplicar reglas en el frontend.
  *
- * Fase 2: se incorpora la figura del Secretario General como aprobador
- * sustituto del Director de Área.
+ * Fase 2 (corrección): el aprobador sustituto es el Director del
+ * departamento Secretaría General — no un rol/flag aparte.
  */
 import { esDirectorConFlujoVoBo, debeExigirVoBoMinistro } from '@/lib/domain/solicitud-adjuntos';
+import type {
+  AprobadorInicialTipo,
+  TipoAprobadorSegundoNivel,
+} from '@/lib/domain/aprobadores';
 
 export type FlujoEspecialNuevaSolicitud = never;
 
-export type TipoAprobadorSegundoNivelUI = 'director' | 'secretario_general';
+export type TipoAprobadorSegundoNivelUI = TipoAprobadorSegundoNivel;
 
 export interface FlujoAprobacionNuevaSolicitud {
   requiereVoBoMinistro: boolean;
   requiereAprobacionJefe: boolean;
   requiereAprobacionDirector: boolean;
+  /** Alias institucional: Director de Secretaría General (sustituto). */
+  requiereAprobacionSecretariaGeneral: boolean;
+  /** @deprecated Preferir requiereAprobacionSecretariaGeneral */
   requiereAprobacionSecretarioGeneral: boolean;
   pasaDirectoRrhh: boolean;
   flujoEspecial?: FlujoEspecialNuevaSolicitud;
   mensajeFlujo: string;
   pasosProceso: string[];
+  aprobadorInicialTipo?: AprobadorInicialTipo | null;
+  siguienteDespuesDeAprobacion?: 'rrhh' | null;
   aprobadorSegundoNivelTipo?: TipoAprobadorSegundoNivelUI | null;
   aprobadorSegundoNivelNombre?: string | null;
+  aprobadorInicialId?: number | null;
+  errorFlujo?: boolean;
 }
 
 const MENSAJE_DIRECTOR =
@@ -31,37 +42,30 @@ const MENSAJE_DIRECTOR_PERMISO_CORTO =
   'Su permiso de salida será revisado por Recursos Humanos. No se requiere VoBo del Ministro para permisos de 1–2 horas ni medio día.';
 
 const MENSAJE_JEFE =
-  'Su solicitud será enviada al Director de Área para aprobación y luego a Recursos Humanos.';
+  'Su solicitud será revisada por su Director y luego pasará a Recursos Humanos.';
 
 const MENSAJE_JEFE_SG =
-  'Esta Dirección no tiene Director activo o asignado. Luego de la aprobación de su jefe inmediato, la solicitud pasará al Secretario General.';
+  'Su departamento no tiene Director asignado. Su solicitud será revisada por el Director de Secretaría General y luego pasará a Recursos Humanos.';
 
 const MENSAJE_EMPLEADO =
-  'Su solicitud será enviada a su jefe inmediato para aprobación y luego a Recursos Humanos.';
-
-const MENSAJE_EMPLEADO_SG =
-  'Esta Dirección no tiene Director activo o asignado. Luego de la aprobación de su jefe inmediato, la solicitud pasará al Secretario General.';
+  'Su solicitud será revisada por su jefe superior y luego pasará a Recursos Humanos.';
 
 const MENSAJE_CUMPLEANOS =
-  'Su día libre por cumpleaños será revisado por su jefe o director y luego por Recursos Humanos.';
+  'Su día libre por cumpleaños será revisado por su jefe y luego por Recursos Humanos.';
 
 const PASO_NOTIFICACION = 'Notificación al solicitante';
 
 /**
- * Resuelve el flujo de aprobación de una solicitud nueva.
- *
- * @param params.esDirector               Solicitante es Director.
- * @param params.esJefe                   Solicitante es Jefe (no Director).
- * @param params.aprobadorSegundoNivelTipo Tipo del aprobador de segundo nivel
- *                                          cuando el solicitante es Jefe.
- * @param params.aprobadorSegundoNivelNombre Nombre humano del aprobador.
- * @param params.tipo                     Tipo de solicitud.
+ * Resuelve el flujo de aprobación de una solicitud nueva (puro, sin BD).
+ * Preferir `resolverFlujoAprobacionSolicitud` en aprobadores.ts para el
+ * camino canónico con resolución de aprobadores.
  */
 export function resolverFlujoAprobacionNuevaSolicitud(params: {
   esDirector: boolean;
   esJefe: boolean;
   aprobadorSegundoNivelTipo?: TipoAprobadorSegundoNivelUI | null;
   aprobadorSegundoNivelNombre?: string | null;
+  aprobadorInicialId?: number | null;
   tipo?: string;
 }): FlujoAprobacionNuevaSolicitud {
   const tipo = params.tipo ?? 'vacaciones';
@@ -72,8 +76,11 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
       requiereVoBoMinistro: true,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: true,
+      aprobadorInicialTipo: 'rrhh',
+      siguienteDespuesDeAprobacion: null,
       mensajeFlujo: MENSAJE_DIRECTOR,
       pasosProceso: [
         'VoBo Ministro (mediante documento adjunto)',
@@ -88,8 +95,11 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: true,
       requiereAprobacionDirector: false,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
+      aprobadorInicialTipo: 'jefe',
+      siguienteDespuesDeAprobacion: 'rrhh',
       mensajeFlujo: MENSAJE_CUMPLEANOS,
       pasosProceso: [
         'Aprobación de Jefe Inmediato / Director de Área',
@@ -100,18 +110,22 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
   }
 
   if (params.esJefe) {
-    if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
+    if (params.aprobadorSegundoNivelTipo === 'director_secretaria_general') {
       return {
         requiereVoBoMinistro: false,
         requiereAprobacionJefe: false,
         requiereAprobacionDirector: false,
+        requiereAprobacionSecretariaGeneral: true,
         requiereAprobacionSecretarioGeneral: true,
         pasaDirectoRrhh: false,
         mensajeFlujo: MENSAJE_JEFE_SG,
-        aprobadorSegundoNivelTipo: 'secretario_general',
+        aprobadorInicialTipo: 'director_secretaria_general',
+        siguienteDespuesDeAprobacion: 'rrhh',
+        aprobadorSegundoNivelTipo: 'director_secretaria_general',
         aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
+        aprobadorInicialId: params.aprobadorInicialId ?? null,
         pasosProceso: [
-          'Aprobación de Secretario General (aprobador sustituto)',
+          'Aprobación del Director de Secretaría General (aprobador sustituto)',
           'Revisión y aprobación de Recursos Humanos',
           PASO_NOTIFICACION,
         ],
@@ -121,11 +135,15 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
       requiereVoBoMinistro: false,
       requiereAprobacionJefe: false,
       requiereAprobacionDirector: true,
+      requiereAprobacionSecretariaGeneral: false,
       requiereAprobacionSecretarioGeneral: false,
       pasaDirectoRrhh: false,
       mensajeFlujo: MENSAJE_JEFE,
+      aprobadorInicialTipo: 'director',
+      siguienteDespuesDeAprobacion: 'rrhh',
       aprobadorSegundoNivelTipo: 'director',
       aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
+      aprobadorInicialId: params.aprobadorInicialId ?? null,
       pasosProceso: [
         'Aprobación de Director de Área',
         'Revisión y aprobación de Recursos Humanos',
@@ -134,38 +152,22 @@ export function resolverFlujoAprobacionNuevaSolicitud(params: {
     };
   }
 
-  // Empleado normal
-  if (params.aprobadorSegundoNivelTipo === 'secretario_general') {
-    return {
-      requiereVoBoMinistro: false,
-      requiereAprobacionJefe: true,
-      requiereAprobacionDirector: false,
-      requiereAprobacionSecretarioGeneral: true,
-      pasaDirectoRrhh: false,
-      mensajeFlujo: MENSAJE_EMPLEADO_SG,
-      aprobadorSegundoNivelTipo: 'secretario_general',
-      aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
-      pasosProceso: [
-        'Aprobación de Jefe Inmediato',
-        'Aprobación de Secretario General (aprobador sustituto)',
-        'Revisión y aprobación de Recursos Humanos',
-        PASO_NOTIFICACION,
-      ],
-    };
-  }
-
+  // Empleado normal: Jefe → RRHH (sin Director / Secretaría General).
   return {
     requiereVoBoMinistro: false,
     requiereAprobacionJefe: true,
     requiereAprobacionDirector: false,
+    requiereAprobacionSecretariaGeneral: false,
     requiereAprobacionSecretarioGeneral: false,
     pasaDirectoRrhh: false,
     mensajeFlujo: MENSAJE_EMPLEADO,
-    aprobadorSegundoNivelTipo: 'director',
-    aprobadorSegundoNivelNombre: params.aprobadorSegundoNivelNombre ?? null,
+    aprobadorInicialTipo: 'jefe',
+    siguienteDespuesDeAprobacion: 'rrhh',
+    aprobadorSegundoNivelTipo: null,
+    aprobadorSegundoNivelNombre: null,
+    aprobadorInicialId: params.aprobadorInicialId ?? null,
     pasosProceso: [
       'Aprobación de Jefe Inmediato',
-      'Aprobación de Director de Área',
       'Revisión y aprobación de Recursos Humanos',
       PASO_NOTIFICACION,
     ],

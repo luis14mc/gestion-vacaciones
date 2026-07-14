@@ -38,17 +38,17 @@ describe('requisitos-adjuntos — Fase 3 VoBo obligatorio', () => {
       expect(r.adjuntosRequeridos[0].obligatorio).toBe(true);
     });
 
-    it('Jefe sin Director requiere vobo_secretario_general', () => {
+    it('Jefe sin Director requiere vobo_secretario_general (Dir. SG)', () => {
       const r = resolverRequisitosAdjuntosSolicitud({
         usuarioSolicitante: { esDirector: false, esJefe: true },
         tipoSolicitud: 'vacaciones',
         flujoAprobacion: {
           requiereVoBoMinistro: false,
-          aprobadorSegundoNivelTipo: 'secretario_general',
+          aprobadorSegundoNivelTipo: 'director_secretaria_general',
         },
       });
       expect(r.tipoVoBoRequerido).toBe('vobo_secretario_general');
-      expect(r.etiquetaVoBo).toBe('VoBo del Secretario General');
+      expect(r.etiquetaVoBo).toBe('VoBo del Director de Secretaría General');
     });
 
     it('Director en vacaciones requiere vobo_ministro', () => {
@@ -93,15 +93,14 @@ describe('requisitos-adjuntos — Fase 3 VoBo obligatorio', () => {
       expect(r.adjuntosRequeridos).toHaveLength(0);
     });
 
-    it('Secretario General requiere vobo_ministro (no se autoaprueba)', () => {
+    it('Director de Secretaría General (esDirector) requiere vobo_ministro', () => {
       const r = resolverRequisitosAdjuntosSolicitud({
         usuarioSolicitante: {
-          esDirector: false,
+          esDirector: true,
           esJefe: false,
-          esSecretarioGeneral: true,
         },
         tipoSolicitud: 'vacaciones',
-        flujoAprobacion: { requiereVoBoMinistro: false },
+        flujoAprobacion: { requiereVoBoMinistro: true },
       });
       expect(r.tipoVoBoRequerido).toBe('vobo_ministro');
       expect(r.etiquetaVoBo).toBe('VoBo del Ministro');
@@ -273,7 +272,9 @@ describe('requisitos-adjuntos — Fase 3 VoBo obligatorio', () => {
     it('devuelve etiqueta legible para tipos conocidos', () => {
       expect(etiquetaAdjunto('vobo_jefe')).toBe('VoBo del Jefe inmediato');
       expect(etiquetaAdjunto('vobo_director')).toBe('VoBo del Director de Área');
-      expect(etiquetaAdjunto('vobo_secretario_general')).toBe('VoBo del Secretario General');
+      expect(etiquetaAdjunto('vobo_secretario_general')).toBe(
+        'VoBo del Director de Secretaría General'
+      );
       expect(etiquetaAdjunto('vobo_ministro')).toBe('VoBo del Ministro');
       expect(etiquetaAdjunto('constancia_medica')).toBe('Constancia médica');
     });

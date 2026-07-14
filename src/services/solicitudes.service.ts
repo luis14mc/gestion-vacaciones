@@ -273,15 +273,27 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       departamentoNombre = departamento?.nombre ?? null;
     }
 
-    // Fase 2: resolver aprobador de segundo nivel antes de calcular flujo.
-    let aprobadorSegundoNivelTipo: 'director' | 'secretario_general' | null = null;
+    // Fase 2 (corrección):
+    //   - Empleado normal: solo requiere jefeSuperiorId; NO busca Director/SG.
+    //   - Jefe: resuelve Director o Director de Secretaría General.
+    //   - Director: pasa directo a RRHH (sin aprobador de segundo nivel).
+    let aprobadorSegundoNivelTipo: 'director' | 'director_secretaria_general' | null = null;
     let aprobadorDirectorId: number | null = null;
     let aprobadorSecretarioId: number | null = null;
 
-    if (!esDirector) {
+    if (!esDirector && !usuario.esJefe) {
+      if (!usuario.jefeSuperiorId) {
+        throw new Error(
+          'El empleado no tiene jefe superior asignado. Contacte a RRHH/Admin.'
+        );
+      }
+    }
+
+    if (!esDirector && usuario.esJefe) {
       try {
         const aprobador = await resolverAprobadorSegundoNivel({
           departamentoId: usuario.departamentoId,
+          jefeSuperiorId: usuario.jefeSuperiorId,
           fechaInicio: fechaInicioFinal,
           fechaFin: fechaFinFinal,
         });
@@ -295,7 +307,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         const mensajeError =
           err instanceof Error
             ? err.message
-            : 'No hay aprobador de segundo nivel configurado.';
+            : 'No hay Director asignado al departamento Secretaría General para aprobación sustituta.';
         throw new Error(mensajeError);
       }
     }
@@ -311,7 +323,6 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       usuarioSolicitante: {
         esDirector: usuario.esDirector,
         esJefe: usuario.esJefe,
-        esSecretarioGeneral: usuario.esSecretarioGeneral,
       },
       tipoSolicitud: tipo,
       duracionPermiso,
@@ -337,7 +348,9 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
         ? { aprobadorSegundoNivelTipo }
         : {}),
       ...(aprobadorDirectorId ? { aprobadorDirectorIdSnapshot: aprobadorDirectorId } : {}),
-      ...(aprobadorSecretarioId ? { aprobadorSecretarioIdSnapshot: aprobadorSecretarioId } : {}),
+      ...(aprobadorSecretarioId
+        ? { aprobadorSecretarioIdSnapshot: aprobadorSecretarioId }
+        : {}),
       // Fase 3: snapshot del tipo de VoBo requerido (sin guardarlo
       // en columna propia, vive en metadata para evitar migración).
       ...(tipoVoBoRequerido ? { tipoVoBoRequerido } : {}),

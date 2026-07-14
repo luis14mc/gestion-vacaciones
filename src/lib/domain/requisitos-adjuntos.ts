@@ -4,9 +4,9 @@
  * Política CNI (VoBo obligatorio por auditoría institucional):
  *   - Empleado normal       → vobo_jefe
  *   - Jefe                  → vobo_director o vobo_secretario_general
- *                             (según disponibilidad del Director).
+ *                             (este último = VoBo del Director de
+ *                             Secretaría General cuando no hay Director).
  *   - Director              → vobo_ministro.
- *   - Secretario General    → vobo_ministro (no se autoaprueba).
  *   - Licencia médica       → constancia_medica + el VoBo del rol/flujo.
  *
  * El frontend consume el resultado de este helper desde
@@ -49,8 +49,8 @@ export const ETIQUETAS_ADJUNTO: Record<TipoAdjunto, { etiqueta: string; mensajeF
     mensajeFaltante: 'Debe adjuntar el VoBo del Director de Área.',
   },
   vobo_secretario_general: {
-    etiqueta: 'VoBo del Secretario General',
-    mensajeFaltante: 'Debe adjuntar el VoBo del Secretario General.',
+    etiqueta: 'VoBo del Director de Secretaría General',
+    mensajeFaltante: 'Debe adjuntar el VoBo del Director de Secretaría General.',
   },
   vobo_ministro: {
     etiqueta: 'VoBo del Ministro',
@@ -63,14 +63,19 @@ export const ETIQUETAS_ADJUNTO: Record<TipoAdjunto, { etiqueta: string; mensajeF
 };
 
 /**
- * Determina el VoBo de segundo nivel (Director o SG) esperado para un
- * Jefe. Si el flujo ya resolvió `aprobadorSegundoNivelTipo`, se usa esa
- * señal para evitar recalcular.
+ * Determina el VoBo de segundo nivel (Director o Dir. Secretaría General)
+ * esperado para un Jefe. Si el flujo ya resolvió `aprobadorSegundoNivelTipo`,
+ * se usa esa señal para evitar recalcular.
  */
 function tipoVoBoParaJefe(
-  aprobadorSegundoNivelTipo: 'director' | 'secretario_general' | null
+  aprobadorSegundoNivelTipo:
+    | 'director'
+    | 'director_secretaria_general'
+    | 'secretario_general'
+    | null
 ): TipoAdjunto {
-  return aprobadorSegundoNivelTipo === 'secretario_general'
+  return aprobadorSegundoNivelTipo === 'director_secretaria_general' ||
+    aprobadorSegundoNivelTipo === 'secretario_general'
     ? 'vobo_secretario_general'
     : 'vobo_director';
 }
@@ -87,6 +92,7 @@ export function resolverRequisitosAdjuntosSolicitud(params: {
   usuarioSolicitante: {
     esDirector: boolean;
     esJefe: boolean;
+    /** @deprecated Ya no se usa para resolver VoBo; el Dir. SG es un Director. */
     esSecretarioGeneral?: boolean;
   };
   /** Tipo de la solicitud (vacaciones, permiso_salida, etc.). */
@@ -96,7 +102,11 @@ export function resolverRequisitosAdjuntosSolicitud(params: {
   /** Resultado del flujo institucional (aprobador de segundo nivel esperado). */
   flujoAprobacion: {
     requiereVoBoMinistro: boolean;
-    aprobadorSegundoNivelTipo?: 'director' | 'secretario_general' | null;
+    aprobadorSegundoNivelTipo?:
+      | 'director'
+      | 'director_secretaria_general'
+      | 'secretario_general'
+      | null;
   };
   fechaInicio?: string | null;
   fechaFin?: string | null;
@@ -114,10 +124,7 @@ export function resolverRequisitosAdjuntosSolicitud(params: {
   // 1. Determinar VoBo institucional por rol del solicitante.
   let tipoVoBo: TipoAdjunto | null = null;
 
-  if (usuarioSolicitante.esSecretarioGeneral) {
-    // Secretario General NO se autoaprueba: VoBo del Ministro.
-    tipoVoBo = 'vobo_ministro';
-  } else if (usuarioSolicitante.esDirector) {
+  if (usuarioSolicitante.esDirector) {
     if (
       esDirectorConFlujoVoBo({
         esDirector: true,

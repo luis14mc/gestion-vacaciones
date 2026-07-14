@@ -1,9 +1,10 @@
 /**
  * Bandeja /aprobar-solicitudes — estados y reglas accionables.
  *
- * Fase 2: el flujo institucional pasa por hasta tres niveles de aprobación
- * (Jefe inmediato → Director o Secretario General → RRHH). Cada rol ve
- * exclusivamente las solicitudes que le corresponde aprobar.
+ * Fase 2 (corrección):
+ *   - Empleado: Jefe → RRHH
+ *   - Jefe: Director (o Dir. Secretaría General) → RRHH
+ * Cada rol ve exclusivamente las solicitudes que le corresponde aprobar.
  */
 
 export const ESTADOS_PENDIENTE_JEFE = ['pendiente_jefe'] as const;
@@ -25,7 +26,8 @@ export interface RolBandejaAprobacion {
   esRrhh: boolean;
   esJefe: boolean;
   esDirector: boolean;
-  esSecretarioGeneral: boolean;
+  /** Legacy; la bandeja de sustituto ya no depende de este flag. */
+  esSecretarioGeneral?: boolean;
 }
 
 export function puedeAccederBandejaAprobacion(roles: RolBandejaAprobacion): boolean {
@@ -34,7 +36,7 @@ export function puedeAccederBandejaAprobacion(roles: RolBandejaAprobacion): bool
     roles.esRrhh ||
     roles.esJefe ||
     roles.esDirector ||
-    roles.esSecretarioGeneral
+    Boolean(roles.esSecretarioGeneral)
   );
 }
 
@@ -49,13 +51,12 @@ export interface SolicitudBandejaInput {
 
 /**
  * Determina si una solicitud debe aparecer en la bandeja de aprobación del
- * usuario de la sesión. Reglas (Fase 2):
+ * usuario de la sesión. Reglas (Fase 2 corrección):
  *   - Jefe/Director: ve `pendiente_jefe` de su equipo directo.
- *   - Director: ve `pendiente_director` cuando él es el aprobador esperado
- *     (validado en queries por `aprobada_director_por` / `aprobadorSegundoNivelId`).
- *   - Secretario General: ve `pendiente_secretario_general` derivado a él.
- *   - RRHH/Admin: ve `pendiente_rrhh` y legacy `aprobada_jefe`. NO ve
- *     solicitudes en `pendiente_director` ni `pendiente_secretario_general`.
+ *   - Director: ve `pendiente_director` cuando él es el aprobador esperado.
+ *   - Director de Secretaría General: ve `pendiente_secretario_general`
+ *     asignadas a él como sustituto (filtrado por query SQL).
+ *   - RRHH/Admin: ve `pendiente_rrhh` y legacy `aprobada_jefe`.
  *   - Nunca ve sus propias solicitudes.
  */
 export function solicitudVisibleEnBandeja(
@@ -69,7 +70,7 @@ export function solicitudVisibleEnBandeja(
   if (solicitud.usuarioId === context.sessionId) return false;
   if (!esEstadoAccionableAprobacion(solicitud.estado)) return false;
 
-  // RRHH / Admin: solo lo que ya pasó Director/SG.
+  // RRHH / Admin: solo lo que ya pasó al tramo de RRHH.
   if (context.roles.esRrhh || context.roles.esAdmin) {
     if (
       solicitud.estado === 'pendiente_rrhh' ||
@@ -79,7 +80,7 @@ export function solicitudVisibleEnBandeja(
     }
   }
 
-  // Admin bypass para jefe/director/sg pendiente (por si la bandeja administrativa lo requiere).
+  // Admin bypass para jefe/director/sg pendiente.
   if (context.roles.esAdmin) {
     if (solicitud.estado === 'pendiente_jefe') return true;
     if (solicitud.estado === 'pendiente_director') return true;
@@ -95,15 +96,15 @@ export function solicitudVisibleEnBandeja(
     return true;
   }
 
-  // Director: pendiente_director se filtra por query SQL (aprobada_director_por);
-  // aquí solo dejamos pasar si la query ya aplicó el filtro.
+  // Director: pendiente_director se filtra por query SQL.
   if (context.roles.esDirector && solicitud.estado === 'pendiente_director') {
     return true;
   }
 
-  // Secretario General: pendiente_secretario_general se filtra por query SQL.
+  // Director de Secretaría General (sustituto): filtrado por query SQL
+  // vía aprobadaSecretarioPor. Aquí permitimos a Directores (y legacy SG).
   if (
-    context.roles.esSecretarioGeneral &&
+    (context.roles.esDirector || context.roles.esSecretarioGeneral) &&
     solicitud.estado === 'pendiente_secretario_general'
   ) {
     return true;
@@ -142,14 +143,14 @@ export function determinarAccionAprobacion(
 export function etiquetaBotonAprobacion(estado: string): string {
   if (estado === 'pendiente_rrhh' || estado === 'aprobada_jefe') return 'Aprobar RRHH';
   if (estado === 'pendiente_director') return 'Aprobar Director';
-  if (estado === 'pendiente_secretario_general') return 'Aprobar Sec. General';
+  if (estado === 'pendiente_secretario_general') return 'Aprobar Dir. Sec. General';
   return 'Aprobar';
 }
 
 export function etiquetaEstadoBandeja(estado: string): string {
   if (estado === 'pendiente_jefe') return 'Pend. Jefe';
   if (estado === 'pendiente_director') return 'Pend. Director';
-  if (estado === 'pendiente_secretario_general') return 'Pend. Sec. General';
+  if (estado === 'pendiente_secretario_general') return 'Pend. Dir. Sec. General';
   if (estado === 'pendiente_rrhh') return 'Pend. RRHH';
   if (estado === 'aprobada_jefe') return 'Pend. RRHH';
   return estado;

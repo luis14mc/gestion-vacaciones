@@ -83,6 +83,7 @@ const DEPARTAMENTOS_DATA = [
   { codigo: 'OPS', nombre: 'Operaciones', descripcion: 'Operaciones generales', nivel: 1 },
   { codigo: 'LOG', nombre: 'Logistica', descripcion: 'Logistica y distribucion', nivel: 1 },
   { codigo: 'ADMIN', nombre: 'Administracion', descripcion: 'Administracion general', nivel: 1 },
+  { codigo: 'SG', nombre: 'Secretaría General', descripcion: 'Secretaría General — aprobador sustituto institucional', nivel: 1 },
 ];
 
 const CONFIGURACION_DATA = [

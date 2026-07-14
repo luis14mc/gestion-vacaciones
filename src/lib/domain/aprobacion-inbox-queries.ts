@@ -1,14 +1,12 @@
 /**
  * Consultas de bandeja de aprobación desde PostgreSQL.
  *
- * Fase 2: cada rol ve solo el tramo del flujo que le corresponde:
+ * Fase 2 (corrección): cada rol ve solo el tramo del flujo que le corresponde:
  *   - Jefe:        pendiente_jefe de su equipo.
  *   - Director:    pendiente_director donde él sea el aprobador esperado.
- *   - Sec.Gen.:    pendiente_secretario_general donde él sea el aprobador.
+ *   - Dir. SG:     pendiente_secretario_general donde él sea el aprobador
+ *                  (Director del depto Secretaría General; no rol extra).
  *   - RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
- *
- * Reglas institucionales verificadas en la consulta SQL (no en memoria)
- * para evitar filtrado post-construcción que pueda devolver datos sensibles.
  */
 
 import { and, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -72,10 +70,18 @@ export async function construirCondicionesBandejaAprobacion(
         eq(solicitudes.aprobadaDirectorPor, session.id)
       ) as SQL
     );
+
+    // Director de Secretaría General (sustituto): solicitudes asignadas a él.
+    ramas.push(
+      and(
+        eq(solicitudes.estado, 'pendiente_secretario_general'),
+        eq(solicitudes.aprobadaSecretarioPor, session.id)
+      ) as SQL
+    );
   }
 
-  // Secretario General: pendiente_secretario_general donde él es el aprobador.
-  if (roles.esSecretarioGeneral) {
+  // Compat legacy: flag esSecretarioGeneral (si aún existe en algún usuario).
+  if (roles.esSecretarioGeneral && !roles.esDirector) {
     ramas.push(
       and(
         eq(solicitudes.estado, 'pendiente_secretario_general'),
@@ -127,7 +133,9 @@ export async function calcularStatsBandejaAprobacion(session: SessionUser) {
 
   const aprobacionesJefe = roles.esJefe || roles.esDirector || roles.esAdmin;
   const aprobacionesDirector = roles.esDirector || roles.esAdmin;
-  const aprobacionesSecretario = roles.esSecretarioGeneral || roles.esAdmin;
+  // Dir. SG aprueba vía columnas de secretario (mismo Director con asignación).
+  const aprobacionesSecretario =
+    roles.esDirector || roles.esSecretarioGeneral || roles.esAdmin;
   const aprobacionesRrhh = roles.esRrhh || roles.esAdmin;
 
   const aprobadaHoyParts: SQL[] = [];
@@ -185,27 +193,25 @@ export async function calcularStatsBandejaAprobacion(session: SessionUser) {
 
 /**
  * Resuelve el aprobador de segundo nivel esperado para una solicitud
- * específica. Se usa para fijar las columnas `aprobada_director_por` /
- * `aprobada_secretario_por` al crear la solicitud.
- *
- * Devuelve null si el solicitante es Director (no necesita segundo nivel)
- * o si ya pasó por RRHH directamente.
+ * de un Jefe. Empleados normales no usan este helper.
  */
 export async function resolverIdsAprobadoresParaNuevaSolicitud(params: {
   esDirector: boolean;
   esJefe: boolean;
   departamentoId: number | null;
+  jefeSuperiorId?: number | null;
 }): Promise<{
   aprobadorDirectorId: number | null;
   aprobadorSecretarioId: number | null;
 }> {
-  if (params.esDirector) {
+  if (params.esDirector || !params.esJefe) {
     return { aprobadorDirectorId: null, aprobadorSecretarioId: null };
   }
 
   try {
     const aprobador = await resolverAprobadorSegundoNivel({
       departamentoId: params.departamentoId,
+      jefeSuperiorId: params.jefeSuperiorId,
     });
     if (aprobador.tipoAprobador === 'director') {
       return { aprobadorDirectorId: aprobador.usuarioId, aprobadorSecretarioId: null };

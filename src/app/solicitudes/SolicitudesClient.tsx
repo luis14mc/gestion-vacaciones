@@ -59,6 +59,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AdjuntosInstitucionalesCard } from "@/components/solicitudes/AdjuntosInstitucionalesCard";
 import { RechazoSolicitudResumen } from "@/components/solicitudes/RechazoSolicitudResumen";
+import { useSolicitudDetalle } from "@/hooks/useSolicitudDetalle";
 
 interface Solicitud {
   id: number;
@@ -80,7 +81,10 @@ interface Solicitud {
   fechaAprobacionJefe: string | null;
   fechaAprobacionRrhh: string | null;
   fechaCreacion: string;
-  documentosAdjuntos?: unknown;
+  tieneAdjuntos?: boolean;
+  cantidadAdjuntos?: number;
+  tiposAdjuntos?: string[];
+  nombresAdjuntos?: string[];
   motivoRechazo?: string | null;
   rechazadaPor?: number | null;
   rechazadaFecha?: string | null;
@@ -225,6 +229,12 @@ export default function SolicitudesClient({ session }: Props) {
   const [solicitudSeleccionada, setSolicitudSeleccionada] =
     useState<Solicitud | null>(null);
   const [referenciaTiempo, setReferenciaTiempo] = useState(() => Date.now());
+
+  const {
+    detalle: detalleSolicitud,
+    cargando: cargandoDetalle,
+    error: errorDetalle,
+  } = useSolicitudDetalle(solicitudSeleccionada?.id ?? null, solicitudSeleccionada !== null);
 
   const cargarSolicitudes = useCallback(async () => {
     try {
@@ -732,7 +742,7 @@ export default function SolicitudesClient({ session }: Props) {
 
                 <AdjuntosInstitucionalesCard
                   solicitudId={solicitudSeleccionada.id}
-                  documentosAdjuntos={solicitudSeleccionada.documentosAdjuntos}
+                  documentosAdjuntos={detalleSolicitud?.documentosAdjuntos}
                   session={session?.user}
                   accesoSolicitud={{
                     usuarioId: solicitudSeleccionada.usuarioId,
@@ -743,6 +753,12 @@ export default function SolicitudesClient({ session }: Props) {
                   }}
                   className="rounded-xl border-border shadow-none"
                 />
+                {cargandoDetalle ? (
+                  <p className="text-sm text-muted-foreground">Cargando adjuntos…</p>
+                ) : null}
+                {errorDetalle ? (
+                  <p className="text-sm text-destructive">{errorDetalle}</p>
+                ) : null}
 
                 {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
                   <div className="space-y-2 mt-4">

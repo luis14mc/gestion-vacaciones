@@ -147,6 +147,9 @@ describe('GET /api/solicitudes?paraAprobar=true — no expone balances al jefe',
     });
 
     // Datos que el jefe NO debe ver:
+    expect(item).not.toHaveProperty('documentosAdjuntos');
+    expect(item.tieneAdjuntos).toBeDefined();
+
     const itemStr = JSON.stringify(item);
     expect(itemStr).not.toMatch(/diasDisponibles/i);
     expect(itemStr).not.toMatch(/diasAsignados/i);

@@ -27,6 +27,7 @@ import {
 import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import type { Session } from "next-auth";
 import { AdjuntosInstitucionalesCard } from "@/components/solicitudes/AdjuntosInstitucionalesCard";
+import { useSolicitudDetalle } from "@/hooks/useSolicitudDetalle";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -70,7 +71,10 @@ interface Solicitud {
   comentariosRrhh: string | null;
   createdAt: string;
   metadata?: any;
-  documentosAdjuntos?: unknown;
+  tieneAdjuntos?: boolean;
+  cantidadAdjuntos?: number;
+  tiposAdjuntos?: string[];
+  nombresAdjuntos?: string[];
   aprobadaJefePor?: number | null;
   aprobadaDirectorPor?: number | null;
   aprobadaSecretarioPor?: number | null;
@@ -125,6 +129,15 @@ export default function AprobarSolicitudesClient({
   const [accion, setAccion] = useState<"aprobar" | "rechazar" | null>(null);
   const [comentarios, setComentarios] = useState("");
   const [referenciaTiempo, setReferenciaTiempo] = useState(() => Date.now());
+
+  const {
+    detalle: detalleSolicitud,
+    cargando: cargandoDetalle,
+    error: errorDetalle,
+  } = useSolicitudDetalle(
+    solicitudSeleccionada?.id ?? null,
+    mostrarModal && solicitudSeleccionada !== null
+  );
 
   const cargarSolicitudes = useCallback(async () => {
     try {
@@ -700,7 +713,7 @@ export default function AprobarSolicitudesClient({
 
                   <AdjuntosInstitucionalesCard
                     solicitudId={solicitudSeleccionada.id}
-                    documentosAdjuntos={solicitudSeleccionada.documentosAdjuntos}
+                    documentosAdjuntos={detalleSolicitud?.documentosAdjuntos}
                     session={session.user}
                     accesoSolicitud={{
                       usuarioId: solicitudSeleccionada.usuarioId,
@@ -711,6 +724,12 @@ export default function AprobarSolicitudesClient({
                     }}
                     className="mt-4 border-border shadow-none"
                   />
+                  {cargandoDetalle ? (
+                    <p className="mt-2 text-sm text-muted-foreground">Cargando adjuntos…</p>
+                  ) : null}
+                  {errorDetalle ? (
+                    <p className="mt-2 text-sm text-destructive">{errorDetalle}</p>
+                  ) : null}
 
                   {solicitudSeleccionada.metadata?.comentarios && solicitudSeleccionada.metadata.comentarios.length > 0 && (
                     <div className="mt-4 space-y-2">

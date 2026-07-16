@@ -517,6 +517,69 @@ describe('Solicitudes Service - Integration Tests', () => {
       expect(resultado.solicitud.rechazadaPor).toBe(usuarioJefe.id)
       expect(resultado.solicitud.rechazadaFecha).toBeDefined()
     })
+
+    it('RRHH no puede aprobar solicitud rechazada_jefe (estado final)', async () => {
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+      })
+
+      await rechazarComoJefe(
+        solicitud.id,
+        usuarioJefe,
+        datosBase.departamento.id,
+        'Rechazada por jefe'
+      )
+
+      const intentoRRHH = await aprobarComoRRHH(solicitud.id, usuarioRRHH)
+      expect(intentoRRHH.exito).toBe(false)
+    })
+
+    it('no libera balance dos veces al intentar acción sobre rechazada_jefe', async () => {
+      const { db } = await import('@/lib/db')
+      const { balances } = await import('@/lib/db/schema')
+      const { eq, and } = await import('drizzle-orm')
+
+      const solicitud = await crearSolicitud({
+        usuarioId: usuarioEmpleado.id,
+        tipo: 'vacaciones',
+        fechaInicio: FECHA_INICIO_LAB,
+        fechaFin: FECHA_FIN_LAB,
+        diasSolicitados: DIAS_LAB,
+      })
+
+      await rechazarComoJefe(
+        solicitud.id,
+        usuarioJefe,
+        datosBase.departamento.id,
+        'Rechazada'
+      )
+
+      const balanceTrasRechazo = await db.query.balances.findFirst({
+        where: and(
+          eq(balances.usuarioId, usuarioEmpleado.id),
+          eq(balances.anoLaboralId, datosBase.anoLaboral.id)
+        ),
+      })
+
+      await aprobarComoRRHH(solicitud.id, usuarioRRHH)
+
+      const balanceFinal = await db.query.balances.findFirst({
+        where: and(
+          eq(balances.usuarioId, usuarioEmpleado.id),
+          eq(balances.anoLaboralId, datosBase.anoLaboral.id)
+        ),
+      })
+
+      expect(parseFloat(balanceTrasRechazo!.cantidadPendiente)).toBe(0)
+      expect(parseFloat(balanceFinal!.cantidadPendiente)).toBe(0)
+      expect(parseFloat(balanceFinal!.cantidadDisponible)).toBe(
+        parseFloat(balanceTrasRechazo!.cantidadDisponible)
+      )
+    })
   })
 
   // ===================================================

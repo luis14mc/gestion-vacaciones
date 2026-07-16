@@ -12,7 +12,7 @@ export default async function MiBalancePage() {
 
   return (
     <AppShell session={session}>
-      <MiBalanceClient />
+      <MiBalanceClient session={session} />
     </AppShell>
   );
 }

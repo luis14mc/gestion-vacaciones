@@ -9,10 +9,10 @@ import {
 describe('aprobacion-inbox — Fase 2', () => {
   it('estados accionables cubren todo el flujo de aprobación', () => {
     expect(ESTADOS_ACCIONABLES_APROBACION).toContain('pendiente_jefe');
-    expect(ESTADOS_ACCIONABLES_APROBACION).toContain('aprobada_jefe');
     expect(ESTADOS_ACCIONABLES_APROBACION).toContain('pendiente_director');
     expect(ESTADOS_ACCIONABLES_APROBACION).toContain('pendiente_secretario_general');
     expect(ESTADOS_ACCIONABLES_APROBACION).toContain('pendiente_rrhh');
+    expect(ESTADOS_ACCIONABLES_APROBACION).toContain('aprobada_jefe');
 
     expect(esEstadoAccionableAprobacion('pendiente_jefe')).toBe(true);
     expect(esEstadoAccionableAprobacion('pendiente_director')).toBe(true);
@@ -158,13 +158,33 @@ describe('aprobacion-inbox — Fase 2', () => {
   });
 
   describe('RRHH', () => {
-    it('ve pendiente_rrhh y legacy aprobada_jefe', () => {
+    it('ve solo pendiente_rrhh (no legacy aprobada_jefe)', () => {
       const ctx = {
         sessionId: 70,
         equipoIds: [],
         roles: {
           esAdmin: false,
           esRrhh: true,
+          esJefe: false,
+          esDirector: false,
+          esSecretarioGeneral: false,
+        },
+      };
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_rrhh' }, ctx)
+      ).toBe(true);
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'aprobada_jefe' }, ctx)
+      ).toBe(false);
+    });
+
+    it('Admin ve pendiente_rrhh y legacy aprobada_jefe', () => {
+      const ctx = {
+        sessionId: 1,
+        equipoIds: [],
+        roles: {
+          esAdmin: true,
+          esRrhh: false,
           esJefe: false,
           esDirector: false,
           esSecretarioGeneral: false,

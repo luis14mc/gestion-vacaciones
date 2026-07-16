@@ -12,22 +12,41 @@ import {
   type AdjuntoVisor,
 } from '@/components/solicitudes/AdjuntosViewer';
 import { normalizarAdjuntosHistoricos } from '@/lib/domain/requisitos-adjuntos';
+import {
+  puedeVerAdjuntosSolicitud,
+  type SolicitudAdjuntosAcceso,
+} from '@/lib/domain/solicitud-adjuntos-acceso';
 import { registrarVisualizacionAdjunto } from '@/lib/solicitudes/registrar-visualizacion-adjunto';
+import type { SessionUser } from '@/types';
 
 interface AdjuntosInstitucionalesCardProps {
   solicitudId: number;
   documentosAdjuntos: unknown;
-  autorizado: boolean;
+  /** Si se omite, usar session + accesoSolicitud. */
+  autorizado?: boolean;
+  session?: Pick<
+    SessionUser,
+    'id' | 'esAdmin' | 'esRrhh' | 'esJefe' | 'esDirector' | 'esSecretarioGeneral'
+  > | null;
+  accesoSolicitud?: SolicitudAdjuntosAcceso;
   className?: string;
 }
 
 export function AdjuntosInstitucionalesCard({
   solicitudId,
   documentosAdjuntos,
-  autorizado,
+  autorizado: autorizadoProp,
+  session,
+  accesoSolicitud,
   className,
 }: AdjuntosInstitucionalesCardProps) {
   const adjuntos = normalizarAdjuntosHistoricos(documentosAdjuntos) as AdjuntoVisor[];
+
+  const autorizado =
+    autorizadoProp ??
+    (session && accesoSolicitud
+      ? puedeVerAdjuntosSolicitud(session, accesoSolicitud, documentosAdjuntos)
+      : false);
 
   return (
     <Card className={className}>

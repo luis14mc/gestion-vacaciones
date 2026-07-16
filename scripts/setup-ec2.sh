@@ -123,6 +123,9 @@ cat >> "$CRON_TMP" <<EOF
 # Notificaciones de cumpleaños el primer día de cada mes a las 6:00 AM (Honduras)
 0 6 1 * * curl -sS --fail -X POST http://localhost:3000/api/cron/cumpleanos -H "Authorization: Bearer \$(sed -n 's/^CRON_SECRET=//p' ${APP_DIR}/.env.production | head -n1)" >> /var/log/cumpleanos-cron.log 2>&1
 
+# Asignación mensual de vacaciones el día 1 de cada mes a las 7:00 AM (Honduras)
+0 7 1 * * curl -sS --fail -X POST http://localhost:3000/api/cron/asignacion-mensual -H "Authorization: Bearer \$(sed -n 's/^CRON_SECRET=//p' ${APP_DIR}/.env.production | head -n1)" -H "Content-Type: application/json" -d '{}' >> /var/log/asignacion-mensual-cron.log 2>&1
+
 # Limpiar logs de Docker semanalmente
 0 4 * * 0 docker system prune -f > /dev/null 2>&1
 # END VACACIONES_CNI

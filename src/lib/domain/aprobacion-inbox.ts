@@ -10,13 +10,16 @@
 export const ESTADOS_PENDIENTE_JEFE = ['pendiente_jefe'] as const;
 export const ESTADOS_PENDIENTE_DIRECTOR = ['pendiente_director'] as const;
 export const ESTADOS_PENDIENTE_SECRETARIO = ['pendiente_secretario_general'] as const;
-export const ESTADOS_PENDIENTE_RRHH = ['pendiente_rrhh', 'aprobada_jefe'] as const;
+export const ESTADOS_PENDIENTE_RRHH = ['pendiente_rrhh'] as const;
+/** Legacy pre-Fase-2: solo Admin puede actuar en bandeja. */
+export const ESTADOS_LEGACY_ADMIN_RRHH = ['aprobada_jefe'] as const;
 
 export const ESTADOS_ACCIONABLES_APROBACION = [
   ...ESTADOS_PENDIENTE_JEFE,
   ...ESTADOS_PENDIENTE_DIRECTOR,
   ...ESTADOS_PENDIENTE_SECRETARIO,
   ...ESTADOS_PENDIENTE_RRHH,
+  ...ESTADOS_LEGACY_ADMIN_RRHH,
 ] as const;
 
 export type EstadoAccionableAprobacion = (typeof ESTADOS_ACCIONABLES_APROBACION)[number];
@@ -48,7 +51,8 @@ export interface SolicitudBandejaInput {
  *   - Director: ve `pendiente_director` cuando él es el aprobador esperado.
  *   - Director de Secretaría General: ve `pendiente_secretario_general`
  *     asignadas a él como sustituto (filtrado por query SQL).
- *   - RRHH/Admin: ve `pendiente_rrhh` y legacy `aprobada_jefe`.
+ *   - RRHH: ve únicamente `pendiente_rrhh` (no rechazos previos ni legacy).
+ *   - Admin: ve `pendiente_rrhh` y legacy `aprobada_jefe` para limpieza.
  *   - Nunca ve sus propias solicitudes.
  */
 export function solicitudVisibleEnBandeja(
@@ -62,12 +66,16 @@ export function solicitudVisibleEnBandeja(
   if (solicitud.usuarioId === context.sessionId) return false;
   if (!esEstadoAccionableAprobacion(solicitud.estado)) return false;
 
-  // RRHH / Admin: solo lo que ya pasó al tramo de RRHH.
-  if (context.roles.esRrhh || context.roles.esAdmin) {
-    if (
-      solicitud.estado === 'pendiente_rrhh' ||
-      solicitud.estado === 'aprobada_jefe' // legacy
-    ) {
+  // RRHH: solo pendiente_rrhh — rechazos previos no entran a bandeja.
+  if (context.roles.esRrhh && !context.roles.esAdmin) {
+    if (solicitud.estado === 'pendiente_rrhh') {
+      return true;
+    }
+  }
+
+  // Admin: pendiente_rrhh + legacy aprobada_jefe (migración histórica).
+  if (context.roles.esAdmin) {
+    if (solicitud.estado === 'pendiente_rrhh' || solicitud.estado === 'aprobada_jefe') {
       return true;
     }
   }
@@ -126,11 +134,13 @@ export function determinarAccionAprobacion(
   if (estadoSolicitud === 'pendiente_director') return 'aprobar_director';
   if (estadoSolicitud === 'pendiente_secretario_general')
     return 'aprobar_secretario_general';
+  if (estadoSolicitud === 'aprobada_jefe') return 'aprobar_rrhh';
   return 'aprobar_rrhh';
 }
 
 export function etiquetaBotonAprobacion(estado: string): string {
-  if (estado === 'pendiente_rrhh' || estado === 'aprobada_jefe') return 'Aprobar RRHH';
+  if (estado === 'pendiente_rrhh') return 'Aprobar RRHH';
+  if (estado === 'aprobada_jefe') return 'Aprobar RRHH (legacy)';
   if (estado === 'pendiente_director') return 'Aprobar Director';
   if (estado === 'pendiente_secretario_general') return 'Aprobar Dir. Sec. General';
   return 'Aprobar';

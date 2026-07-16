@@ -87,6 +87,28 @@ describe('AdjuntosInstitucionalesCard', () => {
     expect(screen.getByText('Subido por: Jefe Inmediato')).toBeTruthy();
   });
 
+  it('calcula autorización con session y accesoSolicitud', () => {
+    render(
+      <AdjuntosInstitucionalesCard
+        solicitudId={104}
+        session={{
+          id: 10,
+          esAdmin: false,
+          esRrhh: false,
+          esJefe: false,
+          esDirector: false,
+          esSecretarioGeneral: false,
+        }}
+        accesoSolicitud={{ usuarioId: 10 }}
+        documentosAdjuntos={[
+          { tipo: 'vobo_jefe', nombre: 'vobo.pdf', data: PDF_DATA },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('VoBo del Jefe inmediato')).toBeTruthy();
+  });
+
   it('registra auditoría al visualizar adjunto', () => {
     render(
       <AdjuntosInstitucionalesCard

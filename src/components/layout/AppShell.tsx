@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { NotificacionesDropdown } from '@/components/layout/NotificacionesDropdown';
 
 // ─── Types ────────────────────────────────────────────
 interface NavItem {
@@ -112,6 +113,8 @@ export function getNavGroups(session: Session): NavGroup[] {
         { label: 'Usuarios', href: '/usuarios', icon: Users },
         { label: 'Departamentos', href: '/departamentos', icon: Building2 },
         { label: 'Asignación Días', href: '/asignacion-dias', icon: Calendar },
+        { label: 'Asign. mensuales', href: '/asignaciones-mensuales', icon: Calendar },
+        { label: 'Control de Vacaciones', href: '/rrhh/balances', icon: Users },
         { label: 'Reportes', href: '/reportes', icon: BarChart3 },
         { label: 'Exportar', href: '/exportar', icon: Download },
       ],
@@ -296,16 +299,7 @@ export default function AppShell({ children, session }: AppShellProps) {
 
           {/* Right: actions */}
           <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="rounded-xl"
-              title="Notificaciones"
-              aria-label="Notificaciones"
-            >
-              <Bell className="w-[18px] h-[18px] text-muted-foreground" />
-            </Button>
+            <NotificacionesDropdown />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -377,6 +371,10 @@ const ROUTE_LABELS: Record<string, string> = {
   configuracion: 'Configuración',
   auditoria: 'Auditoría',
   'mi-equipo': 'Mi Equipo',
+  'asignaciones-mensuales': 'Asignaciones mensuales',
+  rrhh: 'RRHH',
+  balances: 'Control de Vacaciones',
+  'mi-balance': 'Mi Balance',
   'mi-perfil': 'Mi Perfil',
   exportar: 'Exportar',
   'asignacion-dias': 'Asignación de Días',

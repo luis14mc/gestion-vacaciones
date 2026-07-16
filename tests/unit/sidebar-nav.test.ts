@@ -34,6 +34,7 @@ describe('Sidebar nav — Fase 1 seguridad (jefe sin reportes)', () => {
     expect(links).not.toContain('/auditoria');
     expect(links).not.toContain('/configuracion');
     expect(links).not.toContain('/asignacion-dias');
+    expect(links).not.toContain('/rrhh/balances');
     // Sí ve su flujo operativo
     expect(links).toContain('/mi-equipo');
     expect(links).toContain('/aprobar-solicitudes');
@@ -49,6 +50,7 @@ describe('Sidebar nav — Fase 1 seguridad (jefe sin reportes)', () => {
     expect(links).not.toContain('/auditoria');
     expect(links).not.toContain('/configuracion');
     expect(links).not.toContain('/asignacion-dias');
+    expect(links).not.toContain('/rrhh/balances');
     // Sí ve su flujo operativo
     expect(links).toContain('/mi-equipo');
     expect(links).toContain('/aprobar-solicitudes');
@@ -59,6 +61,7 @@ describe('Sidebar nav — Fase 1 seguridad (jefe sin reportes)', () => {
     expect(links).toContain('/reportes');
     expect(links).toContain('/exportar');
     expect(links).toContain('/asignacion-dias');
+    expect(links).toContain('/rrhh/balances');
     // NO ve auditoría (Admin-only)
     expect(links).not.toContain('/auditoria');
     expect(links).not.toContain('/configuracion');
@@ -71,6 +74,7 @@ describe('Sidebar nav — Fase 1 seguridad (jefe sin reportes)', () => {
     expect(links).toContain('/auditoria');
     expect(links).toContain('/configuracion');
     expect(links).toContain('/asignacion-dias');
+    expect(links).toContain('/rrhh/balances');
   });
 
   it('empleado regular solo ve Dashboard, Solicitudes, Balance y Perfil', () => {
@@ -90,6 +94,7 @@ describe('Sidebar nav — Fase 1 seguridad (jefe sin reportes)', () => {
     expect(links).not.toContain('/auditoria');
     expect(links).not.toContain('/configuracion');
     expect(links).not.toContain('/asignacion-dias');
+    expect(links).not.toContain('/rrhh/balances');
     expect(links).not.toContain('/aprobar-solicitudes');
     expect(links).not.toContain('/mi-equipo');
   });

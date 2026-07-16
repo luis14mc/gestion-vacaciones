@@ -108,6 +108,7 @@ export async function generarReporteBalances(filtros: FiltrosReporte, scope: Rep
 export async function generarReporteSolicitudes(filtros: FiltrosReporte, scope: ReportScope) {
   const result = await db.execute(sql`
     SELECT
+      s.id AS solicitud_id,
       s.codigo,
       CONCAT(u.nombre, ' ', u.apellido) AS colaborador,
       u.email,
@@ -179,7 +180,7 @@ export async function generarReporteDepartamentos(filtros: FiltrosReporte, scope
         INNER JOIN usuarios u2 ON u2.id = s2.usuario_id
         WHERE u2.departamento_id = d.id
           AND s2.deleted_at IS NULL
-          AND s2.estado IN ('rechazada_jefe', 'rechazada_rrhh')
+          AND s2.estado IN ('rechazada_jefe', 'rechazada_director', 'rechazada_secretario_general', 'rechazada_rrhh')
           ${sqlAnoLaboral(filtros, 's2.ano_laboral_id')}
       ), 0) AS solicitudes_rechazadas,
       COALESCE((

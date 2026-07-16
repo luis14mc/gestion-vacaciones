@@ -54,7 +54,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     mes,
     origen: modo,
     // Sin sesión de usuario: usamos un id reservado para "sistema".
-    ejecutadoPor: 0,
+    ejecutadoPor: null,
   });
 
   return NextResponse.json({

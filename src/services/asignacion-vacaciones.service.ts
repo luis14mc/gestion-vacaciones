@@ -22,6 +22,8 @@ import {
   anosLaborales,
   historialAsignacionesMensuales,
   notificaciones,
+  roles,
+  usuariosRoles,
 } from '@/lib/db/schema';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { calcularDiasMensualesPorAntiguedad, calcularAntiguedadLaboral } from '@/lib/domain/vacaciones-asignacion';
@@ -49,7 +51,7 @@ export interface ResumenAsignacionMensual {
   anio: number;
   mes: number;
   origen: 'automatico' | 'manual' | 'sistema';
-  ejecutadoPor: number;
+  ejecutadoPor: number | null;
   usuariosProcesados: number;
   asignacionesCreadas: number;
   usuariosOmitidos: number;
@@ -61,7 +63,7 @@ interface OpcionesEjecucion {
   anio: number;
   mes: number;
   origen?: 'automatico' | 'manual' | 'sistema';
-  ejecutadoPor: number;
+  ejecutadoPor: number | null;
   ipAddress?: string;
   userAgent?: string;
 }
@@ -358,59 +360,74 @@ export async function asignarVacacionesMensuales(
     // Actualizar ejecutado_por y origen en las filas creadas en este
     // batch.
     if (asignacionesCreadas > 0) {
-      await tx.execute(sql`
-        UPDATE historial_asignaciones_mensuales
-        SET ejecutado_por = ${opciones.ejecutadoPor},
-            origen = ${origen},
-            updated_at = NOW()
-        WHERE anio = ${opciones.anio}
-          AND mes = ${opciones.mes}
-          AND ejecutado_por IS NULL
-      `);
+      if (opciones.ejecutadoPor != null && opciones.ejecutadoPor > 0) {
+        await tx.execute(sql`
+          UPDATE historial_asignaciones_mensuales
+          SET ejecutado_por = ${opciones.ejecutadoPor},
+              origen = ${origen},
+              updated_at = NOW()
+          WHERE anio = ${opciones.anio}
+            AND mes = ${opciones.mes}
+            AND ejecutado_por IS NULL
+        `);
+      } else {
+        await tx.execute(sql`
+          UPDATE historial_asignaciones_mensuales
+          SET origen = ${origen},
+              updated_at = NOW()
+          WHERE anio = ${opciones.anio}
+            AND mes = ${opciones.mes}
+            AND ejecutado_por IS NULL
+        `);
+      }
     }
   });
 
   // Auditoría: batch + cada asignación individual.
   const datosRed = datosPeticionFromOptions(opciones);
-  await registrarEventoAuditoria({
-    usuarioId: opciones.ejecutadoPor,
-    modulo: 'vacaciones',
-    evento: 'asignacion_vacaciones_mensual_batch',
-    severidad: 'info',
-    resultado: 'exito',
-    accion: 'asignacion_vacaciones_mensual_batch',
-    tablaAfectada: 'historial_asignaciones_mensuales',
-    detalles: {
-      anio: opciones.anio,
-      mes: opciones.mes,
-      origen,
-      usuariosProcesados: usuariosActivos.length,
-      asignacionesCreadas,
-      usuariosOmitidos,
-      totalDiasAsignados: Math.round(totalDiasAsignados * 10000) / 10000,
-    },
-    ...datosRed,
-  });
+  const auditoriaUsuarioId = await resolverUsuarioAuditoriaAsignacion(opciones.ejecutadoPor);
 
-  for (const d of detalles) {
-    if (d.estado !== 'asignado') continue;
-    await registrarAuditoria({
-      usuarioId: opciones.ejecutadoPor,
-      accion: 'asignacion_vacaciones_mensual',
+  if (auditoriaUsuarioId != null) {
+    await registrarEventoAuditoria({
+      usuarioId: auditoriaUsuarioId,
+      modulo: 'vacaciones',
+      evento: 'asignacion_vacaciones_mensual_batch',
+      severidad: 'info',
+      resultado: 'exito',
+      accion: 'asignacion_vacaciones_mensual_batch',
       tablaAfectada: 'historial_asignaciones_mensuales',
-      registroId: d.usuarioId,
       detalles: {
-        evento: 'asignacion_vacaciones_mensual',
         anio: opciones.anio,
         mes: opciones.mes,
-        diasAsignados: d.diasAsignados,
-        balanceAnterior: d.balanceAnterior,
-        balanceNuevo: d.balanceNuevo,
-        aniosAntiguedad: d.aniosAntiguedad,
         origen,
+        usuariosProcesados: usuariosActivos.length,
+        asignacionesCreadas,
+        usuariosOmitidos,
+        totalDiasAsignados: Math.round(totalDiasAsignados * 10000) / 10000,
       },
       ...datosRed,
     });
+
+    for (const d of detalles) {
+      if (d.estado !== 'asignado') continue;
+      await registrarAuditoria({
+        usuarioId: auditoriaUsuarioId,
+        accion: 'asignacion_vacaciones_mensual',
+        tablaAfectada: 'historial_asignaciones_mensuales',
+        registroId: d.usuarioId,
+        detalles: {
+          evento: 'asignacion_vacaciones_mensual',
+          anio: opciones.anio,
+          mes: opciones.mes,
+          diasAsignados: d.diasAsignados,
+          balanceAnterior: d.balanceAnterior,
+          balanceNuevo: d.balanceNuevo,
+          aniosAntiguedad: d.aniosAntiguedad,
+          origen,
+        },
+        ...datosRed,
+      });
+    }
   }
 
   return {
@@ -435,7 +452,7 @@ export async function asignarVacacionesMensualesAUsuario(params: {
   anio: number;
   mes: number;
   origen?: 'automatico' | 'manual' | 'sistema';
-  ejecutadoPor: number;
+  ejecutadoPor: number | null;
   ipAddress?: string;
   userAgent?: string;
 }): Promise<ResultadoAsignacionUsuario> {
@@ -473,23 +490,26 @@ export async function asignarVacacionesMensualesAUsuario(params: {
   const datosRed = datosPeticionFromOptions(params);
 
   if (resultado.estado === 'asignado') {
-    await registrarAuditoria({
-      usuarioId: params.ejecutadoPor,
-      accion: 'asignacion_vacaciones_mensual',
-      tablaAfectada: 'historial_asignaciones_mensuales',
-      registroId: params.usuarioId,
-      detalles: {
-        evento: 'asignacion_vacaciones_mensual',
-        anio: params.anio,
-        mes: params.mes,
-        diasAsignados: resultado.diasAsignados,
-        balanceAnterior: resultado.balanceAnterior,
-        balanceNuevo: resultado.balanceNuevo,
-        aniosAntiguedad: resultado.aniosAntiguedad,
-        origen: params.origen ?? 'manual',
-      },
-      ...datosRed,
-    });
+    const auditoriaUsuarioId = await resolverUsuarioAuditoriaAsignacion(params.ejecutadoPor);
+    if (auditoriaUsuarioId != null) {
+      await registrarAuditoria({
+        usuarioId: auditoriaUsuarioId,
+        accion: 'asignacion_vacaciones_mensual',
+        tablaAfectada: 'historial_asignaciones_mensuales',
+        registroId: params.usuarioId,
+        detalles: {
+          evento: 'asignacion_vacaciones_mensual',
+          anio: params.anio,
+          mes: params.mes,
+          diasAsignados: resultado.diasAsignados,
+          balanceAnterior: resultado.balanceAnterior,
+          balanceNuevo: resultado.balanceNuevo,
+          aniosAntiguedad: resultado.aniosAntiguedad,
+          origen: params.origen ?? 'manual',
+        },
+        ...datosRed,
+      });
+    }
   }
 
   return resultado;
@@ -605,6 +625,23 @@ function datosPeticionFromOptions(opts: { ipAddress?: string; userAgent?: string
   if (opts.ipAddress) out.ipAddress = opts.ipAddress;
   if (opts.userAgent) out.userAgent = opts.userAgent;
   return out;
+}
+
+/** Usuario para auditoría: sesión RRHH/Admin o primer admin activo (cron). */
+async function resolverUsuarioAuditoriaAsignacion(
+  ejecutadoPor: number | null
+): Promise<number | null> {
+  if (ejecutadoPor != null && ejecutadoPor > 0) return ejecutadoPor;
+
+  const [admin] = await db
+    .select({ id: usuarios.id })
+    .from(usuarios)
+    .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
+    .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
+    .where(and(eq(roles.codigo, 'ADMIN'), eq(usuarios.activo, true), isNull(usuarios.deletedAt)))
+    .limit(1);
+
+  return admin?.id ?? null;
 }
 
 // Marcar uso explícito de imports necesarios.

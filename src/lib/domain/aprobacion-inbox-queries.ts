@@ -6,7 +6,8 @@
  *   - Director:    pendiente_director donde él sea el aprobador esperado.
  *   - Dir. SG:     pendiente_secretario_general donde él sea el aprobador
  *                  (Director del depto Secretaría General; no rol extra).
- *   - RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
+ *   - RRHH: pendiente_rrhh únicamente.
+ *   - Admin: pendiente_rrhh + legacy aprobada_jefe.
  */
 
 import { and, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
@@ -79,8 +80,13 @@ export async function construirCondicionesBandejaAprobacion(
     );
   }
 
-  // RRHH/Admin: pendiente_rrhh y legacy aprobada_jefe.
-  if (roles.esRrhh || roles.esAdmin) {
+  // RRHH (sin rol Admin): solo pendiente_rrhh.
+  if (roles.esRrhh && !roles.esAdmin) {
+    ramas.push(eq(solicitudes.estado, 'pendiente_rrhh') as SQL);
+  }
+
+  // Admin: pendiente_rrhh + legacy aprobada_jefe para limpieza histórica.
+  if (roles.esAdmin) {
     ramas.push(eq(solicitudes.estado, 'pendiente_rrhh') as SQL);
     ramas.push(eq(solicitudes.estado, 'aprobada_jefe') as SQL);
   }

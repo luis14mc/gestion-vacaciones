@@ -23,6 +23,11 @@ import {
   registrarAuditoria,
   registrarEventoAuditoria,
 } from '@/services/auditoria.service';
+import {
+  esRechazoPrevioRRHH,
+  nivelRechazoAuditoriaDesdeEstado,
+  nivelRechazoDesdeEstado,
+} from '@/lib/domain/rechazo-solicitud';
 
 function solicitudConsumeBalance(solicitud: { tipo: string; duracionPermiso?: string | null }): boolean {
   return solicitud.tipo === 'vacaciones' || (solicitud.tipo === 'permiso_salida' && solicitud.duracionPermiso === 'dia_completo');
@@ -244,6 +249,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
 
   const nuevoEstado = resultado.estadoNuevo;
   const ahora = new Date().toISOString();
+  const rechazoPrevioRRHH = esRechazoPrevioRRHH(nuevoEstado);
 
   // Histórico de comentarios en metadata
   const metadataActual = (solicitud.metadata as any) || {};
@@ -321,10 +327,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   try {
     const [solicitante] = await db.select().from(usuarios).where(eq(usuarios.id, solicitud.usuarioId)).limit(1);
 
-    const rechazoPrevioRRHH =
-      nuevoEstado === 'rechazada_jefe' ||
-      nuevoEstado === 'rechazada_director' ||
-      nuevoEstado === 'rechazada_secretario_general';
+    const rechazoPrevioRRHHNotif = rechazoPrevioRRHH;
 
     if (solicitante && solicitante.email) {
       const flags = await obtenerConfigs([
@@ -361,19 +364,14 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
 
         // Fase 4: rechazos ANTES de RRHH notifican a RRHH únicamente
         // para conocimiento, sin crear tarea pendiente de aprobación.
-        if (rechazoPrevioRRHH) {
+        if (rechazoPrevioRRHHNotif) {
           const rrhhUsers = await db.select({ email: usuarios.email })
             .from(usuarios)
             .innerJoin(usuariosRoles, eq(usuarios.id, usuariosRoles.usuarioId))
             .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
             .where(and(eq(roles.codigo, 'RRHH'), eq(usuarios.activo, true)));
 
-          const nivelRechazo =
-            nuevoEstado === 'rechazada_jefe'
-              ? 'Jefe'
-              : nuevoEstado === 'rechazada_director'
-                ? 'Director'
-                : 'Director de Secretaría General';
+          const nivelRechazo = nivelRechazoDesdeEstado(nuevoEstado) ?? 'Aprobador';
 
           for (const rrhh of rrhhUsers) {
             if (rrhh.email) {
@@ -396,11 +394,6 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
   // nivel) y, si fue rechazo previo a RRHH, evento informativo
   // 'rrhh_notificado_rechazo_previo' para que el dashboard de auditoría
   // pueda filtrarlo.
-  const rechazoPrevioRRHH =
-    nuevoEstado === 'rechazada_jefe' ||
-    nuevoEstado === 'rechazada_director' ||
-    nuevoEstado === 'rechazada_secretario_general';
-
   const accionAuditoria = rechazoPrevioRRHH
     ? `solicitud_rechazada_${nuevoEstado.replace('rechazada_', '')}`
     : accion;
@@ -417,14 +410,7 @@ export async function ejecutarAccion(params: EjecutarAccionParams): Promise<Resu
         estadoAnterior: estadoActual,
         estadoNuevo: nuevoEstado,
         motivo: motivoRechazo || comentario || null,
-        nivelRechazo:
-          nuevoEstado === 'rechazada_jefe'
-            ? 'jefe'
-            : nuevoEstado === 'rechazada_director'
-              ? 'director'
-              : nuevoEstado === 'rechazada_secretario_general'
-                ? 'secretario_general'
-                : null,
+        nivelRechazo: nivelRechazoAuditoriaDesdeEstado(nuevoEstado),
         esRechazoPrevioRRHH: rechazoPrevioRRHH,
       },
     });

@@ -58,7 +58,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { AdjuntosInstitucionalesCard } from "@/components/solicitudes/AdjuntosInstitucionalesCard";
-import { puedeVerAdjuntosSolicitud } from "@/lib/domain/solicitud-adjuntos-acceso";
+import { RechazoSolicitudResumen } from "@/components/solicitudes/RechazoSolicitudResumen";
 
 interface Solicitud {
   id: number;
@@ -81,6 +81,11 @@ interface Solicitud {
   fechaAprobacionRrhh: string | null;
   fechaCreacion: string;
   documentosAdjuntos?: unknown;
+  motivoRechazo?: string | null;
+  rechazadaPor?: number | null;
+  rechazadaFecha?: string | null;
+  nivelRechazo?: string | null;
+  rechazadaPorNombre?: string | null;
   usuario: string;
   tipoAusencia: string;
   aprobadorJefe: string | null;
@@ -116,6 +121,48 @@ const estadoBadgeMap: Record<
       "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
   },
   aprobada_jefe: {
+    label: "Pendiente RRHH",
+    icon: Hourglass,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  pendiente_director: {
+    label: "Pendiente Director",
+    icon: Clock,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  aprobada_director: {
+    label: "Pendiente RRHH",
+    icon: Hourglass,
+    className:
+      "border-transparent bg-blue-500/15 text-blue-900 dark:text-blue-100 hover:bg-blue-500/20",
+  },
+  rechazada_director: {
+    label: "Rechazada Director",
+    icon: XCircle,
+    className:
+      "border-transparent bg-red-600/15 text-red-800 dark:text-red-200 hover:bg-red-600/20",
+  },
+  pendiente_secretario_general: {
+    label: "Pend. Dir. Sec. General",
+    icon: Clock,
+    className:
+      "border-transparent bg-amber-500/15 text-amber-900 dark:text-amber-100 hover:bg-amber-500/20",
+  },
+  aprobada_secretario_general: {
+    label: "Pendiente RRHH",
+    icon: Hourglass,
+    className:
+      "border-transparent bg-blue-500/15 text-blue-900 dark:text-blue-100 hover:bg-blue-500/20",
+  },
+  rechazada_secretario_general: {
+    label: "Rechazada Dir. Sec. General",
+    icon: XCircle,
+    className:
+      "border-transparent bg-red-600/15 text-red-800 dark:text-red-200 hover:bg-red-600/20",
+  },
+  pendiente_rrhh: {
     label: "Pendiente RRHH",
     icon: Hourglass,
     className:
@@ -365,9 +412,16 @@ export default function SolicitudesClient({ session }: Props) {
                     <SelectItem value="todos">Todos</SelectItem>
                     <SelectItem value="borrador">Borrador</SelectItem>
                     <SelectItem value="pendiente_jefe">Pendiente Jefe</SelectItem>
+                    <SelectItem value="pendiente_director">Pendiente Director</SelectItem>
+                    <SelectItem value="pendiente_secretario_general">Pend. Dir. Sec. General</SelectItem>
+                    <SelectItem value="pendiente_rrhh">Pendiente RRHH</SelectItem>
                     <SelectItem value="aprobada_jefe">Aprobada por Jefe</SelectItem>
+                    <SelectItem value="aprobada_director">Aprobada por Director</SelectItem>
+                    <SelectItem value="aprobada_secretario_general">Aprobada Dir. Sec. General</SelectItem>
                     <SelectItem value="aprobada_rrhh">Aprobada RRHH</SelectItem>
                     <SelectItem value="rechazada_jefe">Rechazada por Jefe</SelectItem>
+                    <SelectItem value="rechazada_director">Rechazada por Director</SelectItem>
+                    <SelectItem value="rechazada_secretario_general">Rechazada Dir. Sec. General</SelectItem>
                     <SelectItem value="rechazada_rrhh">Rechazada por RRHH</SelectItem>
                     <SelectItem value="cancelada">Cancelada</SelectItem>
                     <SelectItem value="finalizada">Finalizada</SelectItem>
@@ -669,16 +723,24 @@ export default function SolicitudesClient({ session }: Props) {
                   </div>
                 )}
 
+                <RechazoSolicitudResumen
+                  estado={solicitudSeleccionada.estado}
+                  motivoRechazo={solicitudSeleccionada.motivoRechazo}
+                  rechazadaFecha={solicitudSeleccionada.rechazadaFecha}
+                  rechazadaPorNombre={solicitudSeleccionada.rechazadaPorNombre}
+                />
+
                 <AdjuntosInstitucionalesCard
                   solicitudId={solicitudSeleccionada.id}
                   documentosAdjuntos={solicitudSeleccionada.documentosAdjuntos}
-                  autorizado={puedeVerAdjuntosSolicitud(session?.user, {
+                  session={session?.user}
+                  accesoSolicitud={{
                     usuarioId: solicitudSeleccionada.usuarioId,
                     aprobadaJefePor: solicitudSeleccionada.aprobadaJefePor,
                     aprobadaDirectorPor: solicitudSeleccionada.aprobadaDirectorPor,
                     aprobadaSecretarioPor: solicitudSeleccionada.aprobadaSecretarioPor,
                     aprobadaRrhhPor: solicitudSeleccionada.aprobadaRrhhPor,
-                  }, solicitudSeleccionada.documentosAdjuntos)}
+                  }}
                   className="rounded-xl border-border shadow-none"
                 />
 

@@ -1,6 +1,6 @@
 import type { SessionUser } from '@/types';
 
-interface SolicitudAdjuntosAcceso {
+export interface SolicitudAdjuntosAcceso {
   usuarioId: number;
   aprobadaJefePor?: number | null;
   aprobadaDirectorPor?: number | null;

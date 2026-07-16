@@ -55,6 +55,7 @@ import {
 } from '@/lib/domain/reportes/labels';
 import { formatearValorExport } from '@/lib/domain/exportacion/format';
 import { formatDateTime } from '@/lib/utils/date-format';
+import { SolicitudDetalleInstitucionalDialog } from '@/components/solicitudes/SolicitudDetalleInstitucionalDialog';
 
 interface ReportesClientProps {
   session: Session;
@@ -125,6 +126,8 @@ export default function ReportesClient({ session }: ReportesClientProps) {
   const [exportLoading, setExportLoading] = useState(false);
   const [datosReporte, setDatosReporte] = useState<unknown>(null);
   const [meta, setMeta] = useState<ReporteMeta | null>(null);
+  const [detalleSolicitudId, setDetalleSolicitudId] = useState<number | null>(null);
+  const [detalleAbierto, setDetalleAbierto] = useState(false);
 
   const [fechaInicio, setFechaInicio] = useState(
     `${new Date().getFullYear()}-01-01`
@@ -247,6 +250,10 @@ export default function ReportesClient({ session }: ReportesClientProps) {
 
   const filas = datosReporte ? filasReporte(datosReporte, reporteSeleccionado) : [];
   const columnas: ColumnaReporte[] = COLUMNAS_REPORTE[reporteSeleccionado];
+  const abrirDetalleSolicitud = (solicitudId: number) => {
+    setDetalleSolicitudId(solicitudId);
+    setDetalleAbierto(true);
+  };
 
   const usaRangoFechas = ['solicitudes', 'ausentismo', 'permisos_salida'].includes(reporteSeleccionado);
   const usaAnio = ['balances', 'departamentos', 'cumpleanos', 'cierre_ano', 'solicitudes'].includes(
@@ -542,6 +549,11 @@ export default function ReportesClient({ session }: ReportesClientProps) {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Resultados</CardTitle>
+          {reporteSeleccionado === 'solicitudes' ? (
+            <CardDescription>
+              Pulse una fila para ver el detalle institucional y los adjuntos VoBo.
+            </CardDescription>
+          ) : null}
         </CardHeader>
         <CardContent>
           {!datosReporte ? (
@@ -565,21 +577,46 @@ export default function ReportesClient({ session }: ReportesClientProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filas.map((fila, index) => (
-                    <TableRow key={index}>
-                      {columnas.map((col) => (
-                        <TableCell key={col.key} className="text-xs whitespace-nowrap">
-                          {valorCelda(col.key, fila[col.key])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
+                  {filas.map((fila, index) => {
+                    const solicitudIdRaw = fila.solicitud_id;
+                    const solicitudId =
+                      typeof solicitudIdRaw === 'number'
+                        ? solicitudIdRaw
+                        : Number.parseInt(String(solicitudIdRaw ?? ''), 10);
+                    const esFilaSolicitud =
+                      reporteSeleccionado === 'solicitudes' && Number.isFinite(solicitudId);
+
+                    return (
+                      <TableRow
+                        key={index}
+                        className={esFilaSolicitud ? 'cursor-pointer hover:bg-muted/50' : undefined}
+                        onClick={
+                          esFilaSolicitud
+                            ? () => abrirDetalleSolicitud(solicitudId)
+                            : undefined
+                        }
+                      >
+                        {columnas.map((col) => (
+                          <TableCell key={col.key} className="text-xs whitespace-nowrap">
+                            {valorCelda(col.key, fila[col.key])}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <SolicitudDetalleInstitucionalDialog
+        solicitudId={detalleSolicitudId}
+        open={detalleAbierto}
+        onOpenChange={setDetalleAbierto}
+        session={session}
+      />
     </div>
   );
 }

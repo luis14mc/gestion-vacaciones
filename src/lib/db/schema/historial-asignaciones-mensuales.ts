@@ -1,5 +1,8 @@
 /**
- * Fase 5 — Historial de asignaciones mensuales de vacaciones.
+ * Fase 5 / BLOQUE 4 — Historial de asignaciones mensuales de vacaciones.
+ *
+ * Tabla canónica: `historial_asignaciones_mensuales`.
+ * Alias SQL (vista): `asignaciones_vacaciones_mensuales` — ver drizzle/0010.
  *
  * Una fila por (usuarioId, anio, mes) ejecutado. Restricción UNIQUE
  * para evitar asignaciones duplicadas del mismo período.

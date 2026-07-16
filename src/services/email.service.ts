@@ -288,7 +288,7 @@ export async function notificarRRHHRechazoPrevio(
   rrhhEmail: string,
   solicitudCodigo: string,
   solicitanteNombre: string,
-  nivelRechazo: 'Jefe' | 'Director' | 'Director de Secretaría General' | 'Secretario General'
+  nivelRechazo: string
 ) {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaeb; border-radius: 8px;">

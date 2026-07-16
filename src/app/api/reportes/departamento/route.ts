@@ -114,7 +114,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       (s: any) => ['pendiente_jefe', 'aprobada_jefe'].includes(s.estado)
     ).length;
     const solicitudesRechazadas = solicitudesDept.filter(
-      (s: any) => ['rechazada_jefe', 'rechazada_rrhh'].includes(s.estado)
+      (s: any) =>
+        ['rechazada_jefe', 'rechazada_director', 'rechazada_secretario_general', 'rechazada_rrhh'].includes(
+          s.estado
+        )
     ).length;
 
     const usuariosMap = new Map(

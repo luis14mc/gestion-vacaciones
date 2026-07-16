@@ -37,7 +37,7 @@ export const GET = withErrorHandler(async () => {
     .from(solicitudes)
     .where(
       and(
-        sql`${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe')`,
+        sql`${solicitudes.estado} = 'pendiente_rrhh'`,
         isNull(solicitudes.deletedAt)
       )
     );
@@ -91,7 +91,7 @@ export const GET = withErrorHandler(async () => {
     .from(solicitudes)
     .where(
       and(
-        sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh')`,
+        sql`${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_director', 'rechazada_secretario_general', 'rechazada_rrhh')`,
         eq(solicitudes.rechazadaPor, session.id),
         sql`${solicitudes.updatedAt} >= ${hoyInicio.toISOString()}`,
         sql`${solicitudes.updatedAt} <= ${hoyFin.toISOString()}`,

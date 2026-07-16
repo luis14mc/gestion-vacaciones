@@ -11,6 +11,7 @@ import { ejecutarAccion, obtenerAccionesParaSolicitud } from '@/services/workflo
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
 import { withErrorHandler } from '@/lib/api-handler';
 import type { AccionSolicitud } from '@/lib/domain/state-machine';
+import { esRechazoPrevioRRHH } from '@/lib/domain/rechazo-solicitud';
 
 export const GET = withErrorHandler(async (
   _req: NextRequest,
@@ -77,9 +78,7 @@ export const POST = withErrorHandler(async (
 
   if (
     solicitudPreview &&
-    (solicitudPreview.estado === 'rechazada_jefe' ||
-      solicitudPreview.estado === 'rechazada_director' ||
-      solicitudPreview.estado === 'rechazada_secretario_general') &&
+    esRechazoPrevioRRHH(solicitudPreview.estado) &&
     (accion === 'aprobar_rrhh' || accion === 'rechazar_rrhh')
   ) {
     return NextResponse.json(
@@ -96,9 +95,7 @@ export const POST = withErrorHandler(async (
   // finales (incluye los rechazados arriba).
   if (
     solicitudPreview &&
-    (solicitudPreview.estado === 'rechazada_jefe' ||
-      solicitudPreview.estado === 'rechazada_director' ||
-      solicitudPreview.estado === 'rechazada_secretario_general' ||
+    (esRechazoPrevioRRHH(solicitudPreview.estado) ||
       solicitudPreview.estado === 'cancelada' ||
       solicitudPreview.estado === 'rechazada_rrhh' ||
       solicitudPreview.estado === 'finalizada') &&

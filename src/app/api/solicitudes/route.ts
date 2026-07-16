@@ -28,6 +28,7 @@ import {
   validarAdjuntosObligatorios,
 } from '@/lib/domain/requisitos-adjuntos';
 import { enriquecerAdjuntosSolicitudes } from '@/lib/domain/solicitud-adjuntos-display';
+import { enriquecerRechazoSolicitudes } from '@/lib/domain/rechazo-solicitud-display';
 import { withErrorHandler } from '@/lib/api-handler';
 import { z } from 'zod';
 
@@ -204,7 +205,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     .select({
       pendientes: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('pendiente_jefe', 'aprobada_jefe'))::int`,
       aprobadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('aprobada_rrhh', 'finalizada'))::int`,
-      rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_rrhh'))::int`,
+      rechazadas: sql<number>`count(*) FILTER (WHERE ${solicitudes.estado} IN ('rechazada_jefe', 'rechazada_director', 'rechazada_secretario_general', 'rechazada_rrhh'))::int`,
     })
     .from(solicitudes)
     .where(and(...conditions));
@@ -237,6 +238,9 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     aprobadaRrhhFecha: sol.aprobadaRrhhFecha,
     fechaCreacion: sol.createdAt,
     documentosAdjuntos: sol.documentosAdjuntos,
+    motivoRechazo: sol.motivoRechazo,
+    rechazadaPor: sol.rechazadaPor,
+    rechazadaFecha: sol.rechazadaFecha,
     usuario: sol.usuario ? `${sol.usuario.nombre} ${sol.usuario.apellido}` : 'Desconocido',
     tipoAusencia: tiposMap[sol.tipo] || sol.tipo,
     metadata: sol.metadata,
@@ -266,8 +270,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   }));
 
   const [solicitudesListado, solicitudesDetalle] = await Promise.all([
-    enriquecerAdjuntosSolicitudes(solicitudesListadoRaw),
-    enriquecerAdjuntosSolicitudes(solicitudesDetalleRaw),
+    enriquecerRechazoSolicitudes(await enriquecerAdjuntosSolicitudes(solicitudesListadoRaw)),
+    enriquecerRechazoSolicitudes(await enriquecerAdjuntosSolicitudes(solicitudesDetalleRaw)),
   ]);
 
   return NextResponse.json({

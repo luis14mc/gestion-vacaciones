@@ -27,7 +27,6 @@ import {
 import { calcularTiempoRelativo } from "@/lib/format-relative-time";
 import type { Session } from "next-auth";
 import { AdjuntosInstitucionalesCard } from "@/components/solicitudes/AdjuntosInstitucionalesCard";
-import { puedeVerAdjuntosSolicitud } from "@/lib/domain/solicitud-adjuntos-acceso";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -702,13 +701,14 @@ export default function AprobarSolicitudesClient({
                   <AdjuntosInstitucionalesCard
                     solicitudId={solicitudSeleccionada.id}
                     documentosAdjuntos={solicitudSeleccionada.documentosAdjuntos}
-                    autorizado={puedeVerAdjuntosSolicitud(session.user, {
+                    session={session.user}
+                    accesoSolicitud={{
                       usuarioId: solicitudSeleccionada.usuarioId,
                       aprobadaJefePor: solicitudSeleccionada.aprobadaJefePor,
                       aprobadaDirectorPor: solicitudSeleccionada.aprobadaDirectorPor,
                       aprobadaSecretarioPor: solicitudSeleccionada.aprobadaSecretarioPor,
                       aprobadaRrhhPor: solicitudSeleccionada.aprobadaRrhhPor,
-                    }, solicitudSeleccionada.documentosAdjuntos)}
+                    }}
                     className="mt-4 border-border shadow-none"
                   />
 

@@ -139,11 +139,73 @@ export function determinarAccionAprobacion(
 }
 
 export function etiquetaBotonAprobacion(estado: string): string {
-  if (estado === 'pendiente_rrhh') return 'Aprobar RRHH';
-  if (estado === 'aprobada_jefe') return 'Aprobar RRHH (legacy)';
-  if (estado === 'pendiente_director') return 'Aprobar Director';
-  if (estado === 'pendiente_secretario_general') return 'Aprobar Dir. Sec. General';
+  if (estado === 'pendiente_jefe') return 'Aprobar como Jefe';
+  if (estado === 'pendiente_rrhh') return 'Aprobar como RRHH';
+  if (estado === 'aprobada_jefe') return 'Aprobar como RRHH (legacy)';
+  if (estado === 'pendiente_director') return 'Aprobar como Director';
+  if (estado === 'pendiente_secretario_general') return 'Aprobar como Dir. Sec. General';
   return 'Aprobar';
+}
+
+export function etiquetaBotonRechazo(estado: string): string {
+  if (estado === 'pendiente_jefe') return 'Rechazar como Jefe';
+  if (estado === 'pendiente_rrhh' || estado === 'aprobada_jefe') return 'Rechazar como RRHH';
+  if (estado === 'pendiente_director') return 'Rechazar como Director';
+  if (estado === 'pendiente_secretario_general') return 'Rechazar como Dir. Sec. General';
+  return 'Rechazar';
+}
+
+/**
+ * Valida que la acción explícita corresponda al estado actual.
+ * Evita que un doble clic o un usuario con doble rol ejecute la etapa incorrecta.
+ */
+export function validarAccionContraEstado(
+  accion: string,
+  estadoSolicitud: string
+): { ok: true } | { ok: false; error: string } {
+  const mapa: Record<string, { estados: string[]; mensaje: string }> = {
+    aprobar_jefe: {
+      estados: ['pendiente_jefe'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación de jefe.',
+    },
+    rechazar_jefe: {
+      estados: ['pendiente_jefe'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación de jefe.',
+    },
+    aprobar_director: {
+      estados: ['pendiente_director'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación de director.',
+    },
+    rechazar_director: {
+      estados: ['pendiente_director'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación de director.',
+    },
+    aprobar_secretario_general: {
+      estados: ['pendiente_secretario_general'],
+      mensaje:
+        'La solicitud no se encuentra en etapa de aprobación de Secretaría General.',
+    },
+    rechazar_secretario_general: {
+      estados: ['pendiente_secretario_general'],
+      mensaje:
+        'La solicitud no se encuentra en etapa de aprobación de Secretaría General.',
+    },
+    aprobar_rrhh: {
+      estados: ['pendiente_rrhh', 'aprobada_jefe'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación RRHH.',
+    },
+    rechazar_rrhh: {
+      estados: ['pendiente_rrhh', 'aprobada_jefe'],
+      mensaje: 'La solicitud no se encuentra en etapa de aprobación RRHH.',
+    },
+  };
+
+  const regla = mapa[accion];
+  if (!regla) return { ok: true };
+  if (!regla.estados.includes(estadoSolicitud)) {
+    return { ok: false, error: regla.mensaje };
+  }
+  return { ok: true };
 }
 
 export function etiquetaEstadoBandeja(estado: string): string {

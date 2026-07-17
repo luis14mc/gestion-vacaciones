@@ -279,6 +279,64 @@ describe('aprobacion-inbox — Fase 2', () => {
     });
   });
 
+  describe('doble rol Jefe + RRHH', () => {
+    it('ve pendiente_jefe de su equipo Y pendiente_rrhh (etapas separadas)', () => {
+      const ctx = {
+        sessionId: 10,
+        equipoIds: [20],
+        roles: {
+          esAdmin: false,
+          esRrhh: true,
+          esJefe: true,
+          esDirector: false,
+        },
+      };
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_jefe' }, ctx)
+      ).toBe(true);
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 30, estado: 'pendiente_rrhh' }, ctx)
+      ).toBe(true);
+      // No ve pendiente_director
+      expect(
+        solicitudVisibleEnBandeja({ usuarioId: 20, estado: 'pendiente_director' }, ctx)
+      ).toBe(false);
+    });
+
+    it('aprueba pendiente_jefe solo como Jefe (no como RRHH)', () => {
+      expect(determinarAccionAprobacion('aprobar', 'pendiente_jefe')).toBe('aprobar_jefe');
+      expect(determinarAccionAprobacion('aprobar', 'pendiente_rrhh')).toBe('aprobar_rrhh');
+    });
+  });
+
+  describe('validarAccionContraEstado', () => {
+    it('rechaza aprobar_rrhh sobre pendiente_jefe', async () => {
+      const { validarAccionContraEstado } = await import('@/lib/domain/aprobacion-inbox');
+      const r = validarAccionContraEstado('aprobar_rrhh', 'pendiente_jefe');
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toMatch(/etapa de aprobación RRHH/i);
+      }
+    });
+
+    it('rechaza aprobar_jefe sobre pendiente_rrhh', async () => {
+      const { validarAccionContraEstado } = await import('@/lib/domain/aprobacion-inbox');
+      const r = validarAccionContraEstado('aprobar_jefe', 'pendiente_rrhh');
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toMatch(/etapa de aprobación de jefe/i);
+      }
+    });
+
+    it('acepta aprobar_jefe solo en pendiente_jefe', async () => {
+      const { validarAccionContraEstado } = await import('@/lib/domain/aprobacion-inbox');
+      expect(validarAccionContraEstado('aprobar_jefe', 'pendiente_jefe').ok).toBe(true);
+      expect(validarAccionContraEstado('aprobar_rrhh', 'pendiente_rrhh').ok).toBe(true);
+      expect(validarAccionContraEstado('aprobar_rrhh', 'aprobada_jefe').ok).toBe(true);
+      expect(validarAccionContraEstado('aprobar_jefe', 'finalizada').ok).toBe(false);
+    });
+  });
+
   describe('determinarAccionAprobacion', () => {
     it('mapea estado + acción a la transición backend correcta', () => {
       expect(determinarAccionAprobacion('aprobar', 'pendiente_jefe')).toBe('aprobar_jefe');

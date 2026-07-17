@@ -59,6 +59,7 @@ export function AdjuntosInstitucionalesCard({
       <CardContent>
         <AdjuntosViewer
           autorizado={autorizado}
+          solicitudId={solicitudId}
           adjuntos={adjuntos}
           onAdjuntoVisualizado={(_adj, idx) => {
             void registrarVisualizacionAdjunto(solicitudId, idx);

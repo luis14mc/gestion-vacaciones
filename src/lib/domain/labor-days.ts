@@ -7,9 +7,19 @@
  */
 import { esFeriadoHonduras } from '@/lib/domain/feriados-honduras';
 
+/**
+ * Parsea YYYY-MM-DD como fecha local (mediodía) para evitar el desfase
+ * UTC de `new Date('YYYY-MM-DD')`, que en zonas UTC−N mueve el día al
+ * anterior y hace que lunes→domingo cuente 0 días laborables.
+ */
+function parseFechaLocal(fecha: string): Date {
+  const solo = fecha.slice(0, 10);
+  return new Date(`${solo}T12:00:00`);
+}
+
 export function contarDiasHabiles(fechaInicio: string, fechaFin: string): number {
-  const inicio = new Date(`${fechaInicio.slice(0, 10)}T00:00:00`);
-  const fin = new Date(`${fechaFin.slice(0, 10)}T00:00:00`);
+  const inicio = parseFechaLocal(fechaInicio);
+  const fin = parseFechaLocal(fechaFin);
 
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return 0;
   if (fin < inicio) return 0;

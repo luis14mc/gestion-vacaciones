@@ -1,20 +1,15 @@
 /**
  * API: POST /api/solicitudes/[id]/adjuntos/[idx]/ver
- * Registra el evento de auditoría `adjunto_visualizado` cuando un
- * usuario autorizado abre un adjunto de VoBo/Constancia.
+ * Registra el evento de auditoría `adjunto_visualizado`.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { withErrorHandler } from '@/lib/api-handler';
-import { db } from '@/lib/db';
-import { solicitudes } from '@/lib/db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
 import {
   registrarEventoAuditoria,
   datosPeticion,
 } from '@/services/auditoria.service';
-import { construirCondicionesBandejaAprobacion } from '@/lib/domain/aprobacion-inbox-queries';
-import { evaluarAccesoAdjuntoInstitucional } from '@/lib/domain/solicitud-adjuntos-acceso';
+import { autorizarContenidoAdjunto } from '@/lib/solicitudes/autorizar-contenido-adjunto';
 
 export const runtime = 'nodejs';
 
@@ -30,83 +25,25 @@ export const POST = withErrorHandler(async (
   const { id, idx } = await params;
   const solicitudId = Number.parseInt(id, 10);
   const adjIdx = Number.parseInt(idx, 10);
-  if (!Number.isFinite(solicitudId) || !Number.isFinite(adjIdx)) {
-    return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 });
-  }
 
-  const [solicitud] = await db
-    .select({
-      id: solicitudes.id,
-      usuarioId: solicitudes.usuarioId,
-      documentosAdjuntos: solicitudes.documentosAdjuntos,
-      aprobadaJefePor: solicitudes.aprobadaJefePor,
-      aprobadaDirectorPor: solicitudes.aprobadaDirectorPor,
-      aprobadaSecretarioPor: solicitudes.aprobadaSecretarioPor,
-      aprobadaRrhhPor: solicitudes.aprobadaRrhhPor,
-    })
-    .from(solicitudes)
-    .where(and(eq(solicitudes.id, solicitudId), isNull(solicitudes.deletedAt)))
-    .limit(1);
-
-  if (!solicitud) {
-    return NextResponse.json(
-      { success: false, error: 'Solicitud no encontrada' },
-      { status: 404 }
-    );
-  }
-
-  const adjuntos = Array.isArray(solicitud.documentosAdjuntos)
-    ? (solicitud.documentosAdjuntos as unknown[])
-    : [];
-
-  if (adjIdx < 0 || adjIdx >= adjuntos.length) {
-    return NextResponse.json(
-      { success: false, error: 'Adjunto no encontrado' },
-      { status: 404 }
-    );
-  }
-
-  const adjunto = adjuntos[adjIdx] as Record<string, unknown>;
-
-  let enBandejaAprobacion = false;
-  const { where: inboxWhere } = await construirCondicionesBandejaAprobacion(session);
-  if (inboxWhere) {
-    const match = await db
-      .select({ id: solicitudes.id })
-      .from(solicitudes)
-      .where(
-        and(
-          eq(solicitudes.id, solicitudId),
-          isNull(solicitudes.deletedAt),
-          inboxWhere
-        )
-      )
-      .limit(1);
-    enBandejaAprobacion = match.length > 0;
-  }
-
-  const acceso = evaluarAccesoAdjuntoInstitucional({
+  const resultado = await autorizarContenidoAdjunto({
     session,
-    solicitud,
-    adjunto: {
-      uploadedBy:
-        typeof adjunto.uploadedBy === 'number' ? adjunto.uploadedBy : undefined,
-    },
-    enBandejaAprobacion,
+    solicitudId,
+    adjIdx,
   });
 
-  if (!acceso.autorizado) {
+  if (!resultado.autorizado) {
     return NextResponse.json(
-      { success: false, error: 'No autorizado para ver este adjunto' },
-      { status: 403 }
+      { success: false, error: resultado.error },
+      { status: resultado.status }
     );
   }
 
   const tipoAdjunto =
-    typeof adjunto?.tipo === 'string'
-      ? adjunto.tipo
-      : typeof adjunto?.nombre === 'string'
-        ? adjunto.nombre
+    typeof resultado.adjunto.tipo === 'string'
+      ? resultado.adjunto.tipo
+      : typeof resultado.adjunto.nombre === 'string'
+        ? resultado.adjunto.nombre
         : 'adjunto';
 
   const { ipAddress, userAgent } = datosPeticion(request);
@@ -123,12 +60,12 @@ export const POST = withErrorHandler(async (
       solicitudId,
       tipoAdjunto,
       indice: adjIdx,
-      uploadedBy: acceso.uploadedBy,
+      uploadedBy: resultado.acceso.uploadedBy,
       visualizadoPor: session.id,
-      visualizadorEsSolicitante: acceso.visualizadorEsSolicitante,
-      visualizadorEsUploader: acceso.visualizadorEsUploader,
-      visualizadorEsAprobador: acceso.visualizadorEsAprobador,
-      solicitudUsuarioId: solicitud.usuarioId,
+      visualizadorEsSolicitante: resultado.acceso.visualizadorEsSolicitante,
+      visualizadorEsUploader: resultado.acceso.visualizadorEsUploader,
+      visualizadorEsAprobador: resultado.acceso.visualizadorEsAprobador,
+      solicitudUsuarioId: resultado.solicitud.usuarioId,
     },
     ipAddress,
     userAgent,

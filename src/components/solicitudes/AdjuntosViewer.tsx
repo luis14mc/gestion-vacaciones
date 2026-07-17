@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText, Image as ImageIcon, Download, ExternalLink, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
@@ -17,19 +17,21 @@ export interface AdjuntoVisor {
   /** Tipo (vobo_jefe, constancia_medica, etc.) o nombre histórico. */
   tipo?: string;
   nombre?: string;
-  /** Data URL o base64 crudo. */
-  data: string;
+  /** Data URL o base64 crudo (fallback si no hay URL same-origin). */
+  data?: string;
   mimeType?: string;
   size?: number;
   uploadedAt?: string;
   uploadedBy?: number;
   uploadedByNombre?: string;
-  /** Índice en documentosAdjuntos original (para auditoría). */
+  /** Índice en documentosAdjuntos original (para auditoría / contenido). */
   indiceOriginal?: number;
 }
 
 interface AdjuntosViewerProps {
   adjuntos: AdjuntoVisor[] | null | undefined;
+  /** ID de solicitud: habilita iframe same-origin vía /contenido. */
+  solicitudId?: number;
   /** Para registrar el evento "adjunto_visualizado" en auditoría. */
   onAdjuntoVisualizado?: (adj: AdjuntoVisor, index: number) => void;
   /** Si es true, permite que solo usuarios autorizados vean los adjuntos. */
@@ -38,33 +40,50 @@ interface AdjuntosViewerProps {
   readOnly?: boolean;
 }
 
-/**
- * Determina el MIME de un data URL o base64 crudo.
- */
 function detectarMime(adj: AdjuntoVisor): string {
   if (adj.mimeType) return adj.mimeType;
-  if (adj.data.startsWith('data:')) {
+  if (adj.data?.startsWith('data:')) {
     const match = adj.data.match(/^data:([^;,]+)/);
-    if (match && match[1]) return match[1];
+    if (match?.[1]) return match[1];
   }
-  // Heurística: si empieza con %PDF es PDF
-  if (adj.data.startsWith('JVBER') || adj.data.startsWith('data:application/pdf')) {
+  if (
+    adj.data?.startsWith('JVBER') ||
+    adj.data?.startsWith('data:application/pdf')
+  ) {
     return 'application/pdf';
   }
+  const nombre = (adj.nombre ?? '').toLowerCase();
+  if (nombre.endsWith('.pdf')) return 'application/pdf';
+  if (nombre.endsWith('.png')) return 'image/png';
+  if (nombre.endsWith('.webp')) return 'image/webp';
+  if (/\.jpe?g$/.test(nombre)) return 'image/jpeg';
   return 'application/octet-stream';
 }
 
-/**
- * Convierte data URL o base64 crudo a un Blob URL usable en <iframe> /
- * <img> / window.open. Para datos vacíos devuelve null.
- */
 function dataUrlHref(adj: AdjuntoVisor): string | null {
   if (!adj.data) return null;
   if (adj.data.startsWith('data:')) return adj.data;
-  // base64 crudo: envolver como data URL genérico. El backend siempre
-  // envía data URLs en `documentosAdjuntos[].data` para máxima fidelidad.
   const mime = detectarMime(adj);
   return `data:${mime};base64,${adj.data}`;
+}
+
+function base64ABytes(data: string): Uint8Array<ArrayBuffer> | null {
+  try {
+    let b64 = data;
+    if (data.startsWith('data:')) {
+      const comma = data.indexOf(',');
+      if (comma < 0) return null;
+      b64 = data.slice(comma + 1);
+    }
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
 }
 
 function etiquetaSubidoPor(adj: AdjuntoVisor): string | null {
@@ -77,15 +96,27 @@ function etiquetaSubidoPor(adj: AdjuntoVisor): string | null {
   return null;
 }
 
+function urlContenidoAdjunto(
+  solicitudId: number | undefined,
+  indice: number
+): string | null {
+  if (!solicitudId || !Number.isFinite(solicitudId)) return null;
+  return `/api/solicitudes/${solicitudId}/adjuntos/${indice}/contenido`;
+}
+
 export function AdjuntosViewer({
   adjuntos,
+  solicitudId,
   onAdjuntoVisualizado,
   autorizado,
   readOnly = false,
 }: AdjuntosViewerProps) {
   const [adjuntoAbierto, setAdjuntoAbierto] = useState<AdjuntoVisor | null>(null);
+  const [indiceAbierto, setIndiceAbierto] = useState<number>(0);
 
-  const lista = Array.isArray(adjuntos) ? adjuntos.filter((a) => a?.data) : [];
+  const listaFinal = Array.isArray(adjuntos)
+    ? adjuntos.filter((a) => Boolean(a?.data))
+    : [];
 
   if (!autorizado) {
     return (
@@ -96,7 +127,7 @@ export function AdjuntosViewer({
     );
   }
 
-  if (lista.length === 0) {
+  if (listaFinal.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
         Sin adjunto registrado.
@@ -107,7 +138,7 @@ export function AdjuntosViewer({
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2">
-        {lista.map((adj, idx) => {
+        {listaFinal.map((adj, idx) => {
           const tipo = adj.tipo ?? adj.nombre ?? 'adjunto';
           const mime = detectarMime(adj);
           const esPdf = mime === 'application/pdf';
@@ -115,6 +146,8 @@ export function AdjuntosViewer({
           const tamKB = adj.size ? Math.round(adj.size / 1024) : null;
           const indiceAuditoria = adj.indiceOriginal ?? idx;
           const subidoPor = etiquetaSubidoPor(adj);
+          const hrefDescarga =
+            urlContenidoAdjunto(solicitudId, indiceAuditoria) ?? dataUrlHref(adj) ?? '#';
 
           return (
             <div
@@ -142,9 +175,7 @@ export function AdjuntosViewer({
                     </p>
                   )}
                   {subidoPor && (
-                    <p className="text-[10px] text-muted-foreground">
-                      {subidoPor}
-                    </p>
+                    <p className="text-[10px] text-muted-foreground">{subidoPor}</p>
                   )}
                 </div>
               </div>
@@ -159,6 +190,7 @@ export function AdjuntosViewer({
                       size="sm"
                       onClick={() => {
                         setAdjuntoAbierto(adj);
+                        setIndiceAbierto(indiceAuditoria);
                         onAdjuntoVisualizado?.(adj, indiceAuditoria);
                       }}
                       title="Visualizar"
@@ -166,7 +198,7 @@ export function AdjuntosViewer({
                       <ExternalLink className="h-4 w-4" />
                     </Button>
                     <a
-                      href={dataUrlHref(adj) ?? '#'}
+                      href={hrefDescarga}
                       download={adj.nombre ?? `adjunto-${tipo}.bin`}
                       target="_blank"
                       rel="noreferrer"
@@ -208,7 +240,11 @@ export function AdjuntosViewer({
             </DialogDescription>
           </DialogHeader>
           {adjuntoAbierto && (
-            <VisorContenido adjunto={adjuntoAbierto} />
+            <VisorContenido
+              adjunto={adjuntoAbierto}
+              solicitudId={solicitudId}
+              indice={indiceAbierto}
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -216,19 +252,51 @@ export function AdjuntosViewer({
   );
 }
 
-function VisorContenido({ adjunto }: { adjunto: AdjuntoVisor }) {
+function VisorContenido({
+  adjunto,
+  solicitudId,
+  indice,
+}: {
+  adjunto: AdjuntoVisor;
+  solicitudId?: number;
+  indice: number;
+}) {
   const mime = detectarMime(adjunto);
-  const href = dataUrlHref(adjunto);
-  if (!href) return null;
   const esPdf = mime === 'application/pdf';
   const esImagen = mime.startsWith('image/');
+  const urlSameOrigin = urlContenidoAdjunto(solicitudId, indice);
+  const dataHref = dataUrlHref(adjunto);
+
+  const [previewError, setPreviewError] = useState(false);
+
+  const blobUrl = useMemo(() => {
+    if (urlSameOrigin || !adjunto.data || !esPdf) return null;
+    const bytes = base64ABytes(adjunto.data);
+    if (!bytes) return null;
+    return URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  }, [adjunto.data, esPdf, urlSameOrigin]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  const previewSrc = useMemo(() => {
+    if (urlSameOrigin) return urlSameOrigin;
+    if (esPdf && blobUrl) return blobUrl;
+    if (esImagen && dataHref) return dataHref;
+    return null;
+  }, [urlSameOrigin, esPdf, blobUrl, esImagen, dataHref]);
+
+  const hrefDescarga = urlSameOrigin ?? dataHref ?? '#';
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{adjunto.nombre ?? 'archivo'}</span>
         <a
-          href={href}
+          href={hrefDescarga}
           download={adjunto.nombre ?? 'adjunto.bin'}
           target="_blank"
           rel="noreferrer"
@@ -238,25 +306,30 @@ function VisorContenido({ adjunto }: { adjunto: AdjuntoVisor }) {
         </a>
       </div>
       <div className="overflow-hidden rounded-md border border-border bg-muted/30">
-        {esPdf ? (
+        {esPdf && previewSrc && !previewError ? (
           <iframe
-            src={href}
+            src={previewSrc}
             title={adjunto.nombre ?? 'adjunto PDF'}
-            className="h-[70vh] w-full"
+            className="h-[70vh] w-full bg-white"
+            onError={() => setPreviewError(true)}
           />
-        ) : esImagen ? (
+        ) : esImagen && previewSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={href}
+            src={previewSrc}
             alt={adjunto.nombre ?? 'adjunto'}
             className="mx-auto max-h-[70vh] w-auto"
           />
         ) : (
           <div className="flex flex-col items-center gap-3 p-8 text-center">
             <FileText className="h-12 w-12 text-muted-foreground" />
-            <p className="text-sm">Tipo de archivo no previsualizable.</p>
+            <p className="text-sm">
+              {esPdf
+                ? 'No se pudo previsualizar el PDF. Descargue el archivo.'
+                : 'Tipo de archivo no previsualizable.'}
+            </p>
             <a
-              href={href}
+              href={hrefDescarga}
               download={adjunto.nombre ?? 'adjunto.bin'}
               target="_blank"
               rel="noreferrer"

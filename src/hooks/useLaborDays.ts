@@ -1,41 +1,18 @@
-import { useState, useEffect } from 'react';
+'use client';
 
+import { useMemo } from 'react';
+import { contarDiasHabiles } from '@/lib/domain/labor-days';
+
+/**
+ * Días laborables inclusivos para el formulario de solicitud.
+ * Reutiliza la misma función autoritativa del backend (`contarDiasHabiles`)
+ * para que el valor mostrado coincida con el guardado en historial.
+ */
 export function useLaborDays(fechaInicio?: string, fechaFin?: string) {
-    const [diasLaborables, setDiasLaborables] = useState(0);
+  const diasLaborables = useMemo(() => {
+    if (!fechaInicio || !fechaFin) return 0;
+    return contarDiasHabiles(fechaInicio, fechaFin);
+  }, [fechaInicio, fechaFin]);
 
-    useEffect(() => {
-        if (!fechaInicio || !fechaFin) {
-            setDiasLaborables(0);
-            return;
-        }
-
-        const inicio = new Date(fechaInicio);
-        const fin = new Date(fechaFin);
-
-        // Normalizar horas
-        inicio.setHours(0, 0, 0, 0);
-        fin.setHours(0, 0, 0, 0);
-
-        // Si fin es antes de inicio, 0 días
-        if (fin < inicio) {
-            setDiasLaborables(0);
-            return;
-        }
-
-        let laborables = 0;
-        const fechaActual = new Date(inicio);
-
-        while (fechaActual <= fin) {
-            const diaSemana = fechaActual.getDay();
-            // 0 = Domingo, 6 = Sábado
-            if (diaSemana !== 0 && diaSemana !== 6) {
-                laborables++;
-            }
-            fechaActual.setDate(fechaActual.getDate() + 1);
-        }
-
-        setDiasLaborables(laborables);
-    }, [fechaInicio, fechaFin]);
-
-    return { diasLaborables };
+  return { diasLaborables };
 }

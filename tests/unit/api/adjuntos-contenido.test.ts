@@ -1,0 +1,79 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const mockGetSession = vi.fn();
+const mockAutorizar = vi.fn();
+
+vi.mock('@/lib/auth', () => ({
+  getSession: (...args: unknown[]) => mockGetSession(...args),
+}));
+
+vi.mock('@/lib/solicitudes/autorizar-contenido-adjunto', () => ({
+  autorizarContenidoAdjunto: (...args: unknown[]) => mockAutorizar(...args),
+}));
+
+function crearGet(url: string) {
+  return new NextRequest(url, { method: 'GET' });
+}
+
+describe('GET /api/solicitudes/[id]/adjuntos/[idx]/contenido', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  it('devuelve 401 sin sesión', async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    mockAutorizar.mockResolvedValueOnce({
+      autorizado: false,
+      status: 401,
+      error: 'No autenticado',
+    });
+    const mod = await import(
+      '@/app/api/solicitudes/[id]/adjuntos/[idx]/contenido/route'
+    );
+    const res = await mod.GET(crearGet('http://localhost/api/solicitudes/1/adjuntos/0/contenido'), {
+      params: Promise.resolve({ id: '1', idx: '0' }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('devuelve 403 si no autorizado', async () => {
+    mockGetSession.mockResolvedValueOnce({ id: 10, esAdmin: false });
+    mockAutorizar.mockResolvedValueOnce({
+      autorizado: false,
+      status: 403,
+      error: 'No autorizado para ver este adjunto',
+    });
+    const mod = await import(
+      '@/app/api/solicitudes/[id]/adjuntos/[idx]/contenido/route'
+    );
+    const res = await mod.GET(crearGet('http://localhost/api/solicitudes/1/adjuntos/0/contenido'), {
+      params: Promise.resolve({ id: '1', idx: '0' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('sirve PDF con Content-Type application/pdf e inline', async () => {
+    mockGetSession.mockResolvedValueOnce({ id: 1, esAdmin: true });
+    const pdfBytes = Buffer.from('%PDF-1.4 test');
+    mockAutorizar.mockResolvedValueOnce({
+      autorizado: true,
+      solicitud: { id: 1, usuarioId: 10 },
+      adjunto: { tipo: 'vobo_jefe', nombre: 'vobo.pdf' },
+      mimeType: 'application/pdf',
+      nombreArchivo: 'vobo.pdf',
+      bytes: pdfBytes,
+    });
+    const mod = await import(
+      '@/app/api/solicitudes/[id]/adjuntos/[idx]/contenido/route'
+    );
+    const res = await mod.GET(crearGet('http://localhost/api/solicitudes/1/adjuntos/0/contenido'), {
+      params: Promise.resolve({ id: '1', idx: '0' }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('application/pdf');
+    expect(res.headers.get('Content-Disposition')).toContain('inline');
+    expect(res.headers.get('Content-Disposition')).toContain('vobo.pdf');
+  });
+});

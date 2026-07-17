@@ -103,4 +103,28 @@ describe('AdjuntosViewer', () => {
       2
     );
   });
+
+  it('usa URL same-origin de contenido para previsualizar PDF', () => {
+    render(
+      <AdjuntosViewer
+        autorizado
+        solicitudId={42}
+        adjuntos={[
+          {
+            tipo: 'vobo_jefe',
+            nombre: 'vobo.pdf',
+            data: PDF_DATA,
+            indiceOriginal: 0,
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('Visualizar'));
+    const iframe = document.querySelector('iframe');
+    expect(iframe).toBeTruthy();
+    expect(iframe?.getAttribute('src')).toBe(
+      '/api/solicitudes/42/adjuntos/0/contenido'
+    );
+  });
 });

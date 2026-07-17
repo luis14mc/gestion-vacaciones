@@ -51,7 +51,9 @@ export async function construirCondicionesBandejaAprobacion(
   const ramas: SQL[] = [];
 
   // Jefe/Director: pendiente_jefe de su equipo directo.
-  if ((roles.esJefe || roles.esDirector) && !roles.esRrhh && !roles.esAdmin) {
+  // Incluye doble rol Jefe+RRHH: debe ver ambas colas por separado
+  // (pendiente_jefe como Jefe y pendiente_rrhh como RRHH), sin mezclar etapas.
+  if ((roles.esJefe || roles.esDirector) && !roles.esAdmin) {
     if (equipoIds.length > 0) {
       ramas.push(
         and(

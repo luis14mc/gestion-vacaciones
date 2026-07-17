@@ -42,6 +42,9 @@ const nextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self'",
               "connect-src 'self'",
+              // Visor de adjuntos PDF: iframe same-origin + blob URL
+              "frame-src 'self' blob: data:",
+              "object-src 'self' blob: data:",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

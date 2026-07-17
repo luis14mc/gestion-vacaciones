@@ -9,9 +9,10 @@ import { solicitudes } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { ejecutarAccion, obtenerAccionesParaSolicitud } from '@/services/workflow.service';
 import { registrarAuditoria, datosPeticion } from '@/services/auditoria.service';
+import { validarAccionContraEstado } from '@/lib/domain/aprobacion-inbox';
+import { esRechazoPrevioRRHH } from '@/lib/domain/rechazo-solicitud';
 import { withErrorHandler } from '@/lib/api-handler';
 import type { AccionSolicitud } from '@/lib/domain/state-machine';
-import { esRechazoPrevioRRHH } from '@/lib/domain/rechazo-solicitud';
 
 export const GET = withErrorHandler(async (
   _req: NextRequest,
@@ -76,8 +77,14 @@ export const POST = withErrorHandler(async (
     columns: { estado: true, usuarioId: true },
   });
 
+  if (!solicitudPreview) {
+    return NextResponse.json(
+      { success: false, error: 'Solicitud no encontrada' },
+      { status: 404 }
+    );
+  }
+
   if (
-    solicitudPreview &&
     esRechazoPrevioRRHH(solicitudPreview.estado) &&
     (accion === 'aprobar_rrhh' || accion === 'rechazar_rrhh')
   ) {
@@ -94,7 +101,6 @@ export const POST = withErrorHandler(async (
   // Bloquear también si RRHH intenta cualquier acción sobre estados
   // finales (incluye los rechazados arriba).
   if (
-    solicitudPreview &&
     (esRechazoPrevioRRHH(solicitudPreview.estado) ||
       solicitudPreview.estado === 'cancelada' ||
       solicitudPreview.estado === 'rechazada_rrhh' ||
@@ -107,6 +113,19 @@ export const POST = withErrorHandler(async (
         error: 'La solicitud está en un estado final y no admite más acciones.',
       },
       { status: 409 }
+    );
+  }
+
+  // Validación estructural: la acción debe corresponder a la etapa actual.
+  // Evita doble clic / doble rol mezclando Jefe y RRHH en una sola acción.
+  const validacionEtapa = validarAccionContraEstado(
+    String(accion),
+    solicitudPreview.estado
+  );
+  if (!validacionEtapa.ok) {
+    return NextResponse.json(
+      { success: false, error: validacionEtapa.error },
+      { status: 400 }
     );
   }
 
@@ -140,6 +159,16 @@ export const POST = withErrorHandler(async (
     registroId: solicitudId,
     detalles: {
       evento: accion,
+      etapa: accion,
+      rolUsado: session.esRrhh && String(accion).includes('rrhh')
+        ? 'RRHH'
+        : session.esJefe && String(accion).includes('jefe')
+          ? 'Jefe'
+          : session.esDirector && String(accion).includes('director')
+            ? 'Director'
+            : session.esAdmin
+              ? 'Admin'
+              : 'otro',
       tipoSolicitud: resultado.solicitud?.tipo,
       estadoAnterior: resultado.transicion?.estadoAnterior,
       estadoNuevo: resultado.transicion?.estadoNuevo,

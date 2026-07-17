@@ -22,6 +22,7 @@ import {
   determinarAccionAprobacion,
   esEstadoAccionableAprobacion,
   etiquetaBotonAprobacion,
+  etiquetaBotonRechazo,
   etiquetaEstadoBandeja,
 } from '@/lib/domain/aprobacion-inbox';
 import { calcularTiempoRelativo } from "@/lib/format-relative-time";
@@ -127,6 +128,7 @@ export default function AprobarSolicitudesClient({
     useState<Solicitud | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [accion, setAccion] = useState<"aprobar" | "rechazar" | null>(null);
+  const [procesando, setProcesando] = useState(false);
   const [comentarios, setComentarios] = useState("");
   const [referenciaTiempo, setReferenciaTiempo] = useState(() => Date.now());
 
@@ -210,13 +212,14 @@ export default function AprobarSolicitudesClient({
   };
 
   const getEtiquetaBoton = (estado: string): string => etiquetaBotonAprobacion(estado);
+  const getEtiquetaRechazo = (estado: string): string => etiquetaBotonRechazo(estado);
 
   const getEtiquetaEstado = (estado: string): string => etiquetaEstadoBandeja(estado);
 
   const puedeAccionar = (estado: string) => esEstadoAccionableAprobacion(estado);
 
   const procesarSolicitud = async () => {
-    if (!solicitudSeleccionada || !accion) return;
+    if (!solicitudSeleccionada || !accion || procesando) return;
 
     if (accion === "rechazar" && !comentarios.trim()) {
       notify.warning(
@@ -225,6 +228,7 @@ export default function AprobarSolicitudesClient({
       return;
     }
 
+    setProcesando(true);
     try {
       if (!puedeAccionar(solicitudSeleccionada.estado)) {
         notify.error("La solicitud ya no está pendiente de aprobación");
@@ -270,12 +274,17 @@ export default function AprobarSolicitudesClient({
         notify.error(
           data.error || "No se pudo procesar la solicitud. Intenta de nuevo."
         );
+        // Refrescar bandeja: si un doble clic ya avanzó la etapa, el listado
+        // debe reflejar el estado real y no reintentar la misma acción.
+        await cargarSolicitudes();
       }
     } catch (error) {
       console.error("Error al procesar solicitud:", error);
       notify.error(
         "No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo."
       );
+    } finally {
+      setProcesando(false);
     }
   };
 
@@ -473,10 +482,10 @@ export default function AprobarSolicitudesClient({
                                     onClick={() =>
                                       abrirModalAprobacion(sol, "rechazar")
                                     }
-                                    title="Rechazar"
+                                    title={getEtiquetaRechazo(sol.estado)}
                                   >
                                     <X className="h-4 w-4" />
-                                    Rechazar
+                                    {getEtiquetaRechazo(sol.estado)}
                                   </Button>
                                 </>
                               ) : null}
@@ -564,7 +573,7 @@ export default function AprobarSolicitudesClient({
                                 }
                               >
                                 <X className="h-4 w-4" />
-                                Rechazar
+                                {getEtiquetaRechazo(sol.estado)}
                               </Button>
                             </>
                           ) : null}
@@ -797,24 +806,34 @@ export default function AprobarSolicitudesClient({
               <DialogFooter>
                 {accion ? (
                   <>
-                    <Button variant="ghost" onClick={cerrarModal}>
+                    <Button variant="ghost" onClick={cerrarModal} disabled={procesando}>
                       Cancelar
                     </Button>
                     {accion === "aprobar" ? (
                       <Button
                         className="bg-green-600 text-white hover:bg-green-700"
-                        onClick={procesarSolicitud}
+                        onClick={() => void procesarSolicitud()}
+                        disabled={procesando}
                       >
                         <Check className="h-4 w-4" />
-                        Confirmar Aprobación
+                        {procesando
+                          ? "Procesando…"
+                          : solicitudSeleccionada
+                            ? getEtiquetaBoton(solicitudSeleccionada.estado)
+                            : "Confirmar Aprobación"}
                       </Button>
                     ) : (
                       <Button
                         variant="destructive"
-                        onClick={procesarSolicitud}
+                        onClick={() => void procesarSolicitud()}
+                        disabled={procesando}
                       >
                         <X className="h-4 w-4" />
-                        Confirmar Rechazo
+                        {procesando
+                          ? "Procesando…"
+                          : solicitudSeleccionada
+                            ? getEtiquetaRechazo(solicitudSeleccionada.estado)
+                            : "Confirmar Rechazo"}
                       </Button>
                     )}
                   </>

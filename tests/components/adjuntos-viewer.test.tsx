@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AdjuntosViewer } from '@/components/solicitudes/AdjuntosViewer';
 
 const PDF_DATA =
@@ -104,7 +104,13 @@ describe('AdjuntosViewer', () => {
     );
   });
 
-  it('usa URL same-origin de contenido para previsualizar PDF', () => {
+  it('usa URL same-origin de contenido para previsualizar PDF tras validación', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: (k: string) => (k === 'content-type' ? 'application/pdf' : null) },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
     render(
       <AdjuntosViewer
         autorizado
@@ -121,10 +127,22 @@ describe('AdjuntosViewer', () => {
     );
 
     fireEvent.click(screen.getByTitle('Visualizar'));
-    const iframe = document.querySelector('iframe');
-    expect(iframe).toBeTruthy();
-    expect(iframe?.getAttribute('src')).toBe(
-      '/api/solicitudes/42/adjuntos/0/contenido'
-    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/solicitudes/42/adjuntos/0/contenido',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    await waitFor(() => {
+      const iframe = document.querySelector('iframe');
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute('src')).toBe(
+        '/api/solicitudes/42/adjuntos/0/contenido'
+      );
+    });
+
+    vi.unstubAllGlobals();
   });
 });

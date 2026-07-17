@@ -233,6 +233,19 @@ describe('requisitos-adjuntos — Fase 3 VoBo obligatorio', () => {
     });
   });
 
+  describe('prepararAdjuntosVisor', () => {
+    it('incluye adjuntos sin data embebida para carga vía API', async () => {
+      const { prepararAdjuntosVisor } = await import('@/lib/domain/requisitos-adjuntos');
+      const out = prepararAdjuntosVisor([
+        { tipo: 'vobo_jefe', nombre: 'vobo.pdf' },
+      ]);
+      expect(out).toHaveLength(1);
+      expect(out[0].indiceOriginal).toBe(0);
+      expect(out[0].data).toBeUndefined();
+      expect(out[0].nombre).toBe('vobo.pdf');
+    });
+  });
+
   describe('normalizarAdjuntosHistoricos', () => {
     it('mapea adjuntos sin tipo hacia el campo `tipo`', () => {
       const out = normalizarAdjuntosHistoricos([

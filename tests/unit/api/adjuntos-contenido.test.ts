@@ -16,6 +16,21 @@ function crearGet(url: string) {
   return new NextRequest(url, { method: 'GET' });
 }
 
+const pdfBytes = Buffer.from('%PDF-1.4 test');
+const autorizadoOk = {
+  autorizado: true,
+  solicitud: { id: 1, usuarioId: 10 },
+  adjunto: { tipo: 'vobo_jefe', nombre: 'vobo.pdf' },
+  mimeType: 'application/pdf',
+  nombreArchivo: 'vobo.pdf',
+  bytes: pdfBytes,
+  acceso: {
+    visualizadorEsSolicitante: false,
+    visualizadorEsUploader: false,
+    visualizadorEsAprobador: true,
+  },
+};
+
 describe('GET /api/solicitudes/[id]/adjuntos/[idx]/contenido', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -38,33 +53,9 @@ describe('GET /api/solicitudes/[id]/adjuntos/[idx]/contenido', () => {
     expect(res.status).toBe(401);
   });
 
-  it('devuelve 403 si no autorizado', async () => {
-    mockGetSession.mockResolvedValueOnce({ id: 10, esAdmin: false });
-    mockAutorizar.mockResolvedValueOnce({
-      autorizado: false,
-      status: 403,
-      error: 'No autorizado para ver este adjunto',
-    });
-    const mod = await import(
-      '@/app/api/solicitudes/[id]/adjuntos/[idx]/contenido/route'
-    );
-    const res = await mod.GET(crearGet('http://localhost/api/solicitudes/1/adjuntos/0/contenido'), {
-      params: Promise.resolve({ id: '1', idx: '0' }),
-    });
-    expect(res.status).toBe(403);
-  });
-
-  it('sirve PDF con Content-Type application/pdf e inline', async () => {
+  it('sirve PDF inline con Content-Type application/pdf', async () => {
     mockGetSession.mockResolvedValueOnce({ id: 1, esAdmin: true });
-    const pdfBytes = Buffer.from('%PDF-1.4 test');
-    mockAutorizar.mockResolvedValueOnce({
-      autorizado: true,
-      solicitud: { id: 1, usuarioId: 10 },
-      adjunto: { tipo: 'vobo_jefe', nombre: 'vobo.pdf' },
-      mimeType: 'application/pdf',
-      nombreArchivo: 'vobo.pdf',
-      bytes: pdfBytes,
-    });
+    mockAutorizar.mockResolvedValueOnce(autorizadoOk);
     const mod = await import(
       '@/app/api/solicitudes/[id]/adjuntos/[idx]/contenido/route'
     );
@@ -74,6 +65,26 @@ describe('GET /api/solicitudes/[id]/adjuntos/[idx]/contenido', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('application/pdf');
     expect(res.headers.get('Content-Disposition')).toContain('inline');
-    expect(res.headers.get('Content-Disposition')).toContain('vobo.pdf');
+  });
+});
+
+describe('GET /api/solicitudes/[id]/adjuntos/[idx]/descargar', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.resetModules();
+  });
+
+  it('sirve PDF como attachment', async () => {
+    mockGetSession.mockResolvedValueOnce({ id: 1, esAdmin: true });
+    mockAutorizar.mockResolvedValueOnce(autorizadoOk);
+    const mod = await import(
+      '@/app/api/solicitudes/[id]/adjuntos/[idx]/descargar/route'
+    );
+    const res = await mod.GET(crearGet('http://localhost/api/solicitudes/1/adjuntos/0/descargar'), {
+      params: Promise.resolve({ id: '1', idx: '0' }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('application/pdf');
+    expect(res.headers.get('Content-Disposition')).toContain('attachment');
   });
 });

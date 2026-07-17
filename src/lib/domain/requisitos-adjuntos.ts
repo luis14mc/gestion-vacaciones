@@ -266,3 +266,52 @@ export function normalizarAdjuntosHistoricos(
       };
     });
 }
+
+/**
+ * Prepara adjuntos para el visor institucional.
+ * Incluye entradas sin `data` embebida (listados livianos): el contenido
+ * se obtiene vía GET /api/solicitudes/[id]/adjuntos/[idx]/contenido.
+ */
+export function prepararAdjuntosVisor(adjuntos: unknown): Array<{
+  tipo: string;
+  nombre: string;
+  data?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+  uploadedBy?: number;
+  uploadedByNombre?: string;
+  indiceOriginal: number;
+}> {
+  if (!Array.isArray(adjuntos)) return [];
+
+  return adjuntos
+    .map((raw, index) => {
+      if (!raw || typeof raw !== 'object') return null;
+      const a = raw as Record<string, unknown>;
+      const data = typeof a.data === 'string' && a.data.length > 0 ? a.data : undefined;
+      const tipo =
+        (typeof a.tipo === 'string' && a.tipo) ||
+        (typeof a.nombre === 'string' ? a.nombre : null);
+      const nombre =
+        typeof a.nombre === 'string' && a.nombre.trim()
+          ? a.nombre.trim()
+          : tipo ?? `adjunto-${index + 1}`;
+
+      if (!data && !tipo) return null;
+
+      return {
+        tipo: tipo ?? 'adjunto',
+        nombre,
+        data,
+        mimeType: typeof a.mimeType === 'string' ? a.mimeType : undefined,
+        size: typeof a.size === 'number' ? a.size : undefined,
+        uploadedAt: typeof a.uploadedAt === 'string' ? a.uploadedAt : undefined,
+        uploadedBy: typeof a.uploadedBy === 'number' ? a.uploadedBy : undefined,
+        uploadedByNombre:
+          typeof a.uploadedByNombre === 'string' ? a.uploadedByNombre : undefined,
+        indiceOriginal: index,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+}

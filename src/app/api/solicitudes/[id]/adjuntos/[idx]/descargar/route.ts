@@ -1,12 +1,12 @@
 /**
- * API: GET /api/solicitudes/[id]/adjuntos/[idx]/contenido
- * Sirve el binario del adjunto inline (iframe PDF / object).
+ * API: GET /api/solicitudes/[id]/adjuntos/[idx]/descargar
+ * Descarga del adjunto con Content-Disposition: attachment.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { withErrorHandler } from '@/lib/api-handler';
 import { autorizarContenidoAdjunto } from '@/lib/solicitudes/autorizar-contenido-adjunto';
-import { respuestaAdjuntoInline } from '@/lib/solicitudes/servir-adjunto-response';
+import { respuestaAdjuntoDescarga } from '@/lib/solicitudes/servir-adjunto-response';
 
 export const runtime = 'nodejs';
 
@@ -39,7 +39,7 @@ export const GET = withErrorHandler(async (
     );
   }
 
-  return respuestaAdjuntoInline(
+  return respuestaAdjuntoDescarga(
     resultado.bytes,
     resultado.mimeType,
     resultado.nombreArchivo

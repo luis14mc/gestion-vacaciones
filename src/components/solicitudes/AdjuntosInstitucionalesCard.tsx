@@ -11,7 +11,7 @@ import {
   AdjuntosViewer,
   type AdjuntoVisor,
 } from '@/components/solicitudes/AdjuntosViewer';
-import { normalizarAdjuntosHistoricos } from '@/lib/domain/requisitos-adjuntos';
+import { prepararAdjuntosVisor } from '@/lib/domain/requisitos-adjuntos';
 import {
   puedeVerAdjuntosSolicitud,
   type SolicitudAdjuntosAcceso,
@@ -40,7 +40,7 @@ export function AdjuntosInstitucionalesCard({
   accesoSolicitud,
   className,
 }: AdjuntosInstitucionalesCardProps) {
-  const adjuntos = normalizarAdjuntosHistoricos(documentosAdjuntos) as AdjuntoVisor[];
+  const adjuntos = prepararAdjuntosVisor(documentosAdjuntos) as AdjuntoVisor[];
 
   const autorizado =
     autorizadoProp ??

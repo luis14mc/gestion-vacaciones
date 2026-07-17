@@ -12,31 +12,30 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { etiquetaAdjunto } from '@/lib/domain/requisitos-adjuntos';
+import {
+  esUrlAdjuntoContenidoValida,
+  urlAdjuntoContenido,
+  urlAdjuntoDescargar,
+} from '@/lib/solicitudes/adjunto-urls';
 
 export interface AdjuntoVisor {
-  /** Tipo (vobo_jefe, constancia_medica, etc.) o nombre histórico. */
   tipo?: string;
   nombre?: string;
-  /** Data URL o base64 crudo (fallback si no hay URL same-origin). */
+  /** Data URL o base64 (fallback local; el visor PDF usa el endpoint /contenido). */
   data?: string;
   mimeType?: string;
   size?: number;
   uploadedAt?: string;
   uploadedBy?: number;
   uploadedByNombre?: string;
-  /** Índice en documentosAdjuntos original (para auditoría / contenido). */
   indiceOriginal?: number;
 }
 
 interface AdjuntosViewerProps {
   adjuntos: AdjuntoVisor[] | null | undefined;
-  /** ID de solicitud: habilita iframe same-origin vía /contenido. */
   solicitudId?: number;
-  /** Para registrar el evento "adjunto_visualizado" en auditoría. */
   onAdjuntoVisualizado?: (adj: AdjuntoVisor, index: number) => void;
-  /** Si es true, permite que solo usuarios autorizados vean los adjuntos. */
   autorizado: boolean;
-  /** Solo mostrar metadatos (modo "sin visor"). */
   readOnly?: boolean;
 }
 
@@ -67,41 +66,29 @@ function dataUrlHref(adj: AdjuntoVisor): string | null {
   return `data:${mime};base64,${adj.data}`;
 }
 
-function base64ABytes(data: string): Uint8Array<ArrayBuffer> | null {
-  try {
-    let b64 = data;
-    if (data.startsWith('data:')) {
-      const comma = data.indexOf(',');
-      if (comma < 0) return null;
-      b64 = data.slice(comma + 1);
-    }
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  } catch {
-    return null;
-  }
-}
-
 function etiquetaSubidoPor(adj: AdjuntoVisor): string | null {
-  if (adj.uploadedByNombre) {
-    return `Subido por: ${adj.uploadedByNombre}`;
-  }
+  if (adj.uploadedByNombre) return `Subido por: ${adj.uploadedByNombre}`;
   if (typeof adj.uploadedBy === 'number') {
     return `Subido por usuario ID: ${adj.uploadedBy}`;
   }
   return null;
 }
 
-function urlContenidoAdjunto(
+function hrefDescargaAdjunto(
   solicitudId: number | undefined,
-  indice: number
+  indice: number,
+  adj: AdjuntoVisor
 ): string | null {
-  if (!solicitudId || !Number.isFinite(solicitudId)) return null;
-  return `/api/solicitudes/${solicitudId}/adjuntos/${indice}/contenido`;
+  if (esUrlAdjuntoContenidoValida(solicitudId, indice)) {
+    return urlAdjuntoDescargar(solicitudId!, indice);
+  }
+  return dataUrlHref(adj);
+}
+
+function adjuntoVisibleEnLista(adj: AdjuntoVisor, solicitudId?: number): boolean {
+  if (adj.data) return true;
+  const indice = adj.indiceOriginal ?? 0;
+  return esUrlAdjuntoContenidoValida(solicitudId, indice);
 }
 
 export function AdjuntosViewer({
@@ -114,9 +101,13 @@ export function AdjuntosViewer({
   const [adjuntoAbierto, setAdjuntoAbierto] = useState<AdjuntoVisor | null>(null);
   const [indiceAbierto, setIndiceAbierto] = useState<number>(0);
 
-  const listaFinal = Array.isArray(adjuntos)
-    ? adjuntos.filter((a) => Boolean(a?.data))
-    : [];
+  const listaFinal = useMemo(
+    () =>
+      (Array.isArray(adjuntos) ? adjuntos : []).filter((a) =>
+        adjuntoVisibleEnLista(a, solicitudId)
+      ),
+    [adjuntos, solicitudId]
+  );
 
   if (!autorizado) {
     return (
@@ -146,12 +137,11 @@ export function AdjuntosViewer({
           const tamKB = adj.size ? Math.round(adj.size / 1024) : null;
           const indiceAuditoria = adj.indiceOriginal ?? idx;
           const subidoPor = etiquetaSubidoPor(adj);
-          const hrefDescarga =
-            urlContenidoAdjunto(solicitudId, indiceAuditoria) ?? dataUrlHref(adj) ?? '#';
+          const hrefDescarga = hrefDescargaAdjunto(solicitudId, indiceAuditoria, adj);
 
           return (
             <div
-              key={`${tipo}-${idx}`}
+              key={`${tipo}-${indiceAuditoria}`}
               className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3"
             >
               <div className="flex min-w-0 items-start gap-3">
@@ -197,18 +187,20 @@ export function AdjuntosViewer({
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
-                    <a
-                      href={hrefDescarga}
-                      download={adj.nombre ?? `adjunto-${tipo}.bin`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => onAdjuntoVisualizado?.(adj, indiceAuditoria)}
-                      title="Descargar"
-                    >
-                      <Button variant="ghost" size="sm" type="button" asChild={false}>
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </a>
+                    {hrefDescarga ? (
+                      <a
+                        href={hrefDescarga}
+                        download={adj.nombre ?? `adjunto-${tipo}.bin`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => onAdjuntoVisualizado?.(adj, indiceAuditoria)}
+                        title="Descargar"
+                      >
+                        <Button variant="ghost" size="sm" type="button" asChild={false}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -235,9 +227,7 @@ export function AdjuntosViewer({
                 </>
               )}
             </DialogTitle>
-            <DialogDescription>
-              {adjuntoAbierto?.nombre ?? 'archivo'}
-            </DialogDescription>
+            <DialogDescription>{adjuntoAbierto?.nombre ?? 'archivo'}</DialogDescription>
           </DialogHeader>
           {adjuntoAbierto && (
             <VisorContenido
@@ -252,6 +242,24 @@ export function AdjuntosViewer({
   );
 }
 
+/** Valida que el endpoint devuelva PDF antes de montar el iframe. */
+async function validarEndpointPdf(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return false;
+    const ct = (res.headers.get('content-type') ?? '').toLowerCase();
+    if (ct.includes('text/html')) return false;
+    if (ct.includes('application/json')) return false;
+    return ct.includes('pdf') || ct.includes('octet-stream');
+  } catch {
+    return false;
+  }
+}
+
 function VisorContenido({
   adjunto,
   solicitudId,
@@ -264,61 +272,87 @@ function VisorContenido({
   const mime = detectarMime(adjunto);
   const esPdf = mime === 'application/pdf';
   const esImagen = mime.startsWith('image/');
-  const urlSameOrigin = urlContenidoAdjunto(solicitudId, indice);
   const dataHref = dataUrlHref(adjunto);
 
-  const [previewError, setPreviewError] = useState(false);
+  const contenidoUrl = esUrlAdjuntoContenidoValida(solicitudId, indice)
+    ? urlAdjuntoContenido(solicitudId!, indice)
+    : null;
+  const descargarUrl = hrefDescargaAdjunto(solicitudId, indice, adjunto);
 
-  const blobUrl = useMemo(() => {
-    if (urlSameOrigin || !adjunto.data || !esPdf) return null;
-    const bytes = base64ABytes(adjunto.data);
-    if (!bytes) return null;
-    return URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  }, [adjunto.data, esPdf, urlSameOrigin]);
+  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const [validando, setValidando] = useState(false);
 
   useEffect(() => {
+    setIframeSrc(null);
+    setPreviewError(false);
+
+    if (!esPdf) return;
+
+    if (!contenidoUrl) {
+      if (!dataHref) setPreviewError(true);
+      return;
+    }
+
+    let cancelado = false;
+    setValidando(true);
+
+    void validarEndpointPdf(contenidoUrl).then((ok) => {
+      if (cancelado) return;
+      setValidando(false);
+      if (ok) {
+        setIframeSrc(contenidoUrl);
+      } else {
+        setPreviewError(true);
+      }
+    });
+
     return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      cancelado = true;
     };
-  }, [blobUrl]);
+  }, [contenidoUrl, esPdf, dataHref]);
 
-  const previewSrc = useMemo(() => {
-    if (urlSameOrigin) return urlSameOrigin;
-    if (esPdf && blobUrl) return blobUrl;
-    if (esImagen && dataHref) return dataHref;
-    return null;
-  }, [urlSameOrigin, esPdf, blobUrl, esImagen, dataHref]);
-
-  const hrefDescarga = urlSameOrigin ?? dataHref ?? '#';
+  const imagenSrc = esImagen ? (contenidoUrl ?? dataHref) : null;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{adjunto.nombre ?? 'archivo'}</span>
-        <a
-          href={hrefDescarga}
-          download={adjunto.nombre ?? 'adjunto.bin'}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-foreground hover:bg-muted/70"
-        >
-          <Download className="h-3.5 w-3.5" /> Descargar
-        </a>
+        {descargarUrl ? (
+          <a
+            href={descargarUrl}
+            download={adjunto.nombre ?? 'adjunto.bin'}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-foreground hover:bg-muted/70"
+          >
+            <Download className="h-3.5 w-3.5" /> Descargar
+          </a>
+        ) : null}
       </div>
       <div className="overflow-hidden rounded-md border border-border bg-muted/30">
-        {esPdf && previewSrc && !previewError ? (
+        {validando ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            Cargando vista previa…
+          </p>
+        ) : esPdf && iframeSrc && !previewError ? (
           <iframe
-            src={previewSrc}
+            src={iframeSrc}
             title={adjunto.nombre ?? 'adjunto PDF'}
             className="h-[70vh] w-full bg-white"
-            onError={() => setPreviewError(true)}
           />
-        ) : esImagen && previewSrc ? (
+        ) : esImagen && imagenSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={previewSrc}
+            src={imagenSrc}
             alt={adjunto.nombre ?? 'adjunto'}
             className="mx-auto max-h-[70vh] w-auto"
+          />
+        ) : esPdf && dataHref && !contenidoUrl && !previewError ? (
+          <iframe
+            src={dataHref}
+            title={adjunto.nombre ?? 'adjunto PDF'}
+            className="h-[70vh] w-full bg-white"
           />
         ) : (
           <div className="flex flex-col items-center gap-3 p-8 text-center">
@@ -328,15 +362,17 @@ function VisorContenido({
                 ? 'No se pudo previsualizar el PDF. Descargue el archivo.'
                 : 'Tipo de archivo no previsualizable.'}
             </p>
-            <a
-              href={hrefDescarga}
-              download={adjunto.nombre ?? 'adjunto.bin'}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-primary-foreground hover:bg-primary/90"
-            >
-              <Download className="h-4 w-4" /> Descargar archivo
-            </a>
+            {descargarUrl ? (
+              <a
+                href={descargarUrl}
+                download={adjunto.nombre ?? 'adjunto.bin'}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-primary-foreground hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4" /> Descargar archivo
+              </a>
+            ) : null}
           </div>
         )}
       </div>

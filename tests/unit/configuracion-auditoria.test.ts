@@ -400,7 +400,7 @@ describe('POST /api/solicitudes — vacaciones.dias_anticipacion', () => {
     // cuando se viola vacaciones.dias_anticipacion.
     mockCrearSolicitud.mockRejectedValue(
       new Error(
-        'Las vacaciones deben solicitarse con al menos 5 día(s) de anticipación.'
+        'Debe solicitar con al menos 5 día(s) de anticipación. Fecha mínima permitida: 22/07/2026.'
       )
     );
 

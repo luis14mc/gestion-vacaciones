@@ -4,8 +4,13 @@ import { esErrorValidacionNegocioCrearSolicitud } from '@/lib/domain/solicitud-e
 describe('esErrorValidacionNegocioCrearSolicitud', () => {
   it('reconoce anticipación insuficiente de vacaciones', () => {
     const error = new Error(
-      'Las vacaciones deben solicitarse con al menos 5 día(s) de anticipación.'
+      'Debe solicitar con al menos 5 día(s) de anticipación. Fecha mínima permitida: 22/07/2026.'
     );
+    expect(esErrorValidacionNegocioCrearSolicitud(error)).toBe(true);
+  });
+
+  it('reconoce saldo insuficiente con mensaje canónico', () => {
+    const error = new Error('No tiene días disponibles suficientes.');
     expect(esErrorValidacionNegocioCrearSolicitud(error)).toBe(true);
   });
 

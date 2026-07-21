@@ -14,8 +14,15 @@ interface FilaImportacion {
   numeroEmpleado?: string;
   departamento: string;
   cargo: string;
+  telefono?: string;
+  direccion?: string;
+  fechaIngreso?: string | null;
+  fechaNacimiento?: string | null;
   esJefe: boolean;
   esDirector: boolean;
+  esAdmin?: boolean;
+  esRrhh?: boolean;
+  activo?: boolean;
   emailJefeSuperior?: string | null;
   errores: string[];
 }
@@ -195,7 +202,7 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                   <div>
                     <p className="font-medium">Haz clic aquí para seleccionar un archivo</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      El Excel debe contener: Email, Nombre, Apellido, Número Empleado, Departamento
+                      Columnas requeridas: Email, Nombre, Apellido, Departamento
                     </p>
                   </div>
                 </div>
@@ -221,12 +228,13 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
               </p>
               <ul className="list-disc pl-5 text-muted-foreground space-y-1">
                 <li>Los encabezados del Excel deben estar en la primera fila.</li>
-                <li>La columna "Número Empleado" (opcional) permite asociar el código único de empleado.</li>
-                <li>Los nombres de departamentos deben coincidir <strong>exactamente</strong> con los registrados en el sistema.</li>
-                <li>La columna "Es Jefe" (opcional) acepta valores "Si" o "No".</li>
-                <li>La columna "Es Director" (opcional) acepta valores "Si" o "No".</li>
-                <li>El "Email Jefe Superior" puede referenciar un usuario existente o una fila del mismo Excel.</li>
-                <li>Cada usuario recibirá una contraseña temporal única; al finalizar se descargará un CSV con las credenciales para distribuir.</li>
+                <li>Columnas requeridas: Email, Nombre, Apellido, Departamento.</li>
+                <li>Opcionales: Número Empleado, Cargo, Teléfono, Dirección Domicilio, Fecha Ingreso, Fecha Nacimiento.</li>
+                <li>Roles (Si/No): Es Jefe, Es Director, Es Admin, Es RRHH, Activo.</li>
+                <li>Es Admin y Es RRHH solo se aplican si quien importa es administrador.</li>
+                <li>Los nombres de departamentos deben coincidir con los registrados en el sistema.</li>
+                <li>Email Jefe Superior: debe ser Jefe o Director del mismo departamento (existente o en el mismo Excel).</li>
+                <li>Cada usuario recibirá una contraseña temporal; al finalizar se descargará un CSV con las credenciales.</li>
                 <li>Todos deberán cambiar su contraseña en el primer ingreso.</li>
               </ul>
             </div>
@@ -280,9 +288,19 @@ export function ImportarUsuariosDialog({ open, onOpenChange, onSuccess }: Import
                       <TableCell>{fila.departamento || "-"}</TableCell>
                       <TableCell>
                         <div>{fila.cargo || "-"}</div>
+                        {(fila.telefono || fila.direccion) && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {fila.telefono && <span>Tel: {fila.telefono}</span>}
+                            {fila.telefono && fila.direccion && <span className="mx-1">•</span>}
+                            {fila.direccion && <span>{fila.direccion}</span>}
+                          </div>
+                        )}
                         <div className="mt-1 flex flex-wrap gap-1">
                           {fila.esDirector && <Badge variant="secondary">Director</Badge>}
                           {fila.esJefe && <Badge variant="secondary">Jefe</Badge>}
+                          {fila.esAdmin && <Badge variant="secondary">Admin</Badge>}
+                          {fila.esRrhh && <Badge variant="secondary">RRHH</Badge>}
+                          {fila.activo === false && <Badge variant="outline">Inactivo</Badge>}
                         </div>
                         {fila.emailJefeSuperior && (
                           <div className="mt-1 text-xs text-muted-foreground">

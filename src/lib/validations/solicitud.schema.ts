@@ -1,9 +1,20 @@
 import { z } from 'zod';
+import {
+  esFinDeSemana,
+  tipoPermiteFinDeSemana,
+  validarHorasPermisoSalida,
+  validarOrdenFechas,
+  validarFechaNoPasada,
+  validarAnticipacionMinima,
+  validarRangoSinFinDeSemana,
+  type TipoSolicitudValidacion,
+} from '@/lib/domain/solicitud-validaciones';
 
 export const solicitudSchema = z.object({
     tipoAusenciaId: z.string().min(1, 'Debe seleccionar un tipo de solicitud.'),
     unidad: z.enum(['dias', 'horas']),
     tipoPermiso: z.string().optional(),
+    tipoSolicitud: z.string().optional(),
 
     // Vacaciones (días)
     fechaInicio: z.string().optional(),
@@ -17,8 +28,11 @@ export const solicitudSchema = z.object({
     motivo: z.string().optional(),
     observaciones: z.string().optional(),
     requiereMotivo: z.boolean().optional().default(false),
+    diasAnticipacion: z.number().optional().default(0),
 }).superRefine((data, ctx) => {
     const esCumpleanos = data.tipoAusenciaId === 'dia_cumpleanos';
+    const tipoSolicitud = (data.tipoSolicitud ?? data.tipoAusenciaId) as TipoSolicitudValidacion;
+    const anticipacion = data.diasAnticipacion ?? 0;
 
     if (data.unidad === 'horas') {
         if (!data.fechaInicio) {
@@ -27,6 +41,22 @@ export const solicitudSchema = z.object({
                 message: 'La fecha del permiso es requerida.',
                 path: ['fechaInicio'],
             });
+        } else {
+            const pasada = validarFechaNoPasada(data.fechaInicio);
+            if (!pasada.valido) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: pasada.error!, path: ['fechaInicio'] });
+            }
+            const anticipacionVal = validarAnticipacionMinima(data.fechaInicio, anticipacion);
+            if (!anticipacionVal.valido) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: anticipacionVal.error!, path: ['fechaInicio'] });
+            }
+            if (!tipoPermiteFinDeSemana('permiso_salida') && esFinDeSemana(data.fechaInicio)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'No se pueden solicitar permisos para sábado o domingo.',
+                    path: ['fechaInicio'],
+                });
+            }
         }
         if (!data.tipoPermiso) {
             ctx.addIssue({
@@ -35,18 +65,16 @@ export const solicitudSchema = z.object({
                 path: ['tipoPermiso'],
             });
         }
-        if (data.tipoPermiso === '1-2h') {
-            if (!data.horaSalida) {
+        if (data.tipoPermiso === '1-2h' || data.tipoPermiso === '2-4h') {
+            const horas = validarHorasPermisoSalida(
+                data.tipoPermiso,
+                data.horaSalida,
+                data.horaRegreso
+            );
+            if (!horas.valido) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    message: 'La hora de salida es requerida.',
-                    path: ['horaSalida'],
-                });
-            }
-            if (!data.horaRegreso) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: 'La hora de regreso es requerida.',
+                    message: horas.error!,
                     path: ['horaRegreso'],
                 });
             }
@@ -81,6 +109,23 @@ export const solicitudSchema = z.object({
         }
 
         if (esCumpleanos) {
+            if (data.fechaInicio) {
+                const pasada = validarFechaNoPasada(data.fechaInicio);
+                if (!pasada.valido) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: pasada.error!, path: ['fechaInicio'] });
+                }
+                const anticipacionVal = validarAnticipacionMinima(data.fechaInicio, anticipacion);
+                if (!anticipacionVal.valido) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: anticipacionVal.error!, path: ['fechaInicio'] });
+                }
+                if (esFinDeSemana(data.fechaInicio)) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: 'No se pueden solicitar permisos para sábado o domingo.',
+                        path: ['fechaInicio'],
+                    });
+                }
+            }
             return;
         }
 
@@ -93,13 +138,35 @@ export const solicitudSchema = z.object({
         }
 
         if (data.fechaInicio && data.fechaFin) {
-            const inicio = new Date(data.fechaInicio);
-            const fin = new Date(data.fechaFin);
-            if (fin < inicio) {
+            const orden = validarOrdenFechas(data.fechaInicio, data.fechaFin);
+            if (!orden.valido) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
-                    message: 'La fecha de fin no puede ser anterior a la de inicio.',
+                    message: orden.error!,
                     path: ['fechaFin'],
+                });
+            }
+
+            const pasada = validarFechaNoPasada(data.fechaInicio);
+            if (!pasada.valido) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: pasada.error!, path: ['fechaInicio'] });
+            }
+
+            const anticipacionVal = validarAnticipacionMinima(data.fechaInicio, anticipacion);
+            if (!anticipacionVal.valido) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: anticipacionVal.error!, path: ['fechaInicio'] });
+            }
+
+            const finDeSemana = validarRangoSinFinDeSemana(
+                tipoSolicitud === 'licencia_medica' ? 'licencia_medica' : tipoSolicitud,
+                data.fechaInicio,
+                data.fechaFin
+            );
+            if (!finDeSemana.valido) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: finDeSemana.error!,
+                    path: ['fechaInicio'],
                 });
             }
         }

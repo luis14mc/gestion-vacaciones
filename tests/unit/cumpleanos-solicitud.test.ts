@@ -130,9 +130,10 @@ describe('dia_cumpleanos - formulario schema', () => {
     const result = solicitudSchema.safeParse({
       tipoAusenciaId: 'dia_cumpleanos',
       unidad: 'dias',
-      fechaInicio: '2026-06-15',
+      fechaInicio: '2026-08-10',
       fechaFin: '',
       requiereMotivo: false,
+      diasAnticipacion: 0,
     });
 
     expect(result.success).toBe(true);

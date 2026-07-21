@@ -8,7 +8,7 @@
  */
 
 import { db } from '@/lib/db';
-import { solicitudes, balances, anosLaborales, usuarios, departamentos } from '@/lib/db/schema';
+import { solicitudes, balances, anosLaborales, usuarios } from '@/lib/db/schema';
 import { eq, and, sql, desc, inArray, isNull } from 'drizzle-orm';
 import { obtenerConfigs, asNumber } from '@/lib/config/service';
 import { contarDiasHabiles } from '@/lib/domain/labor-days';
@@ -22,6 +22,10 @@ import { validarVoBoDirectorService } from '@/lib/domain/solicitud-adjuntos';
 import { validarConflictosDepartamento } from '@/lib/domain/departamento-conflictos';
 import { resolverFlujoInicialSolicitud } from '@/lib/domain/solicitud-flujo-inicial';
 import { resolverAprobadorSegundoNivel, obtenerJefeSuperiorEmpleado } from '@/lib/domain/aprobadores';
+import {
+  tipoDescuentaSaldo,
+  validarReglasFechasSolicitud,
+} from '@/lib/domain/solicitud-validaciones';
 
 // =====================================================
 // TIPOS
@@ -73,14 +77,19 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
   } = params;
 
   return await db.transaction(async (tx) => {
-    const descuentaBalance =
-      tipo === 'vacaciones' ||
-      (tipo === 'permiso_salida' && duracionPermiso === 'dia_completo');
+    const descuentaBalance = tipoDescuentaSaldo(tipo, duracionPermiso);
+
+    const reglasVacaciones = await obtenerConfigs([
+      'vacaciones.dias_minimos_solicitud',
+      'vacaciones.dias_maximos_consecutivos',
+      'vacaciones.dias_anticipacion',
+    ]);
+    const diasAnticipacion = asNumber(reglasVacaciones['vacaciones.dias_anticipacion'], 0);
 
     // Días AUTORITATIVOS (no se confía en el valor del cliente):
     let diasParaSolicitud: number;
-    let fechaInicioFinal = fechaInicio;
-    let fechaFinFinal = fechaFin;
+    let fechaInicioFinal = fechaInicio?.slice(0, 10);
+    let fechaFinFinal = fechaFin?.slice(0, 10);
 
     if (tipo === 'dia_cumpleanos') {
       const estructura = validarEstructuraSolicitudCumpleanos({
@@ -94,60 +103,54 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       fechaInicioFinal = fechaInicio!.slice(0, 10);
       fechaFinFinal = fechaFin!.slice(0, 10);
       diasParaSolicitud = 1;
-    } else if (tipo === 'permiso_salida') {
-      diasParaSolicitud = duracionPermiso === 'dia_completo' ? 1 : Number(diasSolicitados || 0);
     } else if (tipo === 'vacaciones') {
-      if (!fechaInicio || !fechaFin) {
+      if (!fechaInicioFinal || !fechaFinFinal) {
         throw new Error('Las vacaciones requieren fecha de inicio y fin');
       }
-      // Días laborables: sábados y domingos no se descuentan.
-      diasParaSolicitud = contarDiasHabiles(fechaInicio, fechaFin);
+      diasParaSolicitud = contarDiasHabiles(fechaInicioFinal, fechaFinFinal);
+    } else if (tipo === 'permiso_salida') {
+      diasParaSolicitud = duracionPermiso === 'dia_completo' ? 1 : 0;
+      if (!fechaFinFinal && fechaInicioFinal) {
+        fechaFinFinal = fechaInicioFinal;
+      }
     } else {
       diasParaSolicitud = Number(diasSolicitados || 0);
     }
-    const diasParaBalance = diasParaSolicitud;
 
-    // 1. Validar días solicitados
-    if (tipo === 'vacaciones' && diasParaSolicitud <= 0) {
-      throw new Error('El rango de fechas no contiene días hábiles para descontar');
-    }
+    const diasParaBalance = descuentaBalance ? diasParaSolicitud : 0;
 
-    // 1b. Reglas de vacaciones configurables (Configuración → Vacaciones)
-    if (tipo === 'vacaciones') {
-      const reglas = await obtenerConfigs([
-        'vacaciones.dias_minimos_solicitud',
-        'vacaciones.dias_maximos_consecutivos',
-        'vacaciones.dias_anticipacion',
-      ]);
-      const minDias = asNumber(reglas['vacaciones.dias_minimos_solicitud'], 1);
-      const maxDias = asNumber(reglas['vacaciones.dias_maximos_consecutivos'], 365);
-      const anticipacion = asNumber(reglas['vacaciones.dias_anticipacion'], 0);
-
-      if (diasParaSolicitud < minDias) {
-        throw new Error(`La solicitud debe ser de al menos ${minDias} día(s) hábil(es).`);
-      }
-      if (diasParaSolicitud > maxDias) {
-        throw new Error(`No puede solicitar más de ${maxDias} días consecutivos.`);
-      }
-      if (anticipacion > 0 && fechaInicio) {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const minInicio = new Date(hoy);
-        minInicio.setDate(minInicio.getDate() + anticipacion);
-        const inicio = new Date(`${fechaInicio}T00:00:00`);
-        if (inicio < minInicio) {
-          throw new Error(`Las vacaciones deben solicitarse con al menos ${anticipacion} día(s) de anticipación.`);
-        }
-      }
+    // 1. Fechas, anticipación, fines de semana y horas (antes de saldo)
+    const validacionFechas = validarReglasFechasSolicitud({
+      tipo,
+      fechaInicio: fechaInicioFinal,
+      fechaFin: fechaFinFinal,
+      duracionPermiso,
+      horaSalida,
+      horaRegreso,
+      diasAnticipacion,
+    });
+    if (!validacionFechas.valido) {
+      throw new Error(validacionFechas.error);
     }
 
     if (tipo === 'permiso_salida' && (!motivo?.trim() || motivo.trim().length < 5)) {
       throw new Error('Para permisos de salida es obligatorio indicar un motivo de al menos 5 caracteres.');
     }
 
-    // 2. Validar fechas
-    if (fechaInicioFinal && fechaFinFinal && fechaInicioFinal > fechaFinFinal) {
-      throw new Error('La fecha de inicio no puede ser posterior a la fecha de fin');
+    // 2. Reglas de vacaciones (días hábiles mín/máx) — después de fechas válidas
+    if (tipo === 'vacaciones') {
+      const minDias = asNumber(reglasVacaciones['vacaciones.dias_minimos_solicitud'], 1);
+      const maxDias = asNumber(reglasVacaciones['vacaciones.dias_maximos_consecutivos'], 365);
+
+      if (diasParaSolicitud <= 0) {
+        throw new Error('El rango de fechas no contiene días hábiles para descontar');
+      }
+      if (diasParaSolicitud < minDias) {
+        throw new Error(`La solicitud debe ser de al menos ${minDias} día(s) hábil(es).`);
+      }
+      if (diasParaSolicitud > maxDias) {
+        throw new Error(`No puede solicitar más de ${maxDias} días consecutivos.`);
+      }
     }
 
     // 3. Validar VoBo de Ministro para Directores (no aplica a día de cumpleaños)
@@ -225,7 +228,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
       throw new Error('No hay año laboral activo');
     }
 
-    // 3. Si es vacación, validar balance
+    // Validar saldo solo cuando el tipo/duración descuenta días
     if (descuentaBalance && diasParaBalance > 0) {
       const balance = await tx.query.balances.findFirst({
         where: and(
@@ -241,9 +244,7 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
 
       const disponible = parseFloat(balance.cantidadDisponible);
       if (disponible < diasParaBalance) {
-        throw new Error(
-          `Balance insuficiente. Disponible: ${disponible} días, solicitado: ${diasSolicitados} días`
-        );
+        throw new Error('No tiene días disponibles suficientes.');
       }
     }
 
@@ -263,15 +264,6 @@ export async function crearSolicitud(params: CrearSolicitudParams) {
     }
 
     const codigo = `CNI-SOL-${year}-${String(nextNumber).padStart(4, '0')}`;
-
-    let departamentoNombre: string | null = null;
-    if (usuario.departamentoId) {
-      const departamento = await tx.query.departamentos.findFirst({
-        where: eq(departamentos.id, usuario.departamentoId),
-        columns: { nombre: true },
-      });
-      departamentoNombre = departamento?.nombre ?? null;
-    }
 
     // Fase 2 (corrección):
     //   - Empleado normal: solo requiere jefeSuperiorId; NO busca Director/SG.

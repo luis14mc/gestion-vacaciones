@@ -22,6 +22,7 @@ import { BalanceViewer } from './solicitudes/BalanceViewer';
 import type { ElegibilidadCumpleanos } from '@/lib/domain/cumpleanos';
 import type { FlujoAprobacionNuevaSolicitud } from '@/lib/domain/solicitud-flujo-aprobacion';
 import type { AdjuntoRequerido } from '@/lib/domain/requisitos-adjuntos';
+import { tipoDescuentaSaldo } from '@/lib/domain/solicitud-validaciones';
 
 const TIPO_DIA_CUMPLEANOS = {
   id: 'dia_cumpleanos',
@@ -66,6 +67,10 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
     | null
   >(null);
   const [cargandoFlujo, setCargandoFlujo] = useState(true);
+  const [reglasFormulario, setReglasFormulario] = useState<{
+    diasAnticipacion: number;
+    fechaMinima: string;
+  } | null>(null);
   // Fase 3: el backend exige adjuntos por rol. Mantenemos un map
   // tipoAdjunto → archivo en base64. Cualquier rol puede tener 1 o
   // varios adjuntos obligatorios (vobo_jefe + constancia_medica, etc.).
@@ -90,6 +95,8 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       motivo: '',
       observaciones: '',
       requiereMotivo: false,
+      diasAnticipacion: 0,
+      tipoSolicitud: '',
     },
   });
 
@@ -104,6 +111,13 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
   const esVacaciones = tipoSeleccionado?.tipo === 'vacaciones';
   const esLicenciaMedica = tipoSeleccionado?.tipo === 'licencia_medica';
   const esCumpleanos = tipoSeleccionado?.tipo === 'dia_cumpleanos';
+  const bloquearFinDeSemana = !!tipoSeleccionado && !esLicenciaMedica;
+  const descuentaSaldo = tipoSeleccionado
+    ? tipoDescuentaSaldo(
+        tipoSeleccionado.tipo as 'vacaciones' | 'permiso_salida' | 'licencia_medica' | 'permiso_personal' | 'dia_cumpleanos',
+        esPermiso ? tipoPermiso : undefined
+      )
+    : false;
   const necesitaFechas = !!tipoSeleccionado && !esPermiso && !esCumpleanos;
   const requiereVoBoMinistro = debeExigirVoBoMinistro({
     requiereVoBoFlujo: flujoAprobacion?.requiereVoBoMinistro ?? false,
@@ -137,18 +151,28 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
   const { diasLaborables } = useLaborDays(fechaInicio, fechaFin);
 
   const balanceActual = balances.find(
-    (b: any) =>
-      b.tipoAusencia === (tipoSeleccionado?.tipo || tipoAusenciaId) ||
-      b.tipo_ausencia === (tipoSeleccionado?.tipo || tipoAusenciaId)
+    (b: any) => {
+      const tipoBalance = descuentaSaldo ? 'vacaciones' : (tipoSeleccionado?.tipo || tipoAusenciaId);
+      return (
+        b.tipoAusencia === tipoBalance ||
+        b.tipo_ausencia === tipoBalance
+      );
+    }
   );
 
   const diasDisponibles = balanceActual
     ? Number.parseFloat(balanceActual.cantidadDisponible ?? balanceActual.cantidad_disponible ?? '0')
     : 0;
 
-  const diasRestantes = diasDisponibles - diasLaborables;
+  const diasADescontar = esVacaciones
+    ? diasLaborables
+    : esPermiso && tipoPermiso === 'dia_completo'
+      ? 1
+      : 0;
 
-  const mostrarBalances = esVacaciones;
+  const diasRestantes = diasDisponibles - diasADescontar;
+
+  const mostrarBalances = descuentaSaldo;
 
   // Set unit and requiereMotivo default depending on selection
   useEffect(() => {
@@ -164,19 +188,33 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
         form.setValue('motivo', '');
         form.setValue('fechaFin', form.getValues('fechaInicio') || '');
       }
+      form.setValue('tipoSolicitud', tipoSeleccionado.tipo ?? '');
     }
   }, [tipoSeleccionado, form]);
 
   useEffect(() => {
-    fetch('/api/solicitudes/cumpleanos-elegibilidad', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success) {
-          setElegibilidadCumpleanos(json.data);
+    Promise.all([
+      fetch('/api/solicitudes/cumpleanos-elegibilidad', { cache: 'no-store' }).then((res) =>
+        res.json()
+      ),
+      fetch('/api/solicitudes/reglas-formulario', { cache: 'no-store' }).then((res) =>
+        res.json()
+      ),
+    ])
+      .then(([cumpleanosJson, reglasJson]) => {
+        if (cumpleanosJson.success) {
+          setElegibilidadCumpleanos(cumpleanosJson.data);
+        }
+        if (reglasJson.success && reglasJson.data) {
+          setReglasFormulario(reglasJson.data);
+          form.setValue('diasAnticipacion', reglasJson.data.diasAnticipacion ?? 0);
         }
       })
-      .catch(() => setElegibilidadCumpleanos(null));
-  }, []);
+      .catch(() => {
+        setElegibilidadCumpleanos(null);
+        setReglasFormulario(null);
+      });
+  }, [form]);
 
   useEffect(() => {
     const tipoFlujo = tipoSeleccionado?.tipo ?? 'vacaciones';
@@ -219,8 +257,8 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
       return;
     }
 
-    if (esVacaciones && balanceActual && diasRestantes < 0) {
-      sileo.error({ title: 'Error', description: 'No tienes suficientes días disponibles.' });
+    if (descuentaSaldo && balanceActual && diasRestantes < 0) {
+      sileo.error({ title: 'Error', description: 'No tiene días disponibles suficientes.' });
       return;
     }
 
@@ -374,7 +412,13 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
               )}
             />
 
-            {esPermiso && <PermisoHorasSection form={form as any} />}
+            {esPermiso && (
+              <PermisoHorasSection
+                form={form as any}
+                fechaMinima={reglasFormulario?.fechaMinima}
+                bloquearFinDeSemana={bloquearFinDeSemana}
+              />
+            )}
             {esCumpleanos && (
               <CumpleanosSection form={form as any} elegibilidad={elegibilidadCumpleanos} />
             )}
@@ -382,13 +426,15 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
               <VacacionesSection
                 form={form as any}
                 titulo={esVacaciones ? 'VACACIONES' : tipoSeleccionado?.nombre?.toUpperCase()}
+                fechaMinima={reglasFormulario?.fechaMinima}
+                bloquearFinDeSemana={bloquearFinDeSemana}
               />
             )}
 
             {mostrarBalances && (
               <BalanceViewer
                 diasDisponibles={diasDisponibles}
-                diasSolicitados={diasLaborables}
+                diasSolicitados={diasADescontar}
                 diasRestantes={diasRestantes}
               />
             )}
@@ -498,7 +544,7 @@ export default function FormularioSolicitud({ usuarioId, onSuccess, onCancel }: 
                 type="submit"
                 disabled={
                   submitting ||
-                  (esVacaciones && balanceActual && diasRestantes < 0) ||
+                  (descuentaSaldo && balanceActual && diasRestantes < 0) ||
                   (esCumpleanos && !elegibilidadCumpleanos?.puedeSolicitar)
                 }
                 className="w-full sm:w-auto"

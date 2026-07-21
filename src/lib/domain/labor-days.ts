@@ -12,7 +12,8 @@ import { esFeriadoHonduras } from '@/lib/domain/feriados-honduras';
  * UTC de `new Date('YYYY-MM-DD')`, que en zonas UTC−N mueve el día al
  * anterior y hace que lunes→domingo cuente 0 días laborables.
  */
-function parseFechaLocal(fecha: string): Date {
+/** Parsea YYYY-MM-DD en zona local (mediodía) para evitar desfase UTC. */
+export function parseFechaLocal(fecha: string): Date {
   const solo = fecha.slice(0, 10);
   return new Date(`${solo}T12:00:00`);
 }

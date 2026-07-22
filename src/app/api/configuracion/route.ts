@@ -2,206 +2,167 @@
  * ============================================================
  * API: CONFIGURACIÓN DEL SISTEMA
  * ============================================================
- * @description Endpoints para gestión de configuraciones
- * @version 6.0 — Rediseño con Security by Design (OWASP 2026)
- * 
- * Cambios clave:
- *  - GET filtra claves privadas para usuarios no-admin (Least Privilege)
- *  - PATCH soporta batch updates dentro de transacción atómica
- *  - Se eliminan POST y DELETE: las claves son estáticas del sistema
- * ============================================================
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/api-handler';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { configuracion } from '@/lib/db/schema';
 import { getSession } from '@/lib/auth';
 import { filtrarConfigCatalogo, getConfigMeta, validarConfig } from '@/lib/config/catalog';
 import { invalidarCacheConfig } from '@/lib/config/service';
+import {
+  asegurarConfiguracionesBase,
+  debeOmitirActualizacionSmtpPassword,
+  prepararConfiguracionParaCliente,
+  SMTP_PASSWORD_CLAVE,
+} from '@/lib/config/bootstrap-config';
 import { registrarEventoAuditoria, datosPeticion } from '@/services/auditoria.service';
 
 export const runtime = 'nodejs';
 
+async function contarConfiguraciones(): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(configuracion);
+  return Number(row?.count ?? 0);
+}
+
 // ─── GET: Obtener configuraciones ─────────────────────
 export const GET = withErrorHandler(async () => {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'No autenticado' },
-        { status: 401 }
-      );
-    }
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'No autenticado' }, { status: 401 });
+  }
 
-    let results: any[] = [];
-    try {
-      if (session.esAdmin) {
-        // Admin ve todas las configuraciones
-        results = await db.select().from(configuracion);
-      } else {
-        // No-admin solo ve claves públicas (OWASP: Least Privilege)
-        results = await db
-          .select()
-          .from(configuracion)
-          .where(eq(configuracion.esPublico, true));
-      }
-    } catch (e: any) {
-      if (e.message?.includes('does not exist') || e.code === '42P01') {
-        return NextResponse.json({ success: true, data: [] });
-      }
-      throw e;
-    }
+  let results: Array<typeof configuracion.$inferSelect> = [];
+  let clavesInsertadas = 0;
+  let bdEstabaVacia = false;
 
-    return NextResponse.json({ success: true, data: filtrarConfigCatalogo(results) });
+  try {
+    if (session.esAdmin) {
+      bdEstabaVacia = (await contarConfiguraciones()) === 0;
+      const asegurado = await asegurarConfiguracionesBase();
+      clavesInsertadas = asegurado.insertadas;
+      results = await db.select().from(configuracion);
+    } else {
+      results = await db
+        .select()
+        .from(configuracion)
+        .where(eq(configuracion.esPublico, true));
+    }
+  } catch (e: unknown) {
+    const err = e as { message?: string; code?: string };
+    if (err.message?.includes('does not exist') || err.code === '42P01') {
+      const data = prepararConfiguracionParaCliente([], {
+        esAdmin: Boolean(session.esAdmin),
+      });
+      return NextResponse.json({
+        success: true,
+        data,
+        meta: { clavesInsertadas: 0, bdEstabaVacia: true },
+      });
+    }
+    throw e;
+  }
+
+  const data = prepararConfiguracionParaCliente(filtrarConfigCatalogo(results), {
+    esAdmin: Boolean(session.esAdmin),
+  });
+
+  return NextResponse.json({
+    success: true,
+    data,
+    meta: {
+      clavesInsertadas,
+      bdEstabaVacia,
+    },
+  });
 });
+
+type PatchItem = { clave: string; valor: unknown };
+
+function normalizarPatchBody(body: unknown): PatchItem[] | null {
+  if (Array.isArray(body)) {
+    return body as PatchItem[];
+  }
+  if (
+    body &&
+    typeof body === 'object' &&
+    'clave' in body &&
+    (body as PatchItem).valor !== undefined
+  ) {
+    return [body as PatchItem];
+  }
+  return null;
+}
 
 // ─── PATCH: Actualizar configuraciones (individual o batch) ───
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
-    const session = await getSession();
-    if (!session?.esAdmin) {
+  const session = await getSession();
+  if (!session?.esAdmin) {
+    return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const batch = normalizarPatchBody(body);
+
+  if (batch) {
+    const cambios = batch.filter(
+      (item) => !(item.clave === SMTP_PASSWORD_CLAVE && debeOmitirActualizacionSmtpPassword(item.valor))
+    );
+
+    if (cambios.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 403 }
+        { success: false, error: 'No hay cambios válidos para aplicar' },
+        { status: 400 }
       );
     }
 
-    const body = await request.json();
-
-    // ── Modo Batch: Array de { clave, valor } ──
-    if (Array.isArray(body)) {
-      if (body.length === 0) {
+    for (const item of cambios) {
+      if (!item.clave || item.valor === undefined || item.valor === null) {
         return NextResponse.json(
-          { success: false, error: 'El arreglo de configuraciones está vacío' },
+          {
+            success: false,
+            error: `Entrada inválida: clave y valor son requeridos (clave: ${item.clave ?? 'undefined'})`,
+          },
           { status: 400 }
         );
       }
-
-      // Validar estructura + clave conocida + valor contra el catálogo
-      for (const item of body) {
-        if (!item.clave || item.valor === undefined || item.valor === null) {
-          return NextResponse.json(
-            { success: false, error: `Entrada inválida: clave y valor son requeridos (clave: ${item.clave ?? 'undefined'})` },
-            { status: 400 }
-          );
-        }
-        const errorValidacion = validarConfig(item.clave, String(item.valor));
-        if (errorValidacion) {
-          return NextResponse.json(
-            { success: false, error: errorValidacion },
-            { status: 400 }
-          );
-        }
+      const errorValidacion = validarConfig(item.clave, String(item.valor));
+      if (errorValidacion) {
+        return NextResponse.json({ success: false, error: errorValidacion }, { status: 400 });
       }
+    }
 
-      // Transacción atómica para garantizar consistencia (ISO/IEC 12207)
-      await db.transaction(async (tx) => {
-        const ahora = new Date().toISOString();
-        for (const item of body) {
-          const meta = getConfigMeta(item.clave);
+    await db.transaction(async (tx) => {
+      const ahora = new Date().toISOString();
+      for (const item of cambios) {
+        const meta = getConfigMeta(item.clave);
 
-          await tx
-            .insert(configuracion)
-            .values({
-              clave: item.clave,
+        await tx
+          .insert(configuracion)
+          .values({
+            clave: item.clave,
+            valor: String(item.valor),
+            categoria: meta.categoria,
+            tipoDato: meta.tipoDato,
+            esPublico: meta.esPublico,
+            updatedAt: ahora,
+          })
+          .onConflictDoUpdate({
+            target: configuracion.clave,
+            set: {
               valor: String(item.valor),
               categoria: meta.categoria,
               tipoDato: meta.tipoDato,
               esPublico: meta.esPublico,
               updatedAt: ahora,
-            })
-            .onConflictDoUpdate({
-              target: configuracion.clave,
-              // Re-sincroniza la metadata por si cambió el catálogo
-              set: {
-                valor: String(item.valor),
-                categoria: meta.categoria,
-                tipoDato: meta.tipoDato,
-                esPublico: meta.esPublico,
-                updatedAt: ahora,
-              },
-            });
-        }
-      });
-
-      invalidarCacheConfig();
-
-      const { ipAddress, userAgent } = datosPeticion(request);
-      await registrarEventoAuditoria({
-        usuarioId: session.id,
-        accion: 'actualizar',
-        modulo: 'configuracion',
-        evento: 'actualizar_configuracion',
-        tablaAfectada: 'configuracion',
-        detalles: {
-          claves: body.map((i: { clave: string; valor: unknown }) => i.clave),
-          cambios: body.map((i: { clave: string; valor: unknown }) => ({
-            clave: i.clave,
-            valorNuevo: i.valor,
-          })),
-        },
-        ipAddress,
-        userAgent,
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `${body.length} configuraciones actualizadas exitosamente`,
-      });
-    }
-
-    // ── Modo Individual: { id, valor, ... } ──
-    const { id } = body;
-
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'ID requerido para actualización individual' },
-        { status: 400 }
-      );
-    }
-
-    const camposPermitidos: Record<string, any> = {};
-    if (body.valor !== undefined) camposPermitidos.valor = String(body.valor);
-    if (body.descripcion !== undefined) camposPermitidos.descripcion = body.descripcion;
-    if (body.categoria !== undefined) camposPermitidos.categoria = body.categoria;
-    if (body.tipoDato !== undefined) camposPermitidos.tipoDato = body.tipoDato;
-    if (body.esPublico !== undefined) camposPermitidos.esPublico = body.esPublico;
-
-    if (Object.keys(camposPermitidos).length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No se proporcionaron campos para actualizar' },
-        { status: 400 }
-      );
-    }
-
-    const [existente] = await db
-      .select({ id: configuracion.id, clave: configuracion.clave })
-      .from(configuracion)
-      .where(eq(configuracion.id, id))
-      .limit(1);
-
-    if (!existente) {
-      return NextResponse.json(
-        { success: false, error: 'Configuración no encontrada' },
-        { status: 404 }
-      );
-    }
-
-    if (body.valor !== undefined) {
-      const errorValidacion = validarConfig(existente.clave, String(body.valor));
-      if (errorValidacion) {
-        return NextResponse.json(
-          { success: false, error: errorValidacion },
-          { status: 400 }
-        );
+            },
+          });
       }
-    }
-
-    const [actualizado] = await db
-      .update(configuracion)
-      .set({ ...camposPermitidos, updatedAt: new Date().toISOString() })
-      .where(eq(configuracion.id, id))
-      .returning();
+    });
 
     invalidarCacheConfig();
 
@@ -212,15 +173,104 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
       modulo: 'configuracion',
       evento: 'actualizar_configuracion',
       tablaAfectada: 'configuracion',
-      registroId: Number(id),
-      detalles: { clave: existente.clave, campos: Object.keys(camposPermitidos) },
+      detalles: {
+        claves: cambios.map((i) => i.clave),
+        cambios: cambios.map((i) => ({
+          clave: i.clave,
+          valorNuevo: i.clave === SMTP_PASSWORD_CLAVE ? '[redactado]' : i.valor,
+        })),
+      },
       ipAddress,
       userAgent,
     });
 
     return NextResponse.json({
       success: true,
-      data: actualizado,
-      message: 'Configuración actualizada',
+      message: `${cambios.length} configuraciones actualizadas exitosamente`,
     });
+  }
+
+  const { id } = body as { id?: number };
+
+  if (!id) {
+    return NextResponse.json(
+      { success: false, error: 'ID requerido para actualización individual' },
+      { status: 400 }
+    );
+  }
+
+  const camposPermitidos: Record<string, unknown> = {};
+  if (body.valor !== undefined) camposPermitidos.valor = String(body.valor);
+  if (body.descripcion !== undefined) camposPermitidos.descripcion = body.descripcion;
+  if (body.categoria !== undefined) camposPermitidos.categoria = body.categoria;
+  if (body.tipoDato !== undefined) camposPermitidos.tipoDato = body.tipoDato;
+  if (body.esPublico !== undefined) camposPermitidos.esPublico = body.esPublico;
+
+  if (Object.keys(camposPermitidos).length === 0) {
+    return NextResponse.json(
+      { success: false, error: 'No se proporcionaron campos para actualizar' },
+      { status: 400 }
+    );
+  }
+
+  const [existente] = await db
+    .select({ id: configuracion.id, clave: configuracion.clave })
+    .from(configuracion)
+    .where(eq(configuracion.id, id))
+    .limit(1);
+
+  if (!existente) {
+    return NextResponse.json(
+      { success: false, error: 'Configuración no encontrada' },
+      { status: 404 }
+    );
+  }
+
+  if (
+    body.valor !== undefined &&
+    existente.clave === SMTP_PASSWORD_CLAVE &&
+    debeOmitirActualizacionSmtpPassword(body.valor)
+  ) {
+    return NextResponse.json({
+      success: true,
+      message: 'Contraseña SMTP sin cambios',
+    });
+  }
+
+  if (body.valor !== undefined) {
+    const errorValidacion = validarConfig(existente.clave, String(body.valor));
+    if (errorValidacion) {
+      return NextResponse.json({ success: false, error: errorValidacion }, { status: 400 });
+    }
+  }
+
+  const [actualizado] = await db
+    .update(configuracion)
+    .set({ ...camposPermitidos, updatedAt: new Date().toISOString() })
+    .where(eq(configuracion.id, id))
+    .returning();
+
+  invalidarCacheConfig();
+
+  const { ipAddress, userAgent } = datosPeticion(request);
+  await registrarEventoAuditoria({
+    usuarioId: session.id,
+    accion: 'actualizar',
+    modulo: 'configuracion',
+    evento: 'actualizar_configuracion',
+    tablaAfectada: 'configuracion',
+    registroId: Number(id),
+    detalles: {
+      clave: existente.clave,
+      campos: Object.keys(camposPermitidos),
+    },
+    ipAddress,
+    userAgent,
+  });
+
+  return NextResponse.json({
+    success: true,
+    data: actualizado,
+    message: 'Configuración actualizada',
+  });
 });

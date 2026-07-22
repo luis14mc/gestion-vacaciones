@@ -223,6 +223,11 @@ describe('configuración — impacto en backend', () => {
     'vacaciones.dias_anuales_default',
   ]);
 
+  /** Claves visibles en UI aún sin consumidor backend documentado. */
+  const CLAVES_SIN_CONSUMIDOR_BACKEND: ReadonlySet<string> = new Set([
+    'vacaciones.permitir_medio_dia',
+  ]);
+
   /** Claves marcadas explícitamente como "Próximamente" en la UI. */
   const CLAVES_NO_IMPLEMENTADAS_ACEPTADAS: ReadonlySet<string> = new Set([
     'notificaciones.recordatorio_dias_antes',
@@ -235,6 +240,7 @@ describe('configuración — impacto en backend', () => {
       ...UI_ONLY_ACEPTADAS,
       ...CLAVES_NO_IMPLEMENTADAS_ACEPTADAS,
       ...CLAVES_LEGACY_EN_UI,
+      ...CLAVES_SIN_CONSUMIDOR_BACKEND,
     ]);
     const noClasificadas = visibles.filter((k) => !permitidas.has(k));
     expect(noClasificadas).toEqual([]);

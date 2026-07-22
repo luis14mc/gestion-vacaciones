@@ -23,6 +23,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { mapBalanceRegistro, formatDias } from '@/lib/domain/balance-display';
+import {
+  esCantidadDiasValida,
+  parseCantidadDias,
+} from '@/lib/domain/dias-decimales';
 
 interface Usuario {
   id: number;
@@ -238,6 +242,19 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
     }
   };
 
+  const validarCantidadIngresada = (raw: string): number | null => {
+    const cantidad = parseCantidadDias(raw);
+    if (cantidad === null) {
+      notify.warning("Ingrese una cantidad numérica válida");
+      return null;
+    }
+    if (!esCantidadDiasValida(cantidad)) {
+      notify.warning("La cantidad debe ser ≥ 0, no superar 365 días y tener hasta 4 decimales");
+      return null;
+    }
+    return cantidad;
+  };
+
   const asignarIndividual = async () => {
     if (!formData.usuarioId || !formData.tipoAusenciaId || !formData.cantidadAsignada) {
       notify.warning("Por favor completa todos los campos obligatorios");
@@ -255,7 +272,8 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
         cantidadActual = Number.parseFloat(balanceActual.cantidadInicial) || 0;
       }
 
-      let cantidadFinal = Number.parseFloat(formData.cantidadAsignada);
+      let cantidadFinal = validarCantidadIngresada(formData.cantidadAsignada);
+      if (cantidadFinal === null) return;
 
       if (formData.operacion === "sumar") {
         cantidadFinal = cantidadActual + cantidadFinal;
@@ -269,6 +287,11 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
           notify.warning("No se pueden restar más días de los que tiene asignados.");
           return;
         }
+      }
+
+      if (!esCantidadDiasValida(cantidadFinal)) {
+        notify.warning("El balance resultante debe tener hasta 4 decimales y no superar 365 días");
+        return;
       }
 
       const res = await fetch("/api/balances", {
@@ -292,7 +315,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
         await new Promise(resolve => setTimeout(resolve, 200));
 
         await cargarDatos();
-        notify.success(`${formData.cantidadAsignada} días ${operacionTexto}. Balance final: ${cantidadFinal.toFixed(1)} días`);
+        notify.success(`${formData.cantidadAsignada} días ${operacionTexto}. Balance final: ${formatDias(cantidadFinal)} días`);
       } else {
         notify.error(data.error || "Error al asignar días");
       }
@@ -307,6 +330,9 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
       notify.warning("Por favor completa todos los campos obligatorios");
       return;
     }
+
+    const cantidadAsignada = validarCantidadIngresada(formData.cantidadAsignada);
+    if (cantidadAsignada === null) return;
 
     const departamento = departamentos.find(d => d.id === Number(formData.departamentoId));
     const tipo = tiposAusencia.find(t => t.id === formData.tipoAusenciaId);
@@ -334,7 +360,7 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
           departamentoId: Number(formData.departamentoId),
           tipoAusencia: formData.tipoAusenciaId,
           anio: anioSeleccionado,
-          cantidadAsignada: formData.cantidadAsignada,
+          cantidadAsignada,
           operacion: formData.operacion,
         }),
       });
@@ -739,10 +765,13 @@ export default function AsignacionDiasClient({ session }: AsignacionDiasClientPr
                   value={formData.cantidadAsignada}
                   onChange={(e) => setFormData({ ...formData, cantidadAsignada: e.target.value })}
                   min="0"
-                  step="0.5"
-                  placeholder="0.0"
+                  step="0.0001"
+                  placeholder="0.00"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Acepta fracciones decimales (ej. 23.70, 1.25). Máximo 4 decimales.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {modoModal === "individual" ? (
                     formData.operacion === "sumar"

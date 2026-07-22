@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { balances, usuarios, anosLaborales } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { asignacionMasivaSchema } from "@/lib/validation/api-schemas";
+import { formatDiasAlmacenamiento } from "@/lib/domain/dias-decimales";
 
 class VersionConflictError extends Error {
   constructor() {
@@ -102,7 +103,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             const updated = await tx
               .update(balances)
               .set({
-                cantidadInicial: cantidadFinal.toFixed(2),
+                cantidadInicial: formatDiasAlmacenamiento(cantidadFinal),
                 version: balanceActual.version + 1,
                 updatedAt: new Date().toISOString()
               })
@@ -122,7 +123,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
               continue;
             }
 
-            const cantidadStr = cantidadFinal.toFixed(2);
+            const cantidadStr = formatDiasAlmacenamiento(cantidadFinal);
             await tx.insert(balances).values({
               usuarioId: usuario.id,
               tipoAusencia: tipoAusencia as any,

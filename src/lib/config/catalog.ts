@@ -108,35 +108,63 @@ function inferirEsPublico(categoria: string): boolean {
 
 /**
  * Valores por defecto cuando la clave no existe en BD.
- * Solo se listan las claves consumidas por la lógica de negocio.
+ * Debe incluir todas las claves válidas de CONFIG_KEYS.
  */
 export const CONFIG_DEFAULT_VALUES: Record<string, string> = {
+  // General
+  'app.nombre': 'Sistema de Vacaciones CNI',
+  'app.version': '1.0.0',
+  'app.empresa': 'Consejo Nacional de Inversiones',
+  'app.siglas': 'CNI',
+  'app.pais': 'Honduras',
+  'app.timezone': 'America/Tegucigalpa',
+  'app.idioma': 'es',
+  'app.mantenimiento': 'false',
+
+  // Vacaciones
+  'vacaciones.dias_anuales_default': '10',
+  'vacaciones.dias_minimos_solicitud': '1',
+  'vacaciones.dias_maximos_consecutivos': '30',
+  'vacaciones.dias_anticipacion': '2',
+  'vacaciones.permitir_medio_dia': 'true',
+
+  // Notificaciones (sin secretos reales)
+  'notificaciones.email_habilitado': 'false',
+  'notificaciones.email_remitente': 'noreply@cni.hn',
+  'notificaciones.smtp_host': 'smtp.office365.com',
+  'notificaciones.smtp_port': '587',
+  'notificaciones.smtp_user': '',
+  'notificaciones.smtp_password': '',
+  'notificaciones.smtp_secure': 'false',
+  'notificaciones.smtp_require_tls': 'true',
+  'notificaciones.smtp_reject_unauthorized': 'true',
+  'notificaciones.notificar_jefe_nueva_solicitud': 'true',
+  'notificaciones.notificar_empleado_aprobacion': 'true',
+  'notificaciones.notificar_empleado_rechazo': 'true',
+  'notificaciones.notificar_rrhh_aprobacion_jefe': 'true',
+  'notificaciones.recordatorio_dias_antes': '2',
+
+  // Departamentos
+  'departamentos.max_ausencias_simultaneas': '3',
+  'departamentos.porcentaje_max_ausentes': '30',
+  'departamentos.validar_conflictos': 'true',
+  'departamentos.mostrar_calendario_equipo': 'true',
+
   // Seguridad
-  'seguridad.intentos_login_max': '5',
-  'seguridad.bloqueo_duracion_minutos': '15',
   'seguridad.sesion_duracion_horas': '24',
   'seguridad.password_min_length': '8',
   'seguridad.password_requiere_mayuscula': 'false',
   'seguridad.password_requiere_numero': 'false',
   'seguridad.password_requiere_especial': 'false',
-  // Vacaciones
-  'vacaciones.dias_minimos_solicitud': '1',
-  'vacaciones.dias_maximos_consecutivos': '30',
-  'vacaciones.dias_anticipacion': '0',
-  'vacaciones.permitir_medio_dia': 'false',
-  // Notificaciones (granulares)
-  'notificaciones.notificar_jefe_nueva_solicitud': 'true',
-  'notificaciones.notificar_empleado_aprobacion': 'true',
-  'notificaciones.notificar_empleado_rechazo': 'true',
-  'notificaciones.notificar_rrhh_aprobacion_jefe': 'true',
-  // General
-  'app.mantenimiento': 'false',
-  // Departamentos
-  'departamentos.validar_conflictos': 'true',
-  'departamentos.max_ausencias_simultaneas': '0',
-  // Seguridad (0 = desactivado)
+  'seguridad.intentos_login_max': '5',
+  'seguridad.bloqueo_duracion_minutos': '15',
   'seguridad.forzar_cambio_password_dias': '0',
 };
+
+/** Verifica que el catálogo tenga default para cada clave válida. */
+export function clavesSinDefaultEnCatalogo(): string[] {
+  return [...CONFIG_KEYS].filter((clave) => CONFIG_DEFAULT_VALUES[clave] === undefined);
+}
 
 export interface ConfigMeta {
   categoria: string;

@@ -39,7 +39,7 @@ export interface BalanceRegistroInput {
   cantidadDisponible?: string | number | null;
 }
 
-const TOLERANCIA_ECUCION = 0.02;
+const TOLERANCIA_ECUCION = 0.0001;
 
 function toNum(value: string | number | null | undefined): number {
   const n = Number(value ?? 0);

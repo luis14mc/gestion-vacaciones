@@ -5,9 +5,13 @@ import { db } from '@/lib/db';
 import { balances, anosLaborales } from '@/lib/db/schema';
 import { getSession, tienePermiso } from '@/lib/auth';
 import { puedeVerBalanceEmpleado } from '@/lib/domain/dashboard-jefe/access';
+import { formatDiasAlmacenamiento } from '@/lib/domain/dias-decimales';
+import { balanceAjusteSchema } from '@/lib/validation/api-schemas';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+type TipoAusenciaBalance = typeof balances.$inferInsert.tipoAusencia;
 
 const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -100,16 +104,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     }
 
     const body = await request.json();
-    const { usuarioId, tipoAusencia, cantidadInicial } = body;
-    let { anoLaboralId } = body;
-    const anio = body.anio;
-
-    if (!usuarioId || !tipoAusencia || cantidadInicial === undefined) {
+    const parsed = balanceAjusteSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: 'Faltan campos requeridos' },
+        { success: false, error: parsed.error.issues[0]?.message ?? 'Datos inválidos' },
         { status: 400 }
       );
     }
+
+    const { usuarioId, tipoAusencia, cantidadInicial } = parsed.data;
+    let { anoLaboralId } = parsed.data;
+    const anio = parsed.data.anio;
 
     if (!anoLaboralId && anio) {
       const anoResult = await db
@@ -138,20 +143,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const balanceExistente = await db.query.balances.findFirst({
       where: and(
         eq(balances.usuarioId, usuarioId),
-        eq(balances.tipoAusencia, tipoAusencia),
+        eq(balances.tipoAusencia, tipoAusencia as TipoAusenciaBalance),
         eq(balances.anoLaboralId, anoLaboralId)
       ),
     });
 
     if (balanceExistente) {
-      const cantidadInicialNum = Number.parseFloat(cantidadInicial.toString());
+      const cantidadInicialStr = formatDiasAlmacenamiento(cantidadInicial);
 
       // cantidad_disponible la recalcula el trigger de BD a partir de
       // inicial + acumulada - usada - pendiente; no se setea a mano.
       await db
         .update(balances)
         .set({
-          cantidadInicial: cantidadInicialNum.toFixed(2),
+          cantidadInicial: cantidadInicialStr,
           version: balanceExistente.version + 1,
           updatedAt: new Date().toISOString(),
         })
@@ -163,10 +168,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       });
     }
 
-    const cantidadInicialStr = Number.parseFloat(cantidadInicial.toString()).toFixed(2);
+    const cantidadInicialStr = formatDiasAlmacenamiento(cantidadInicial);
     await db.insert(balances).values({
       usuarioId,
-      tipoAusencia,
+      tipoAusencia: tipoAusencia as TipoAusenciaBalance,
       anoLaboralId,
       cantidadInicial: cantidadInicialStr,
     });

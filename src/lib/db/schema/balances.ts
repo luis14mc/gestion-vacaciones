@@ -76,31 +76,31 @@ export const balances = pgTable(
     // ========================================
     
     // Días iniciales asignados al inicio del año
-    cantidadInicial: decimal('cantidad_inicial', { precision: 10, scale: 2 })
+    cantidadInicial: decimal('cantidad_inicial', { precision: 10, scale: 4 })
       .notNull()
-      .default('0.00'),
+      .default('0.0000'),
     
     // Días acumulados durante el año (créditos adicionales)
-    cantidadAcumulada: decimal('cantidad_acumulada', { precision: 10, scale: 2 })
+    cantidadAcumulada: decimal('cantidad_acumulada', { precision: 10, scale: 4 })
       .notNull()
-      .default('0.00'),
+      .default('0.0000'),
     
     // Días ya utilizados (solicitudes aprobadas y finalizadas)
-    cantidadUsada: decimal('cantidad_usada', { precision: 10, scale: 2 })
+    cantidadUsada: decimal('cantidad_usada', { precision: 10, scale: 4 })
       .notNull()
-      .default('0.00'),
+      .default('0.0000'),
     
     // Días en solicitudes pendientes de aprobación
-    cantidadPendiente: decimal('cantidad_pendiente', { precision: 10, scale: 2 })
+    cantidadPendiente: decimal('cantidad_pendiente', { precision: 10, scale: 4 })
       .notNull()
-      .default('0.00'),
+      .default('0.0000'),
     
     // Días disponibles para nuevas solicitudes
     // CALCULADO: (inicial + acumulada) - (usada + pendiente)
     // Se actualiza automáticamente por TRIGGER en PostgreSQL
-    cantidadDisponible: decimal('cantidad_disponible', { precision: 10, scale: 2 })
+    cantidadDisponible: decimal('cantidad_disponible', { precision: 10, scale: 4 })
       .notNull()
-      .default('0.00'),
+      .default('0.0000'),
     
     // ========================================
     // CONTROL Y ESTADO
@@ -185,9 +185,9 @@ export const historialBalances = pgTable(
     
     // Movimiento
     tipoMovimiento: tipoMovimientoEnum('tipo_movimiento').notNull(),
-    cantidad: decimal('cantidad', { precision: 10, scale: 2 }).notNull(),
-    cantidadAnterior: decimal('cantidad_anterior', { precision: 10, scale: 2 }).notNull(),
-    cantidadNueva: decimal('cantidad_nueva', { precision: 10, scale: 2 }).notNull(),
+    cantidad: decimal('cantidad', { precision: 10, scale: 4 }).notNull(),
+    cantidadAnterior: decimal('cantidad_anterior', { precision: 10, scale: 4 }).notNull(),
+    cantidadNueva: decimal('cantidad_nueva', { precision: 10, scale: 4 }).notNull(),
     
     // Contexto del movimiento
     solicitudId: bigint('solicitud_id', { mode: 'number' }),  // ID plano sin FK (simplificación)

@@ -35,7 +35,14 @@ import {
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { notify } from "@/lib/swal";
-import { CONFIG_KEYS, filtrarConfigCatalogo } from "@/lib/config/catalog";
+import { CONFIG_KEYS } from "@/lib/config/catalog";
+import {
+  CONFIG_PASSWORD_MASK,
+  debeOmitirActualizacionSmtpPassword,
+  resolverConfigItem,
+  SMTP_PASSWORD_CLAVE,
+  type ConfiguracionCliente,
+} from "@/lib/config/config-client";
 import {
   REGLAS_ASIGNACION_MENSUAL_VACACIONES,
 } from "@/lib/domain/vacaciones-asignacion";
@@ -72,18 +79,14 @@ import {
 } from "@/components/ui/table";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // ─── Types ────────────────────────────────────────────
-interface ConfigItem {
-  id: number;
-  clave: string;
-  valor: string;
-  descripcion?: string;
-  categoria: string;
-  tipoDato?: string;
-  esPublico?: boolean;
-}
-
 interface ConfiguracionClientProps {
   session: Session;
 }
@@ -121,6 +124,7 @@ const LABELS: Record<string, string> = {
   "vacaciones.dias_minimos_solicitud": "Mínimo de Días por Solicitud",
   "vacaciones.dias_maximos_consecutivos": "Máximo Días Consecutivos",
   "vacaciones.dias_anticipacion": "Días de Anticipación Mínima",
+  "vacaciones.permitir_medio_dia": "Permitir Medio Día",
 
   "notificaciones.email_habilitado": "Correo Electrónico Habilitado",
   "notificaciones.email_remitente": "Correo Remitente",
@@ -194,6 +198,7 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
         "vacaciones.dias_minimos_solicitud",
         "vacaciones.dias_maximos_consecutivos",
         "vacaciones.dias_anticipacion",
+        "vacaciones.permitir_medio_dia",
       ],
     },
   ],
@@ -283,28 +288,10 @@ const GRUPOS: Record<CategoriaId, GrupoConfiguracion[]> = {
   ],
 };
 
-const CONFIG_FALLBACKS: ConfigItem[] = [
-  { id: -1, clave: "notificaciones.smtp_host", valor: "smtp.office365.com", descripcion: "Servidor SMTP para el envio de notificaciones", categoria: "notificaciones", tipoDato: "string", esPublico: false },
-  { id: -2, clave: "notificaciones.smtp_port", valor: "587", descripcion: "Puerto del servidor SMTP", categoria: "notificaciones", tipoDato: "number", esPublico: false },
-  { id: -3, clave: "notificaciones.smtp_user", valor: "", descripcion: "Usuario o cuenta SMTP autenticada", categoria: "notificaciones", tipoDato: "string", esPublico: false },
-  { id: -4, clave: "notificaciones.smtp_password", valor: "", descripcion: "Contrasena de la cuenta SMTP", categoria: "notificaciones", tipoDato: "password", esPublico: false },
-  { id: -5, clave: "notificaciones.smtp_secure", valor: "false", descripcion: "Usar SSL/TLS directo. Normalmente false para STARTTLS en puerto 587", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
-  { id: -6, clave: "notificaciones.smtp_require_tls", valor: "true", descripcion: "Exigir STARTTLS cuando el servidor lo soporte", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
-  { id: -7, clave: "notificaciones.smtp_reject_unauthorized", valor: "true", descripcion: "Validar el certificado TLS del servidor SMTP", categoria: "notificaciones", tipoDato: "boolean", esPublico: false },
-];
-
-function mergeConfigFallbacks(configs: ConfigItem[]) {
-  const existingKeys = new Set(configs.map((c) => c.clave));
-  return [
-    ...configs,
-    ...CONFIG_FALLBACKS.filter((fallback) => !existingKeys.has(fallback.clave)),
-  ];
-}
+const CLAVE_FALLBACK_DIAS_ANUALES = "vacaciones.dias_anuales_default";
 
 const SMTP_CLAVES =
   GRUPOS.notificaciones.find((g) => g.titulo === "Servidor SMTP")?.claves ?? [];
-
-const CLAVE_FALLBACK_DIAS_ANUALES = "vacaciones.dias_anuales_default";
 
 interface ResultadoAsignacion {
   anio: number;
@@ -317,7 +304,7 @@ interface ResultadoAsignacion {
 
 // ─── Componente Principal ─────────────────────────────
 export default function ConfiguracionClient({ session }: ConfiguracionClientProps) {
-  const [configs, setConfigs] = useState<ConfigItem[]>([]);
+  const [configs, setConfigs] = useState<ConfiguracionCliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState<CategoriaId>("general");
@@ -326,6 +313,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [ejecutandoAsignacion, setEjecutandoAsignacion] = useState(false);
   const [resultadoAsignacion, setResultadoAsignacion] = useState<ResultadoAsignacion | null>(null);
+  const [mostrarAlertaDefaults, setMostrarAlertaDefaults] = useState(false);
   const [anioAsignacionMensual, setAnioAsignacionMensual] = useState<number>(
     new Date().getFullYear()
   );
@@ -344,12 +332,13 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
       const data = await res.json();
 
       if (data.success) {
-        const configsCatalogo = filtrarConfigCatalogo(data.data as ConfigItem[]);
-        const configsConFallbacks = mergeConfigFallbacks(configsCatalogo);
-        setConfigs(configsConFallbacks);
-        // Inicializar valores editados
+        const configsCatalogo = (data.data as ConfiguracionCliente[]) ?? [];
+        setConfigs(configsCatalogo);
+        setMostrarAlertaDefaults(
+          Boolean(data.meta?.bdEstabaVacia) || Number(data.meta?.clavesInsertadas ?? 0) > 0
+        );
         const valores: Record<string, string> = {};
-        for (const c of configsConFallbacks) {
+        for (const c of configsCatalogo) {
           valores[c.clave] = c.valor;
         }
         setEditedValues(valores);
@@ -389,6 +378,10 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
     const clavesCategoria = GRUPOS[categoriaActiva].flatMap((g) => g.claves);
     const cambios = clavesCategoria
       .filter((clave) => dirtyKeys.has(clave))
+      .filter(
+        (clave) =>
+          !(clave === SMTP_PASSWORD_CLAVE && debeOmitirActualizacionSmtpPassword(editedValues[clave]))
+      )
       .map((clave) => ({ clave, valor: editedValues[clave] }));
 
     if (cambios.length === 0) {
@@ -508,7 +501,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
     }
   };
 
-  const fallbackDiasConfig = configs.find((c) => c.clave === CLAVE_FALLBACK_DIAS_ANUALES);
+  const fallbackDiasConfig = resolverConfigItem(CLAVE_FALLBACK_DIAS_ANUALES, configs);
 
   // ── Contar cambios pendientes en la categoría activa ──
   const cambiosPendientes = GRUPOS[categoriaActiva]
@@ -520,6 +513,16 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
   return (
     <div>
       <div className="max-w-7xl mx-auto">
+        {mostrarAlertaDefaults && (
+          <Alert className="mb-6 border-amber-200 bg-amber-50/60 text-amber-950">
+            <Info className="text-amber-600" />
+            <AlertTitle className="text-amber-900">Valores predeterminados cargados</AlertTitle>
+            <AlertDescription className="text-amber-800/90">
+              No se encontraron parámetros persistidos o faltaban claves del catálogo. Se cargaron
+              valores predeterminados. Revise y guarde para confirmarlos en la base de datos.
+            </AlertDescription>
+          </Alert>
+        )}
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
@@ -547,6 +550,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
+                <TooltipProvider delayDuration={200}>
                 <div className="flex flex-col gap-1">
                   {CATEGORIAS.map((cat) => {
                     const Icon = cat.icon;
@@ -580,14 +584,22 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
                           {hasDirty && (
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                           )}
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                            {count}
-                          </Badge>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 cursor-help">
+                                {count}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs text-xs">
+                              Cantidad de parámetros disponibles en esta categoría.
+                            </TooltipContent>
+                          </Tooltip>
                         </span>
                       </button>
                     );
                   })}
                 </div>
+                </TooltipProvider>
               </CardContent>
             </Card>
           </div>
@@ -710,7 +722,7 @@ export default function ConfiguracionClient({ session }: ConfiguracionClientProp
 interface GrupoCardProps {
   grupo: GrupoConfiguracion;
   values: Record<string, string>;
-  configs: ConfigItem[];
+  configs: ConfiguracionCliente[];
   dirtyKeys: Set<string>;
   onValueChange: (clave: string, valor: string) => void;
   footer?: React.ReactNode;
@@ -736,8 +748,7 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange, footer }:
         <Separator className="mb-5" />
         <div className="space-y-5">
           {grupo.claves.map((clave) => {
-            const config = configs.find((c) => c.clave === clave);
-            if (!config) return null;
+            const config = resolverConfigItem(clave, configs);
 
             const valor = values[clave] ?? config.valor;
             const esBool = config.tipoDato === "boolean" || valor === "true" || valor === "false";
@@ -750,11 +761,13 @@ function GrupoCard({ grupo, values, configs, dirtyKeys, onValueChange, footer }:
                 key={clave}
                 clave={clave}
                 valor={valor}
-                descripcion={config.descripcion}
+                descripcion={config.descripcion ?? undefined}
                 esBool={esBool}
                 esNumero={esNumero}
                 esPassword={esPassword}
                 isDirty={isDirty}
+                persistido={config.persistido !== false}
+                tieneValor={config.tieneValor}
                 noImplementada={CLAVES_NO_IMPLEMENTADAS[clave]}
                 onChange={(v) => onValueChange(clave, v)}
               />
@@ -969,7 +982,7 @@ function AsignacionAntiguedadCard({
 }
 
 interface FallbackDiasAnualesCardProps {
-  config: ConfigItem;
+  config: ConfiguracionCliente;
   valor: string;
 }
 
@@ -1003,7 +1016,7 @@ function FallbackDiasAnualesCard({ config, valor }: FallbackDiasAnualesCardProps
         <ConfigField
           clave={config.clave}
           valor={valor}
-          descripcion={config.descripcion}
+          descripcion={config.descripcion ?? undefined}
           esBool={false}
           esNumero
           esPassword={false}
@@ -1025,6 +1038,8 @@ interface ConfigFieldProps {
   esNumero: boolean;
   esPassword: boolean;
   isDirty: boolean;
+  persistido?: boolean;
+  tieneValor?: boolean;
   disabled?: boolean;
   noImplementada?: string;
   onChange: (valor: string) => void;
@@ -1038,20 +1053,31 @@ function ConfigField({
   esNumero,
   esPassword,
   isDirty,
+  persistido = true,
+  tieneValor = false,
   disabled = false,
   noImplementada,
   onChange,
 }: ConfigFieldProps) {
   const label = LABELS[clave] || clave;
+  const inputValor =
+    esPassword && !valor && tieneValor ? CONFIG_PASSWORD_MASK : valor;
+  const passwordPlaceholder =
+    esPassword && tieneValor && !isDirty ? "Contraseña configurada (sin cambios)" : undefined;
 
   if (esBool) {
     return (
       <div className="flex items-start justify-between gap-3 py-1 group">
         <div className="flex-1 min-w-0 pr-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Label className="text-[13px] font-medium text-foreground cursor-pointer">
               {label}
             </Label>
+            {!persistido && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-dashed">
+                Valor predeterminado
+              </Badge>
+            )}
             {noImplementada && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-amber-300 bg-amber-50 text-amber-700">
                 Próximamente
@@ -1079,10 +1105,15 @@ function ConfigField({
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Label htmlFor={`config-${clave}`} className="text-[13px] font-medium text-foreground">
           {label}
         </Label>
+        {!persistido && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-dashed">
+            Valor predeterminado
+          </Badge>
+        )}
         {noImplementada && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-amber-300 bg-amber-50 text-amber-700">
             Próximamente
@@ -1101,7 +1132,8 @@ function ConfigField({
       <Input
         id={`config-${clave}`}
         type={esPassword ? "password" : esNumero ? "number" : "text"}
-        value={valor}
+        value={inputValor}
+        placeholder={passwordPlaceholder}
         disabled={disabled || !!noImplementada}
         onChange={(e) => onChange(e.target.value)}
         className={`w-full sm:max-w-sm h-9 text-[13px] transition-all duration-200 ${

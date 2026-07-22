@@ -241,6 +241,12 @@ async function upsertCatalogs() {
     });
   }
 
+  const { asegurarConfiguracionesEnDb } = await import('../src/lib/config/bootstrap-config');
+  const { insertadas } = await asegurarConfiguracionesEnDb(db);
+  if (insertadas > 0) {
+    console.log(`Configuración: ${insertadas} clave(s) nuevas del catálogo insertadas.`);
+  }
+
   await db.insert(anosLaborales).values({
     ano: 2026,
     nombre: 'Periodo 2026',

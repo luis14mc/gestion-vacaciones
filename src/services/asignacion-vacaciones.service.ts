@@ -26,7 +26,11 @@ import {
   usuariosRoles,
 } from '@/lib/db/schema';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { calcularDiasMensualesPorAntiguedad, calcularAntiguedadLaboral } from '@/lib/domain/vacaciones-asignacion';
+import {
+  calcularDiasMensualesPorAntiguedad,
+  calcularAntiguedadLaboral,
+  esDiaDeAsignacionMensual,
+} from '@/lib/domain/vacaciones-asignacion';
 import { acreditarBalanceMensualVacaciones } from '@/lib/domain/balance-effects';
 import {
   registrarAuditoria,
@@ -66,6 +70,17 @@ interface OpcionesEjecucion {
   ejecutadoPor: number | null;
   ipAddress?: string;
   userAgent?: string;
+  /**
+   * Si es true, solo se procesan los empleados cuyo día de aniversario de
+   * ingreso cae en `fechaReferencia` (acreditación en el día de ingreso de
+   * cada quien). Si es false/omitido, se procesa a todos (backfill/manual).
+   */
+  soloAniversario?: boolean;
+  /**
+   * Fecha de ejecución real. Se usa como referencia para el cálculo de
+   * antigüedad y del día de aniversario. Por defecto `new Date()`.
+   */
+  fechaReferencia?: Date;
 }
 
 const FORMATO_NOTIFICACION_TITULO = 'Asignación mensual de vacaciones';
@@ -82,7 +97,13 @@ const FORMATO_NOTIFICACION_MENSAJE = (
  */
 async function aplicarAsignacionAUsuarioTx(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  params: { usuarioId: number; anio: number; mes: number; anioLaboralId: number }
+  params: {
+    usuarioId: number;
+    anio: number;
+    mes: number;
+    anioLaboralId: number;
+    fechaReferencia?: Date;
+  }
 ): Promise<ResultadoAsignacionUsuario> {
   const [usuario] = await tx
     .select({
@@ -153,7 +174,10 @@ async function aplicarAsignacionAUsuarioTx(
     };
   }
 
-  const referencia = new Date(params.anio, params.mes - 1, 1);
+  // Referencia de antigüedad: la fecha real de ejecución cuando está
+  // disponible (día de aniversario). Así, quien cumple años de servicio
+  // ese mismo día ya recibe el proporcional del nuevo tramo.
+  const referencia = params.fechaReferencia ?? new Date(params.anio, params.mes - 1, 1);
   const aniosCumplidos = calcularAntiguedadLaboral(usuario.fechaIngreso, referencia);
   const diasMensuales = calcularDiasMensualesPorAntiguedad(usuario.fechaIngreso, referencia);
 
@@ -329,11 +353,21 @@ export async function asignarVacacionesMensuales(
     throw new Error('No hay un año laboral activo para acreditar asignaciones mensuales.');
   }
 
+  const fechaReferencia = opciones.fechaReferencia ?? new Date();
+
   // Traer todos los usuarios activos no eliminados.
-  const usuariosActivos = await db
-    .select({ id: usuarios.id })
+  const usuariosActivosRaw = await db
+    .select({ id: usuarios.id, fechaIngreso: usuarios.fechaIngreso })
     .from(usuarios)
     .where(and(eq(usuarios.activo, true), isNull(usuarios.deletedAt)));
+
+  // En modo aniversario solo procesamos a quienes cumplen su día de
+  // ingreso en `fechaReferencia` (acreditación en el día de cada empleado).
+  const usuariosActivos = opciones.soloAniversario
+    ? usuariosActivosRaw.filter((u) =>
+        esDiaDeAsignacionMensual(u.fechaIngreso, fechaReferencia)
+      )
+    : usuariosActivosRaw;
 
   const detalles: ResultadoAsignacionUsuario[] = [];
   let asignacionesCreadas = 0;
@@ -347,6 +381,7 @@ export async function asignarVacacionesMensuales(
         anio: opciones.anio,
         mes: opciones.mes,
         anioLaboralId: anoLaboral.id,
+        fechaReferencia,
       });
       detalles.push(resultado);
       if (resultado.estado === 'asignado') {

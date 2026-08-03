@@ -4,9 +4,18 @@
  * externo (GitHub Action, EC2 cron dentro del contenedor, etc.).
  *
  * Body opcional:
- *   { anio: 2026, mes: 7, modo: "automatico" | "manual" | "sistema" }
+ *   {
+ *     anio?: 2026,
+ *     mes?: 7,
+ *     modo?: "automatico" | "manual" | "sistema",
+ *     soloAniversario?: boolean
+ *   }
  *
- * Si no se pasa, usa el mes actual.
+ * Si no se pasan anio/mes, usa el mes actual.
+ *
+ * `soloAniversario` (recomendado para el cron diario): solo acredita a los
+ * empleados cuyo día de ingreso coincide con la fecha de hoy (devengo en el
+ * día de aniversario de cada quien). Sin él, procesa a todos (backfill).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/api-handler';
@@ -35,12 +44,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     anio?: number;
     mes?: number;
     modo?: 'automatico' | 'manual' | 'sistema';
+    soloAniversario?: boolean;
   };
 
   const now = new Date();
   const anio = Number.isFinite(body.anio) ? Number(body.anio) : now.getFullYear();
   const mes = Number.isFinite(body.mes) ? Number(body.mes) : now.getMonth() + 1;
   const modo: 'automatico' | 'manual' | 'sistema' = body.modo ?? 'sistema';
+  const soloAniversario = body.soloAniversario === true;
 
   if (mes < 1 || mes > 12) {
     return NextResponse.json(
@@ -55,6 +66,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     origen: modo,
     // Sin sesión de usuario: usamos un id reservado para "sistema".
     ejecutadoPor: null,
+    soloAniversario,
+    fechaReferencia: now,
   });
 
   return NextResponse.json({
@@ -62,6 +75,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     data: {
       anio: resumen.anio,
       mes: resumen.mes,
+      soloAniversario,
       usuariosProcesados: resumen.usuariosProcesados,
       asignacionesCreadas: resumen.asignacionesCreadas,
       usuariosOmitidos: resumen.usuariosOmitidos,

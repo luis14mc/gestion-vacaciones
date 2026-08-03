@@ -1,0 +1,16 @@
+# =============================================================
+# Crontab del contenedor `cni-cron` (BusyBox crond).
+# Zona horaria: America/Tegucigalpa (definida por TZ en el servicio).
+# Variables $APP_URL y $CRON_SECRET provienen del entorno del contenedor.
+# =============================================================
+
+# Asignación mensual de vacaciones — TODOS los días 07:00.
+# El endpoint (soloAniversario:true) acredita únicamente a los empleados
+# cuyo día de ingreso coincide con hoy (devengo en su día de aniversario).
+0 7 * * * curl -sS --fail -X POST "$APP_URL/api/cron/asignacion-mensual" -H "Authorization: Bearer $CRON_SECRET" -H "Content-Type: application/json" -d '{"modo":"automatico","soloAniversario":true}' >> /var/log/cron/asignacion-mensual.log 2>&1
+
+# Transiciones automáticas de solicitudes — a medianoche.
+0 0 * * * curl -sS --fail -X POST "$APP_URL/api/cron/transiciones" -H "Authorization: Bearer $CRON_SECRET" >> /var/log/cron/transiciones.log 2>&1
+
+# Notificaciones de cumpleaños — el día 1 de cada mes 06:00.
+0 6 1 * * curl -sS --fail -X POST "$APP_URL/api/cron/cumpleanos" -H "Authorization: Bearer $CRON_SECRET" >> /var/log/cron/cumpleanos.log 2>&1

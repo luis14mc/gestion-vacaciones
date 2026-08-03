@@ -5,6 +5,7 @@
 #   1. vacaciones-app   (Next.js standalone)  → :3000
 #   2. postgres          (PostgreSQL 16)       → :5432
 #   3. nginx             (Reverse Proxy)       → :80/:443
+#   4. cron              (BusyBox crond)       → jobs /api/cron/*
 # =============================================================
 # La "Web nueva" (Next.js + Django) se agrega en su propio
 # docker-compose.yml y se conecta a la red 'cni-network'.
@@ -111,6 +112,41 @@ services:
       - cni-network
 
   # ─────────────────────────────────────────────────────────
+  # Cron / Scheduler (BusyBox crond dentro de Docker)
+  # ─────────────────────────────────────────────────────────
+  # Dispara los jobs internos (/api/cron/*) sin depender del
+  # crontab del host. Reemplaza el bloque VACACIONES_CNI que
+  # instalaba scripts/setup-ec2.sh (ver README de despliegue).
+  # ─────────────────────────────────────────────────────────
+  cron:
+    image: alpine:3.20
+    container_name: cni-cron
+    restart: always
+    env_file:
+      - .env.production          # aporta CRON_SECRET al entorno
+    environment:
+      - TZ=America/Tegucigalpa   # cron corre en hora de Honduras
+      - APP_URL=http://vacaciones-app:3000
+    volumes:
+      - ./scripts/docker-crontab:/etc/crontabs/root:ro
+      - cron_logs:/var/log/cron
+    command: >
+      sh -c "apk add --no-cache curl tzdata >/dev/null &&
+             mkdir -p /var/log/cron &&
+             export APP_URL CRON_SECRET &&
+             crond -f -l 8"
+    depends_on:
+      vacaciones-app:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: '0.1'
+    networks:
+      - cni-network
+
+  # ─────────────────────────────────────────────────────────
   # Inicialización de Base de Datos (Setup)
   # ─────────────────────────────────────────────────────────
   db-setup:
@@ -143,6 +179,8 @@ volumes:
   postgres_data:
     driver: local
   nginx_logs:
+    driver: local
+  cron_logs:
     driver: local
 
 # ─────────────────────────────────────────────────────────

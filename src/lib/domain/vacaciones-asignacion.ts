@@ -75,6 +75,43 @@ export function calcularDiasMensualesPorAntiguedad(
 }
 
 /**
+ * Extrae el día del mes (1-31) de una fecha de ingreso almacenada como
+ * 'YYYY-MM-DD' (o ISO). Se parsea de la cadena para evitar corrimientos
+ * de zona horaria (`new Date('YYYY-MM-DD')` interpreta UTC).
+ */
+function diaDelMesDeIngreso(fechaIngreso: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaIngreso.trim());
+  if (!m) return null;
+  const dia = Number(m[3]);
+  return dia >= 1 && dia <= 31 ? dia : null;
+}
+
+/**
+ * Determina si `hoy` es el día de acreditación mensual para un empleado
+ * que ingresó en `fechaIngreso`. La acreditación ocurre el mismo día del
+ * mes que el ingreso (ingresó el 04 → acredita el 04 de cada mes).
+ *
+ * Si el mes en curso no tiene ese día (ingresó el 31 y estamos en un mes
+ * de 30 días, o en febrero), la acreditación se realiza el último día del
+ * mes para no perder el devengo.
+ */
+export function esDiaDeAsignacionMensual(
+  fechaIngreso: string | null | undefined,
+  hoy: Date = new Date()
+): boolean {
+  if (!fechaIngreso) return false;
+  const diaIngreso = diaDelMesDeIngreso(fechaIngreso);
+  if (diaIngreso == null) return false;
+  const ultimoDiaMesActual = new Date(
+    hoy.getFullYear(),
+    hoy.getMonth() + 1,
+    0
+  ).getDate();
+  const diaObjetivo = Math.min(diaIngreso, ultimoDiaMesActual);
+  return hoy.getDate() === diaObjetivo;
+}
+
+/**
  * Resuelve la asignación que corresponde para un (año, mes) y un usuario
  * específico. Devuelve también la antigüedad calculada para auditoría.
  */

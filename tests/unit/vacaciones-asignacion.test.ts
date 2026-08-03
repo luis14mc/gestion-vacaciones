@@ -4,6 +4,7 @@ import {
   calcularDiasMensualesPorAntiguedad,
   calcularAntiguedadLaboral,
   resolverMesAsignacion,
+  esDiaDeAsignacionMensual,
   REGLAS_ASIGNACION_MENSUAL_VACACIONES,
 } from '@/lib/domain/vacaciones-asignacion';
 
@@ -126,6 +127,47 @@ describe('vacaciones-asignacion — Fase 5', () => {
       });
       expect(r.asignable).toBe(false);
       expect(r.diasMensuales).toBe(0);
+    });
+  });
+
+  describe('esDiaDeAsignacionMensual (día de aniversario)', () => {
+    it('acredita el mismo día del mes que el ingreso', () => {
+      // Ingreso el 04; hoy es 04 → sí.
+      expect(
+        esDiaDeAsignacionMensual('2024-03-04', new Date(2026, 7, 4))
+      ).toBe(true);
+    });
+
+    it('no acredita en días distintos al de ingreso', () => {
+      expect(
+        esDiaDeAsignacionMensual('2024-03-04', new Date(2026, 7, 3))
+      ).toBe(false);
+      expect(
+        esDiaDeAsignacionMensual('2024-03-04', new Date(2026, 7, 5))
+      ).toBe(false);
+    });
+
+    it('ingreso el 31: en un mes de 30 días acredita el 30', () => {
+      // Ingreso el 31; abril tiene 30 días → acredita el 30, no antes.
+      expect(
+        esDiaDeAsignacionMensual('2023-01-31', new Date(2026, 3, 30))
+      ).toBe(true);
+      expect(
+        esDiaDeAsignacionMensual('2023-01-31', new Date(2026, 3, 29))
+      ).toBe(false);
+    });
+
+    it('ingreso el 31: en febrero (28 días) acredita el 28', () => {
+      expect(
+        esDiaDeAsignacionMensual('2023-01-31', new Date(2026, 1, 28))
+      ).toBe(true);
+    });
+
+    it('sin fecha de ingreso: nunca acredita', () => {
+      expect(esDiaDeAsignacionMensual(null, new Date(2026, 7, 4))).toBe(false);
+      expect(esDiaDeAsignacionMensual(undefined, new Date(2026, 7, 4))).toBe(
+        false
+      );
     });
   });
 

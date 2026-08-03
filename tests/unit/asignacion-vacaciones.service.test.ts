@@ -196,10 +196,26 @@ const mockTx = {
     }),
   }),
   execute: (q: any) => {
-    void q;
+    executedSql.push(sqlChunksToString(q));
     return Promise.resolve();
   },
 };
+
+// Captura del SQL crudo generado por tx.execute(sql`...`) para validar
+// nombres de columna reales (guardan contra typos como `origen` vs
+// `origen_asignacion`, que un mock de BD no atraparía de otro modo).
+const executedSql: string[] = [];
+
+function sqlChunksToString(q: any): string {
+  const chunks = q?.queryChunks;
+  if (!Array.isArray(chunks)) return String(q ?? '');
+  const parts: string[] = [];
+  for (const c of chunks) {
+    if (typeof c === 'string') parts.push(c);
+    else if (c && Array.isArray(c.value)) parts.push(c.value.join(''));
+  }
+  return parts.join(' ');
+}
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -229,6 +245,7 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
     historialInserts.length = 0;
     nextHistorialId = 1;
     noArgsSelectCallCount = 0;
+    executedSql.length = 0;
   });
 
   it('ejecuta asignación y devuelve resumen con conteos correctos', async () => {
@@ -261,6 +278,23 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
     expect(estados.filter((e: string) => e === 'omitido_sin_antiguedad')).toHaveLength(1);
     expect(estados.filter((e: string) => e === 'omitido_inactivo')).toHaveLength(1);
     expect(estados.filter((e: string) => e === 'omitido_eliminado')).toHaveLength(1);
+  });
+
+  it('el UPDATE de batch usa la columna real `origen_asignacion` (no `origen`)', async () => {
+    const mod = await import('@/services/asignacion-vacaciones.service');
+    await mod.asignarVacacionesMensuales({
+      anio: 2026,
+      mes: 8,
+      origen: 'manual',
+      ejecutadoPor: 99,
+    });
+
+    const updateSql = executedSql.find((s) => /UPDATE\s+historial_asignaciones_mensuales/i.test(s));
+    expect(updateSql).toBeDefined();
+    expect(updateSql).toContain('origen_asignacion');
+    // No debe existir una asignación a la columna inexistente `origen`.
+    expect(updateSql).not.toMatch(/\borigen\s*=(?!.*asignacion)/i);
+    expect(updateSql).not.toMatch(/SET\s+origen\b/i);
   });
 
   it('no duplica asignaciones del mismo (usuario, anio, mes)', async () => {

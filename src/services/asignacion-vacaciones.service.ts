@@ -399,7 +399,7 @@ export async function asignarVacacionesMensuales(
         await tx.execute(sql`
           UPDATE historial_asignaciones_mensuales
           SET ejecutado_por = ${opciones.ejecutadoPor},
-              origen = ${origen},
+              origen_asignacion = ${origen},
               updated_at = NOW()
           WHERE anio = ${opciones.anio}
             AND mes = ${opciones.mes}
@@ -408,7 +408,7 @@ export async function asignarVacacionesMensuales(
       } else {
         await tx.execute(sql`
           UPDATE historial_asignaciones_mensuales
-          SET origen = ${origen},
+          SET origen_asignacion = ${origen},
               updated_at = NOW()
           WHERE anio = ${opciones.anio}
             AND mes = ${opciones.mes}

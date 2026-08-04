@@ -128,13 +128,9 @@ services:
       - TZ=America/Tegucigalpa   # cron corre en hora de Honduras
       - APP_URL=http://vacaciones-app:3000
     volumes:
-      - ./scripts/docker-crontab:/etc/crontabs/root:ro
+      - ./scripts/docker-cron-entrypoint.sh:/cron-entrypoint.sh:ro
       - cron_logs:/var/log/cron
-    command: >
-      sh -c "apk add --no-cache curl tzdata >/dev/null &&
-             mkdir -p /var/log/cron &&
-             export APP_URL CRON_SECRET &&
-             crond -f -l 8"
+    command: ["sh", "/cron-entrypoint.sh"]
     depends_on:
       vacaciones-app:
         condition: service_healthy

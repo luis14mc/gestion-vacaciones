@@ -35,7 +35,7 @@ describe('validarConsistenciaBalance', () => {
 describe('resolverEstadoAsignacionMesActual', () => {
   const ref = new Date('2026-07-15T12:00:00Z');
 
-  it('usuario con menos de 1 año aparece como no_aplica', () => {
+  it('empleado en primer año aparece como pendiente si falta asignación del mes', () => {
     expect(
       resolverEstadoAsignacionMesActual({
         activo: true,
@@ -45,7 +45,7 @@ describe('resolverEstadoAsignacionMesActual', () => {
         balanceConsistente: true,
         fechaReferencia: ref,
       })
-    ).toBe('no_aplica');
+    ).toBe('pendiente');
   });
 
   it('usuario activo con antigüedad >= 1 año sin asignación del mes aparece pendiente', () => {

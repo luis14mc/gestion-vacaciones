@@ -40,9 +40,9 @@
 > sino una regla de dominio). Tabla en `src/lib/domain/asignacion-antiguedad.ts`
 > + endpoint `POST /api/admin/asignar-dias`. La fuente es `usuarios.fechaIngreso`.
 >
-> | Antigüedad | Días asignados |
-> |---|---|
-> | Menos de 1 año | 0 |
+> | Antigüedad | Días asignados (lote anual `/asignar-dias`) | Devengo mensual (Fase 5) |
+> |---|---|---|
+> | Menos de 1 año | 0 | 10 anuales → 0.8333/mes |
 > | 1 año cumplido | 10 |
 > | 2 años cumplidos | 12 |
 > | 3 años cumplidos | 15 |

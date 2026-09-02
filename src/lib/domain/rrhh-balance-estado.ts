@@ -7,7 +7,6 @@ import {
 import {
   calcularDiasAnualesPorAntiguedad,
   calcularDiasMensualesPorAntiguedad,
-  calcularAntiguedadLaboral,
 } from '@/lib/domain/vacaciones-asignacion';
 
 export type EstadoAsignacionMesActual =
@@ -60,10 +59,9 @@ export function resolverEstadoAsignacionMesActual(
   if (!params.fechaIngreso) return 'no_aplica';
 
   const ref = params.fechaReferencia ?? new Date();
-  const anios = calcularAntiguedadLaboral(params.fechaIngreso, ref);
   const diasMensuales = calcularDiasMensualesPorAntiguedad(params.fechaIngreso, ref);
 
-  if (anios < 1 || diasMensuales <= 0) return 'no_aplica';
+  if (diasMensuales <= 0) return 'no_aplica';
   if (params.tieneAsignacionMesActual) return 'asignado';
   return 'pendiente';
 }

@@ -13,7 +13,7 @@ colaborador (Código de Trabajo).
 
 | Antigüedad cumplida | Días anuales | Días mensuales (anual/12) |
 |---|---|---|
-| < 1 año | 0 | 0 |
+| Primer año en curso (< 1 cumplido) | 10 | 0.8333 |
 | 1 año | 10 | 0.8333 |
 | 2 años | 12 | 1.0000 |
 | 3 años | 15 | 1.2500 |
@@ -102,7 +102,7 @@ disponible = (inicial + acumulada) - (usada + pendiente)
 Reglas de orquestación:
 - Solo empleados activos (`activo = true AND deletedAt IS NULL`).
 - Usuarios sin `fechaIngreso` → omitidos.
-- Antigüedad < 1 año → omitidos.
+- Primer año en curso devenga 10/12 mensual (no se espera cumplir el aniversario).
 - Una sola asignación por `(usuarioId, anio, mes)` (DB UNIQUE + check en código).
 - Ejecución transaccional (todo-o-nada).
 - Auditoría: evento batch + un evento individual por asignación.

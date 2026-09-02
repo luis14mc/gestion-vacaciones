@@ -34,8 +34,13 @@ describe('vacaciones-asignacion — Fase 5', () => {
   });
 
   describe('calcularDiasAnualesPorAntiguedad', () => {
-    it('< 1 año → 0', () => {
+    it('primer año en curso (< 1 cumplido) → 10 en devengo', () => {
       const ref = new Date(2026, 6, 30);
+      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(10);
+    });
+
+    it('antes de la fecha de ingreso → 0', () => {
+      const ref = new Date(2025, 11, 31);
       expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(0);
     });
 
@@ -67,8 +72,8 @@ describe('vacaciones-asignacion — Fase 5', () => {
   describe('calcularDiasMensualesPorAntiguedad', () => {
     const ref = new Date(2026, 6, 30);
 
-    it('< 1 año → 0', () => {
-      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(0);
+    it('primer año en curso → 0.8333 mensual', () => {
+      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(0.8333);
     });
 
     it('1 año → 0.8333', () => {
@@ -87,12 +92,25 @@ describe('vacaciones-asignacion — Fase 5', () => {
       expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2022, 7, 15), ref)).toBe(1.6667);
     });
 
-    it('no asigna < 1 año aunque tenga fecha lejana', () => {
-      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2025, 12, 1), ref)).toBe(0);
+    it('empleado en primer año devenga mensualmente', () => {
+      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2025, 12, 1), ref)).toBe(0.8333);
     });
   });
 
   describe('resolverMesAsignacion', () => {
+    it('caso primer año en curso: asignable con 0.8333', () => {
+      const r = resolverMesAsignacion({
+        fechaIngreso: fechaIngreso(2026, 1, 15),
+        anio: 2026,
+        mes: 8,
+        fechaReferencia: new Date(2026, 7, 15),
+      });
+      expect(r.aniosCumplidos).toBe(0);
+      expect(r.diasAnuales).toBe(10);
+      expect(r.diasMensuales).toBe(0.8333);
+      expect(r.asignable).toBe(true);
+    });
+
     it('caso 1 año con todos los campos', () => {
       const r = resolverMesAsignacion({
         fechaIngreso: fechaIngreso(2025, 7, 15),
@@ -174,8 +192,8 @@ describe('vacaciones-asignacion — Fase 5', () => {
   describe('REGLAS_ASIGNACION_MENSUAL_VACACIONES (catálogo UI)', () => {
     it('expone las 5 reglas de antigüedad', () => {
       expect(REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas).toHaveLength(5);
-      const r1 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[0];
-      expect(r1).toMatchObject({ aniosCumplidos: 0, diasAnuales: 0 });
+      const r0 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[0];
+      expect(r0).toMatchObject({ aniosCumplidos: 0, diasAnuales: 10, diasMensuales: 0.8333 });
       const r4 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[3];
       expect(r4).toMatchObject({ aniosCumplidos: 3, diasAnuales: 15 });
     });

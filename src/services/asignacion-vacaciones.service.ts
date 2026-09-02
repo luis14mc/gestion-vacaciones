@@ -4,7 +4,8 @@
  * Reglas:
  *   - Solo empleados activos (activo = true, deletedAt IS NULL).
  *   - Empleados sin `fechaIngreso` se omiten.
- *   - Empleados con antigüedad < 1 año no reciben asignación.
+ *   - El proporcional mensual devenga desde el primer año en curso
+ *     (no se espera cumplir el primer aniversario para empezar).
  *   - Una asignación por (usuarioId, anio, mes) — restricción UNIQUE
  *     evita duplicados al re-ejecutar.
  *   - Atomicidad transaccional: si falla cualquier fila, no queda

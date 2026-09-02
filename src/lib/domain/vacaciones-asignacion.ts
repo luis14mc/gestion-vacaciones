@@ -2,18 +2,13 @@
  * Fase 5 — Asignación mensual automática de vacaciones según
  * antigüedad y Código de Trabajo.
  *
- * Regla institucional:
- *   < 1 año         → 0 días anuales (no asigna).
- *   1 año cumplido   → 10 días anuales.
- *   2 años          → 12 días anuales.
- *   3 años          → 15 días anuales.
- *   ≥ 4 años        → 20 días anuales.
- *
- * Los días se acreditan proporcionalmente cada mes:
- *   10 / 12 = 0.8333
- *   12 / 12 = 1.0000
- *   15 / 12 = 1.2500
- *   20 / 12 = 1.6667
+ * Regla institucional (devengo mes a mes durante el año que se gana):
+ *   Primer año en curso (< 1 año cumplido) → 10 días anuales devengados
+ *     mes a mes (10/12 ≈ 0.8333).
+ *   1 año cumplido   → 10 días anuales (0.8333/mes).
+ *   2 años          → 12 días anuales (1.0000/mes).
+ *   3 años          → 15 días anuales (1.2500/mes).
+ *   ≥ 4 años        → 20 días anuales (1.6667/mes).
  *
  * Precisión: 4 decimales en BD para evitar pérdida por redondeo mensual.
  * Display: máximo 2 decimales.
@@ -21,7 +16,6 @@
 import { calcularAnosCompletados } from '@/lib/domain/asignacion-antiguedad';
 
 const DIAS_ANUALES = {
-  menosDeUnAnio: 0,
   unAnio: 10,
   dosAnios: 12,
   tresAnios: 15,
@@ -43,18 +37,40 @@ function redondearA4Decimales(n: number): number {
   return Math.round(n * 10000) / 10000;
 }
 
+function parseFechaIngresoLocal(fechaIngreso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fechaIngreso.trim());
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** true si la fecha de referencia es el día de ingreso o posterior. */
+function estaContratadoEnReferencia(
+  fechaIngreso: string,
+  fechaReferencia: Date
+): boolean {
+  const ingreso = parseFechaIngresoLocal(fechaIngreso);
+  if (!ingreso) return false;
+  const ref = new Date(
+    fechaReferencia.getFullYear(),
+    fechaReferencia.getMonth(),
+    fechaReferencia.getDate()
+  );
+  return ref >= ingreso;
+}
+
 /**
- * Días anuales por antigüedad. Devuelve 0 para menos de 1 año.
- * Wrapper sobre la regla institucional (mismas constantes que
- * `REGLAS_ASIGNACION_ANTIGUEDAD`).
+ * Días anuales del tramo en devengo según antigüedad a la fecha de referencia.
+ * Durante el primer año (< 1 cumplido) devenga el tramo de 10 días anuales.
  */
 export function calcularDiasAnualesPorAntiguedad(
   fechaIngreso: string | null | undefined,
   fechaReferencia: Date = new Date()
 ): number {
   if (!fechaIngreso) return 0;
+  if (!estaContratadoEnReferencia(fechaIngreso, fechaReferencia)) return 0;
+
   const anos = calcularAnosCompletados(fechaIngreso, fechaReferencia);
-  if (anos < 1) return DIAS_ANUALES.menosDeUnAnio;
+  if (anos < 1) return DIAS_ANUALES.unAnio;
   if (anos === 1) return DIAS_ANUALES.unAnio;
   if (anos === 2) return DIAS_ANUALES.dosAnios;
   if (anos === 3) return DIAS_ANUALES.tresAnios;
@@ -156,9 +172,14 @@ export function calcularAntiguedadLaboral(
 export const REGLAS_ASIGNACION_MENSUAL_VACACIONES = {
   titulo: 'Asignación mensual de vacaciones',
   descripcion:
-    'La asignación de vacaciones se realiza mensualmente, de forma proporcional, según la antigüedad del colaborador.',
+    'La asignación de vacaciones se realiza mensualmente, de forma proporcional al tramo anual en devengo según la antigüedad del colaborador (incluido el primer año).',
   reglas: [
-    { aniosCumplidos: 0, diasAnuales: 0, diasMensuales: 0 },
+    {
+      aniosCumplidos: 0,
+      diasAnuales: 10,
+      diasMensuales: 0.8333,
+      nota: 'Primer año en curso — devengo mensual',
+    },
     { aniosCumplidos: 1, diasAnuales: 10, diasMensuales: 0.8333 },
     { aniosCumplidos: 2, diasAnuales: 12, diasMensuales: 1.0 },
     { aniosCumplidos: 3, diasAnuales: 15, diasMensuales: 1.25 },

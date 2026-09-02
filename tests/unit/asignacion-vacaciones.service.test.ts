@@ -263,19 +263,19 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
     //   1 (Ana, 4 años, 1.6667) → asignado
     //   2 (Luis, 1 año, 0.8333) → asignado
     //   3 (María, sin fecha)     → omitido_sin_ingreso
-    //   4 (Pedro, < 1 año)       → omitido_sin_antiguedad
+    //   4 (Pedro, primer año)    → asignado (0.8333)
     //   5 (Sofía, inactivo)     → omitido_inactivo
     //   6 (Ximena, eliminado)    → omitido_eliminado
 
     expect(resumen.usuariosProcesados).toBe(6);
-    expect(resumen.asignacionesCreadas).toBe(2);
-    expect(resumen.usuariosOmitidos).toBe(4);
-    expect(resumen.totalDiasAsignados).toBeCloseTo(0.8333 + 1.6667, 4);
+    expect(resumen.asignacionesCreadas).toBe(3);
+    expect(resumen.usuariosOmitidos).toBe(3);
+    expect(resumen.totalDiasAsignados).toBeCloseTo(0.8333 + 1.6667 + 0.8333, 4);
 
     const estados = resumen.detalles.map((d: { estado: string }) => d.estado);
-    expect(estados.filter((e: string) => e === 'asignado')).toHaveLength(2);
+    expect(estados.filter((e: string) => e === 'asignado')).toHaveLength(3);
     expect(estados.filter((e: string) => e === 'omitido_sin_ingreso')).toHaveLength(1);
-    expect(estados.filter((e: string) => e === 'omitido_sin_antiguedad')).toHaveLength(1);
+    expect(estados.filter((e: string) => e === 'omitido_sin_antiguedad')).toHaveLength(0);
     expect(estados.filter((e: string) => e === 'omitido_inactivo')).toHaveLength(1);
     expect(estados.filter((e: string) => e === 'omitido_eliminado')).toHaveLength(1);
   });
@@ -314,10 +314,10 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
     // Ana (id=1) está en historialTabla → omitido_duplicado. Luis (id=2) es
     // el otro activo con fecha de ingreso que asignaría normalmente.
     expect(ana?.estado).toBe('omitido_duplicado');
-    // Contamos: Ana (duplicado), Luis (asignado), María (sin ingreso),
-    // Pedro (< 1 año), Sofía (inactivo), Ximena (eliminada).
-    expect(resumen.asignacionesCreadas).toBe(1); // solo Luis
-    expect(resumen.usuariosOmitidos).toBe(5);
+    // Contamos: Ana (duplicado), Luis (asignado), Pedro (asignado), María (sin ingreso),
+    // Sofía (inactivo), Ximena (eliminada).
+    expect(resumen.asignacionesCreadas).toBe(2); // Luis + Pedro
+    expect(resumen.usuariosOmitidos).toBe(4);
   });
 
   it('persiste días_asignados con 4 decimales (precisión BD)', async () => {
@@ -383,9 +383,9 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
       ejecutadoPor: 99,
     });
 
-    // Usuarios omitidos (sin ingreso, sin antigüedad, inactivo, eliminado)
+    // Usuarios omitidos (sin ingreso, inactivo, eliminado)
     // no deben tener notificación de tipo asignacion_vacaciones.
-    const usuariosOmitidosIds = [3, 4, 5, 6];
+    const usuariosOmitidosIds = [3, 5, 6];
     for (const id of usuariosOmitidosIds) {
       const notifs = historialInserts.filter(
         (n: Record<string, unknown>) =>

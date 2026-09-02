@@ -14,15 +14,29 @@ Plataforma web para la gestión de solicitudes de vacaciones, permisos y licenci
 
 ## Características
 
-- **Solicitudes digitales** — vacaciones, permisos, licencias, cumpleaños; feriados HN excluidos del conteo
-- **Vista Mi Balance** — días vencidos, proporcionales y disponibles por colaborador
+- **Solicitudes digitales** — vacaciones, permisos, licencias, cumpleaños; feriados HN excluidos del conteo; validaciones alineadas entre frontend y API
+- **Vista Mi Balance** — días vencidos, proporcionales y disponibles por colaborador (precisión decimal en BD, 2 decimales en UI)
 - **Aprobación en dos niveles** — Jefe/Director → RRHH, con reglas CNI (alcance por departamento, VoBo de director, sin auto-aprobación)
 - **Saldos automáticos** — reserva al enviar, confirmación al aprobar, liberación al rechazar/cancelar
+- **Asignación mensual automática (Fase 5)** — devengo proporcional mes a mes según el tramo del año laboral en curso (1.er: 10, 2.º: 12, 3.er: 15, 4.º+: 20), acreditado el día de ingreso de cada colaborador
+- **Asignación manual de días** — individual y masiva por departamento, con fracciones decimales (hasta 4 decimales en BD)
+- **Configuración del sistema** — catálogo completo con valores predeterminados; materialización idempotente en BD (`db:seed-config`); UI nunca vacía tras limpiar la base
 - **RBAC** — roles Admin, RRHH, Jefe, Empleado con permisos granulares
-- **Asignación de días** — individual por antigüedad (tabla Honduras) y masiva por departamento
-- **Reportes y exportación** — PDF, CSV, Excel; dashboard por rol
+- **Reportes y exportación** — PDF, CSV, Excel; dashboard por rol; control RRHH de balances
 - **Auditoría** — registro de acciones con IP y user-agent
 - **Despliegue Docker** — optimizado para AWS EC2 (t3.medium) con Nginx y respaldos S3
+
+### Reglas de vacaciones (resumen)
+
+| Años cumplidos | Año en devengo | Días anuales | Proporcional mensual |
+|---|---|---|---|
+| 0 | 1.er año | 10 | 0.8333 |
+| 1 | 2.º año | 12 | 1.0000 |
+| 2 | 3.er año | 15 | 1.2500 |
+| 3 | 4.º año | 20 | 1.6667 |
+| ≥ 4 | 5.º en adelante | 20 | 1.6667 |
+
+Detalle en [Fase 5 — Asignación mensual](./docs/fase-5-asignacion-mensual.md) y [Configuración](./docs/configuracion.md).
 
 ---
 
@@ -66,6 +80,7 @@ cp .env.example .env.local
 # Base de datos
 pnpm db:push
 pnpm db:seed
+pnpm db:seed-config    # Inserta claves de configuración faltantes (idempotente)
 pnpm db:create-admin
 
 # Desarrollo
@@ -86,11 +101,14 @@ La aplicación estará en `http://localhost:3000`.
 | `pnpm test:run` | Tests unitarios |
 | `pnpm test:integration:run` | Tests con PostgreSQL real |
 | `pnpm test:all` | Todos los tests |
+| `pnpm lint` | ESLint |
 | `pnpm db:push` | Aplicar esquema Drizzle |
 | `pnpm db:seed` | Datos base (roles, departamentos, config) |
+| `pnpm db:seed-config` | Solo claves de configuración faltantes |
 | `pnpm db:create-admin` | Crear administrador |
+| `pnpm db:studio` | Drizzle Studio (explorador visual de BD) |
 | `pnpm db:setup` | Inicialización completa (producción) |
-| `pnpm lint` | ESLint |
+| `pnpm db:reconciliar-balances` | Recalcular saldos disponibles |
 
 ---
 
@@ -107,6 +125,8 @@ sudo ./scripts/setup-ec2.sh   # Primera vez
 ./scripts/deploy-ec2.sh       # Actualizaciones (git pull + deploy)
 ```
 
+Tras actualizar el esquema, aplicar migraciones en `drizzle/` (p. ej. `0011_balances_numeric_4.sql` para precisión decimal en saldos).
+
 Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-aws-ec2) y [Estado de Producción](./docs/ESTADO_PRODUCCION.md).
 
 ---
@@ -118,6 +138,8 @@ Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-
 | [docs/README.md](./docs/README.md) | Índice de documentación |
 | [MANUAL_TECNICO.md](./MANUAL_TECNICO.md) | Arquitectura, API, BD, seguridad |
 | [docs/MANUAL_USUARIO.md](./docs/MANUAL_USUARIO.md) | Guía por rol (empleado, jefe, RRHH, admin) |
+| [docs/fase-5-asignacion-mensual.md](./docs/fase-5-asignacion-mensual.md) | Asignación mensual automática y cron |
+| [docs/configuracion.md](./docs/configuracion.md) | Catálogo de parámetros del sistema |
 | [docs/ESTADO_PRODUCCION.md](./docs/ESTADO_PRODUCCION.md) | Evaluación de preparación para producción |
 | [AUDITORIA.md](./AUDITORIA.md) | Auditoría de seguridad y funcionalidad |
 | [docs/ARCHIVOS_NO_VERSIONADOS.md](./docs/ARCHIVOS_NO_VERSIONADOS.md) | Qué archivos no van a Git (Neon, `.env.local`, etc.) |
@@ -134,12 +156,14 @@ src/
 ├── components/    # UI React
 ├── services/      # Lógica de negocio
 ├── lib/           # DB, auth, dominio, validaciones
+│   ├── domain/    # Reglas de vacaciones, balances, solicitudes
+│   └── config/    # Catálogo y bootstrap de configuración
 ├── hooks/         # Hooks de cliente
 ├── auth.ts        # NextAuth
 └── middleware.ts  # Protección de rutas
 
 drizzle/           # Migraciones SQL
-scripts/           # Seed, deploy, backup
+scripts/           # Seed, deploy, backup, asignación mensual
 tests/             # Vitest unit + integración
 docs/              # Manuales y estado de producción
 ```

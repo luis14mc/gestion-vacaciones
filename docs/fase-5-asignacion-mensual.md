@@ -11,13 +11,13 @@ La asignación de vacaciones **NO** se hace como un único evento anual. Se
 realiza **mes a mes, de forma proporcional**, según la antigüedad del
 colaborador (Código de Trabajo).
 
-| Antigüedad cumplida | Días anuales | Días mensuales (anual/12) |
-|---|---|---|
-| Primer año en curso (< 1 cumplido) | 10 | 0.8333 |
-| 1 año | 10 | 0.8333 |
-| 2 años | 12 | 1.0000 |
-| 3 años | 15 | 1.2500 |
-| ≥ 4 años | 20 | 1.6667 |
+| Años cumplidos | Año en devengo | Días anuales | Días mensuales (anual/12) |
+|---|---|---|---|
+| 0 | 1.er año | 10 | 0.8333 |
+| 1 | 2.º año | 12 | 1.0000 |
+| 2 | 3.er año | 15 | 1.2500 |
+| 3 | 4.º año | 20 | 1.6667 |
+| ≥ 4 | 5.º en adelante | 20 | 1.6667 |
 
 Precisión:
 - **BD**: `numeric(6,4)` para `dias_asignados` y `numeric(8,4)` para balances.

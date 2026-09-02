@@ -44,22 +44,22 @@ describe('vacaciones-asignacion — Fase 5', () => {
       expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(0);
     });
 
-    it('1 año → 10', () => {
+    it('1 año cumplido → devenga tramo del 2.º año (12)', () => {
       const ref = new Date(2026, 6, 30);
-      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2025, 7, 15), ref)).toBe(10);
+      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2025, 7, 15), ref)).toBe(12);
     });
 
-    it('2 años → 12', () => {
+    it('2 años cumplidos → devenga tramo del 3.er año (15)', () => {
       const ref = new Date(2026, 6, 30);
-      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2024, 7, 15), ref)).toBe(12);
+      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2024, 7, 15), ref)).toBe(15);
     });
 
-    it('3 años → 15', () => {
+    it('3 años cumplidos → devenga tramo del 4.º año (20)', () => {
       const ref = new Date(2026, 6, 30);
-      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2023, 7, 15), ref)).toBe(15);
+      expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2023, 7, 15), ref)).toBe(20);
     });
 
-    it('4 años → 20', () => {
+    it('4 años cumplidos → devenga tramo del 5.º año (20)', () => {
       const ref = new Date(2026, 6, 30);
       expect(calcularDiasAnualesPorAntiguedad(fechaIngreso(2022, 7, 15), ref)).toBe(20);
     });
@@ -76,19 +76,19 @@ describe('vacaciones-asignacion — Fase 5', () => {
       expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2026, 1, 1), ref)).toBe(0.8333);
     });
 
-    it('1 año → 0.8333', () => {
-      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2025, 7, 15), ref)).toBe(0.8333);
+    it('1 año cumplido → 1.0000 (tramo 2.º año)', () => {
+      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2025, 7, 15), ref)).toBe(1);
     });
 
-    it('2 años → 1.0000', () => {
-      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2024, 7, 15), ref)).toBe(1);
+    it('2 años cumplidos → 1.2500 (tramo 3.er año)', () => {
+      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2024, 7, 15), ref)).toBe(1.25);
     });
 
-    it('3 años → 1.2500', () => {
-      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2023, 7, 15), ref)).toBe(1.25);
+    it('3 años cumplidos → 1.6667 (tramo 4.º año)', () => {
+      expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2023, 7, 15), ref)).toBe(1.6667);
     });
 
-    it('4 años → 1.6667', () => {
+    it('4 años cumplidos → 1.6667 (tramo 5.º año)', () => {
       expect(calcularDiasMensualesPorAntiguedad(fechaIngreso(2022, 7, 15), ref)).toBe(1.6667);
     });
 
@@ -111,7 +111,7 @@ describe('vacaciones-asignacion — Fase 5', () => {
       expect(r.asignable).toBe(true);
     });
 
-    it('caso 1 año con todos los campos', () => {
+    it('caso 1 año cumplido: devenga tramo 2.º año (12 / 12)', () => {
       const r = resolverMesAsignacion({
         fechaIngreso: fechaIngreso(2025, 7, 15),
         anio: 2026,
@@ -119,8 +119,8 @@ describe('vacaciones-asignacion — Fase 5', () => {
         fechaReferencia: new Date(2026, 6, 30),
       });
       expect(r.aniosCumplidos).toBe(1);
-      expect(r.diasAnuales).toBe(10);
-      expect(r.diasMensuales).toBe(0.8333);
+      expect(r.diasAnuales).toBe(12);
+      expect(r.diasMensuales).toBe(1);
       expect(r.mes).toBe(7);
       expect(r.anio).toBe(2026);
       expect(r.asignable).toBe(true);
@@ -194,8 +194,10 @@ describe('vacaciones-asignacion — Fase 5', () => {
       expect(REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas).toHaveLength(5);
       const r0 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[0];
       expect(r0).toMatchObject({ aniosCumplidos: 0, diasAnuales: 10, diasMensuales: 0.8333 });
-      const r4 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[3];
-      expect(r4).toMatchObject({ aniosCumplidos: 3, diasAnuales: 15 });
+      const r1 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[1];
+      expect(r1).toMatchObject({ aniosCumplidos: 1, diasAnuales: 12, diasMensuales: 1.0 });
+      const r4 = REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas[4];
+      expect(r4).toMatchObject({ aniosCumplidos: 4, diasAnuales: 20, diasMensuales: 1.6667 });
     });
   });
 });

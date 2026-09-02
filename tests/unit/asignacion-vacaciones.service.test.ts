@@ -261,7 +261,7 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
 
     // Esperado:
     //   1 (Ana, 4 años, 1.6667) → asignado
-    //   2 (Luis, 1 año, 0.8333) → asignado
+    //   2 (Luis, 1 año, 1.0000) → asignado
     //   3 (María, sin fecha)     → omitido_sin_ingreso
     //   4 (Pedro, primer año)    → asignado (0.8333)
     //   5 (Sofía, inactivo)     → omitido_inactivo
@@ -270,7 +270,7 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
     expect(resumen.usuariosProcesados).toBe(6);
     expect(resumen.asignacionesCreadas).toBe(3);
     expect(resumen.usuariosOmitidos).toBe(3);
-    expect(resumen.totalDiasAsignados).toBeCloseTo(0.8333 + 1.6667 + 0.8333, 4);
+    expect(resumen.totalDiasAsignados).toBeCloseTo(1.0 + 1.6667 + 0.8333, 4);
 
     const estados = resumen.detalles.map((d: { estado: string }) => d.estado);
     expect(estados.filter((e: string) => e === 'asignado')).toHaveLength(3);
@@ -329,7 +329,7 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
       ejecutadoPor: 99,
     });
 
-    // Ana (4 años → 1.6667 mensual). Luis (1 año → 0.8333 mensual).
+    // Ana (4 años → 1.6667 mensual). Luis (1 año → 1.0000 mensual).
     const anaInsert = historialInserts.find(
       (h: Record<string, unknown>) => h.usuarioId === 1
     );
@@ -337,7 +337,7 @@ describe('asignacion-vacaciones.service — Fase 5 (lógica de orquestación)', 
       (h: Record<string, unknown>) => h.usuarioId === 2
     );
     expect(anaInsert?.diasAsignados).toBe('1.6667');
-    expect(luisInsert?.diasAsignados).toBe('0.8333');
+    expect(luisInsert?.diasAsignados).toBe('1.0000');
     // Balance guardado con 4 decimales también.
     expect(anaInsert?.balanceAnterior).toMatch(/^\d+\.\d{4}$/);
     expect(anaInsert?.balanceNuevo).toMatch(/^\d+\.\d{4}$/);

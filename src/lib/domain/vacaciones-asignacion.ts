@@ -2,13 +2,12 @@
  * Fase 5 — Asignación mensual automática de vacaciones según
  * antigüedad y Código de Trabajo.
  *
- * Regla institucional (devengo mes a mes durante el año que se gana):
- *   Primer año en curso (< 1 año cumplido) → 10 días anuales devengados
- *     mes a mes (10/12 ≈ 0.8333).
- *   1 año cumplido   → 10 días anuales (0.8333/mes).
- *   2 años          → 12 días anuales (1.0000/mes).
- *   3 años          → 15 días anuales (1.2500/mes).
- *   ≥ 4 años        → 20 días anuales (1.6667/mes).
+ * Regla institucional (devengo mes a mes del tramo del año laboral en curso):
+ *   Años cumplidos 0 (1.er año en curso)  → 10 anuales → 0.8333/mes
+ *   Años cumplidos 1 (2.º año en curso)   → 12 anuales → 1.0000/mes
+ *   Años cumplidos 2 (3.er año en curso)  → 15 anuales → 1.2500/mes
+ *   Años cumplidos 3 (4.º año en curso)   → 20 anuales → 1.6667/mes
+ *   Años cumplidos ≥ 4 (5.º año en adelante) → 20 anuales → 1.6667/mes
  *
  * Precisión: 4 decimales en BD para evitar pérdida por redondeo mensual.
  * Display: máximo 2 decimales.
@@ -59,8 +58,8 @@ function estaContratadoEnReferencia(
 }
 
 /**
- * Días anuales del tramo en devengo según antigüedad a la fecha de referencia.
- * Durante el primer año (< 1 cumplido) devenga el tramo de 10 días anuales.
+ * Días anuales del tramo que se devenga mes a mes según años cumplidos.
+ * Cada año laboral en curso usa el tope del tramo correspondiente (no el anterior).
  */
 export function calcularDiasAnualesPorAntiguedad(
   fechaIngreso: string | null | undefined,
@@ -70,10 +69,9 @@ export function calcularDiasAnualesPorAntiguedad(
   if (!estaContratadoEnReferencia(fechaIngreso, fechaReferencia)) return 0;
 
   const anos = calcularAnosCompletados(fechaIngreso, fechaReferencia);
-  if (anos < 1) return DIAS_ANUALES.unAnio;
-  if (anos === 1) return DIAS_ANUALES.unAnio;
-  if (anos === 2) return DIAS_ANUALES.dosAnios;
-  if (anos === 3) return DIAS_ANUALES.tresAnios;
+  if (anos === 0) return DIAS_ANUALES.unAnio;
+  if (anos === 1) return DIAS_ANUALES.dosAnios;
+  if (anos === 2) return DIAS_ANUALES.tresAnios;
   return DIAS_ANUALES.cuatroOmás;
 }
 
@@ -172,17 +170,27 @@ export function calcularAntiguedadLaboral(
 export const REGLAS_ASIGNACION_MENSUAL_VACACIONES = {
   titulo: 'Asignación mensual de vacaciones',
   descripcion:
-    'La asignación de vacaciones se realiza mensualmente, de forma proporcional al tramo anual en devengo según la antigüedad del colaborador (incluido el primer año).',
+    'La asignación de vacaciones se realiza mensualmente, de forma proporcional al tramo anual del año laboral en curso (1.er año: 10, 2.º: 12, 3.er: 15, 4.º en adelante: 20).',
   reglas: [
     {
       aniosCumplidos: 0,
       diasAnuales: 10,
       diasMensuales: 0.8333,
-      nota: 'Primer año en curso — devengo mensual',
+      nota: '1.er año laboral en curso',
     },
-    { aniosCumplidos: 1, diasAnuales: 10, diasMensuales: 0.8333 },
-    { aniosCumplidos: 2, diasAnuales: 12, diasMensuales: 1.0 },
-    { aniosCumplidos: 3, diasAnuales: 15, diasMensuales: 1.25 },
-    { aniosCumplidos: 4, diasAnuales: 20, diasMensuales: 1.6667 },
+    { aniosCumplidos: 1, diasAnuales: 12, diasMensuales: 1.0, nota: '2.º año laboral en curso' },
+    { aniosCumplidos: 2, diasAnuales: 15, diasMensuales: 1.25, nota: '3.er año laboral en curso' },
+    {
+      aniosCumplidos: 3,
+      diasAnuales: 20,
+      diasMensuales: 1.6667,
+      nota: '4.º año laboral en curso',
+    },
+    {
+      aniosCumplidos: 4,
+      diasAnuales: 20,
+      diasMensuales: 1.6667,
+      nota: '5.º año laboral en adelante',
+    },
   ],
 } as const;

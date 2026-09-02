@@ -42,11 +42,11 @@
 >
 > | Antigüedad | Días asignados (lote anual `/asignar-dias`) | Devengo mensual (Fase 5) |
 > |---|---|---|
-> | Menos de 1 año | 0 | 10 anuales → 0.8333/mes |
-> | 1 año cumplido | 10 |
-> | 2 años cumplidos | 12 |
-> | 3 años cumplidos | 15 |
-> | 4 años o más | 20 |
+> | Menos de 1 año | 0 | 10 anuales → 0.8333/mes (1.er año) |
+> | 1 año cumplido | 10 | 12 anuales → 1.0000/mes (2.º año) |
+> | 2 años cumplidos | 12 | 15 anuales → 1.2500/mes (3.er año) |
+> | 3 años cumplidos | 15 | 20 anuales → 1.6667/mes (4.º año) |
+> | 4 años o más | 20 | 20 anuales → 1.6667/mes (5.º+) |
 
 ### 2.3 Notificaciones
 | Clave | Default | Consumidor | Efecto |

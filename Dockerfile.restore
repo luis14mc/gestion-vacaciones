@@ -4,7 +4,7 @@ RUN apk add --no-cache gnupg
 
 WORKDIR /app
 
-COPY migration ./migration
+COPY vacaciones-production.dump.gpg ./vacaciones-production.dump.gpg
 COPY scripts/restore-railway-backup.sh ./scripts/restore-railway-backup.sh
 
 RUN chmod +x ./scripts/restore-railway-backup.sh

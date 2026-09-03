@@ -1,0 +1,12 @@
+FROM postgres:16-alpine
+
+RUN apk add --no-cache gnupg
+
+WORKDIR /app
+
+COPY vacaciones-production.dump.gpg ./vacaciones-production.dump.gpg
+COPY scripts/restore-railway-backup.sh ./scripts/restore-railway-backup.sh
+
+RUN chmod +x ./scripts/restore-railway-backup.sh
+
+CMD ["./scripts/restore-railway-backup.sh"]

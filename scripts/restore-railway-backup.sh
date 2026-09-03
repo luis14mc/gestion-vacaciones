@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-BACKUP_FILE="/app/migration/railway/vacaciones-production.dump.gpg"
+BACKUP_FILE="/app/vacaciones-production.dump.gpg"
 DECRYPTED_FILE="/tmp/vacaciones-production.dump"
 
 if [ -z "${DATABASE_URL:-}" ]; then

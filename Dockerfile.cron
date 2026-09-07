@@ -1,0 +1,24 @@
+# =============================================================
+# DOCKERFILE - Cron de asignación mensual (Railway)
+# =============================================================
+# Imagen separada de la app web. No compila Next.js; conserva
+# scripts, src y dependencias de desarrollo necesarias para `tsx`.
+# =============================================================
+
+FROM node:22-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+CMD ["pnpm", "cron:asignacion-mensual"]

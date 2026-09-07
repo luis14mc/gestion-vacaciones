@@ -127,6 +127,8 @@ sudo ./scripts/setup-ec2.sh   # Primera vez
 
 Tras actualizar el esquema, aplicar migraciones en `drizzle/` (p. ej. `0011_balances_numeric_4.sql` para precisión decimal en saldos).
 
+**Railway:** crear un servicio cron con `railway.cron.toml` (ver [docs/railway-cron-asignacion-mensual.md](./docs/railway-cron-asignacion-mensual.md)).
+
 Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-aws-ec2) y [Estado de Producción](./docs/ESTADO_PRODUCCION.md).
 
 ---
@@ -139,6 +141,7 @@ Ver [Manual Técnico — Despliegue](./MANUAL_TECNICO.md#12-guía-de-despliegue-
 | [MANUAL_TECNICO.md](./MANUAL_TECNICO.md) | Arquitectura, API, BD, seguridad |
 | [docs/MANUAL_USUARIO.md](./docs/MANUAL_USUARIO.md) | Guía por rol (empleado, jefe, RRHH, admin) |
 | [docs/fase-5-asignacion-mensual.md](./docs/fase-5-asignacion-mensual.md) | Asignación mensual automática y cron |
+| [docs/railway-cron-asignacion-mensual.md](./docs/railway-cron-asignacion-mensual.md) | Cron diario en Railway (día de ingreso) |
 | [docs/configuracion.md](./docs/configuracion.md) | Catálogo de parámetros del sistema |
 | [docs/ESTADO_PRODUCCION.md](./docs/ESTADO_PRODUCCION.md) | Evaluación de preparación para producción |
 | [AUDITORIA.md](./AUDITORIA.md) | Auditoría de seguridad y funcionalidad |

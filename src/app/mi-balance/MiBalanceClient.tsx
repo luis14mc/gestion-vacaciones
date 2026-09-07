@@ -139,7 +139,8 @@ export default function MiBalanceClient({ session }: MiBalanceClientProps) {
               Mis asignaciones mensuales
             </CardTitle>
             <CardDescription>
-              Créditos proporcionales acreditados cada mes según su antigüedad.
+              Créditos proporcionales acreditados cada mes en su día de ingreso, según el
+              tramo del año laboral en curso (1.er: 10, 2.º: 12, 3.er: 15, 4.º+: 20 días/año).
             </CardDescription>
           </CardHeader>
           <CardContent>

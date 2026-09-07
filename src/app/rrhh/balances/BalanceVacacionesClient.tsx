@@ -427,6 +427,7 @@ export default function BalanceVacacionesClient() {
                     <TableHead>Ingreso</TableHead>
                     <TableHead>Antigüedad</TableHead>
                     <TableHead className="text-right">Anual</TableHead>
+                    <TableHead className="text-right">Mensual</TableHead>
                     <TableHead className="text-right">Venc.</TableHead>
                     <TableHead className="text-right">Prop.</TableHead>
                     <TableHead className="text-right">Usados</TableHead>
@@ -451,6 +452,9 @@ export default function BalanceVacacionesClient() {
                       <TableCell className="text-xs">{f.antiguedad.texto}</TableCell>
                       <TableCell className="text-right tabular-nums text-xs">
                         {f.reglaVacaciones.diasAnualesAplicables}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">
+                        {f.reglaVacaciones.diasMensualesAplicables.toFixed(4).replace(/\.?0+$/, '')}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-xs">
                         {f.balance.diasVencidos.toFixed(2)}
@@ -540,6 +544,16 @@ export default function BalanceVacacionesClient() {
                 <div>
                   <p className="text-muted-foreground">Antigüedad</p>
                   <p>{detalle.colaborador.antiguedad.texto}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tramo en devengo</p>
+                  <p>
+                    {detalle.colaborador.reglaVacaciones.diasAnualesAplicables} días/año ·{' '}
+                    {detalle.colaborador.reglaVacaciones.diasMensualesAplicables
+                      .toFixed(4)
+                      .replace(/\.?0+$/, '')}{' '}
+                    días/mes
+                  </p>
                 </div>
               </div>
 

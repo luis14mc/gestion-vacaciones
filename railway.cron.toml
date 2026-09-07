@@ -1,0 +1,15 @@
+# Servicio cron de Railway — asignación mensual por día de ingreso.
+#
+# Crear un SEGUNDO servicio en el mismo proyecto Railway apuntando a este repo
+# y en Settings → Config file path: railway.cron.toml
+#
+# Compartir las mismas variables que la app web: DATABASE_URL, CRON_SECRET, etc.
+# Horario UTC 13:00 ≈ 07:00 America/Tegucigalpa (sin horario de verano en HN).
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "pnpm tsx scripts/asignar-vacaciones-mensuales.ts --modo=automatico --solo-aniversario"
+cronSchedule = "0 13 * * *"
+restartPolicyType = "NEVER"

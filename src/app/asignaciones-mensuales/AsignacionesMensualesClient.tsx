@@ -119,7 +119,8 @@ export default function AsignacionesMensualesClient({
             Asignaciones mensuales
           </h1>
           <p className="text-[13px] text-muted-foreground mt-0.5">
-            Historial institucional de créditos proporcionales por antigüedad.
+            Historial de créditos mensuales por tramo del año laboral en curso (devengo en el
+            día de ingreso de cada colaborador).
           </p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={() => void cargar()}>

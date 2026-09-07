@@ -3,6 +3,10 @@
  *
  * Uso:
  *   pnpm tsx scripts/asignar-vacaciones-mensuales.ts --anio=2026 --mes=7
+ *   pnpm tsx scripts/asignar-vacaciones-mensuales.ts --solo-aniversario --modo=automatico
+ *
+ * `--solo-aniversario`: solo acredita a quienes cumplen su día de ingreso hoy
+ * (uso recomendado para cron diario en Railway / Docker).
  *
  * Si --mes se omite, usa el mes actual. Si --anio se omite, usa el año actual.
  *
@@ -25,6 +29,7 @@ interface CliArgs {
   anio?: number;
   mes?: number;
   modo?: 'automatico' | 'manual' | 'sistema';
+  soloAniversario?: boolean;
 }
 
 function parseArgs(): CliArgs {
@@ -34,6 +39,7 @@ function parseArgs(): CliArgs {
     if (a === '--anio' || a === '--año') args.anio = Number(process.argv[++i]);
     else if (a === '--mes') args.mes = Number(process.argv[++i]);
     else if (a === '--modo') args.modo = process.argv[++i] as CliArgs['modo'];
+    else if (a === '--solo-aniversario') args.soloAniversario = true;
   }
   return args;
 }
@@ -55,7 +61,8 @@ async function main() {
   }
 
   console.log(
-    `[Fase 5] Ejecutando asignación mensual: anio=${anio} mes=${mes} modo=${modo}`
+    `[Fase 5] Ejecutando asignación mensual: anio=${anio} mes=${mes} modo=${modo}` +
+      (args.soloAniversario ? ' soloAniversario=true' : '')
   );
 
   // Importación dinámica para asegurar que dotenv cargó DATABASE_URL.
@@ -68,6 +75,8 @@ async function main() {
     mes,
     origen: modo,
     ejecutadoPor: 0,
+    soloAniversario: args.soloAniversario === true,
+    fechaReferencia: new Date(),
   });
 
   console.log(

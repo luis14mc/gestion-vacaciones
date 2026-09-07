@@ -46,6 +46,10 @@ import {
 import {
   REGLAS_ASIGNACION_MENSUAL_VACACIONES,
 } from "@/lib/domain/vacaciones-asignacion";
+import {
+  formatDiasMensualesRegla,
+  labelTramoAsignacionMensual,
+} from "@/lib/domain/asignacion-mensual-labels";
 import type { ResumenAsignacionMensual } from "@/services/asignacion-vacaciones.service";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -847,8 +851,9 @@ function AsignacionAntiguedadCard({
             Código de Trabajo
           </AlertTitle>
           <AlertDescription className="text-blue-800/90 text-[11px]">
-            Los días se asignan mes a mes según la antigüedad del colaborador. Un mismo
-            (colaborador, año, mes) no puede asignarse dos veces.
+            Los días se devengan mes a mes según el tramo del año laboral en curso
+            (1.er: 10, 2.º: 12, 3.er: 15, 4.º+: 20), acreditados el día de ingreso
+            de cada colaborador. Un mismo (colaborador, año, mes) no puede asignarse dos veces.
           </AlertDescription>
         </Alert>
 
@@ -856,7 +861,7 @@ function AsignacionAntiguedadCard({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[12px]">Antigüedad</TableHead>
+                <TableHead className="text-[12px]">Año en devengo</TableHead>
                 <TableHead className="text-[12px] text-right w-24">Días/año</TableHead>
                 <TableHead className="text-[12px] text-right w-28">Días/mes</TableHead>
               </TableRow>
@@ -865,19 +870,13 @@ function AsignacionAntiguedadCard({
               {REGLAS_ASIGNACION_MENSUAL_VACACIONES.reglas.map((regla) => (
                 <TableRow key={regla.aniosCumplidos}>
                   <TableCell className="text-[13px]">
-                    {regla.aniosCumplidos === 0
-                      ? "Menos de 1 año"
-                      : regla.aniosCumplidos === 1
-                        ? "1 año cumplido"
-                        : regla.aniosCumplidos < 4
-                          ? `${regla.aniosCumplidos} años cumplidos`
-                          : "4 años o más"}
+                    {regla.nota ?? labelTramoAsignacionMensual(regla.aniosCumplidos)}
                   </TableCell>
                   <TableCell className="text-[13px] text-right font-medium tabular-nums">
                     {regla.diasAnuales}
                   </TableCell>
                   <TableCell className="text-[13px] text-right font-medium tabular-nums">
-                    {regla.diasMensuales.toFixed(4).replace(/\.?0+$/, "") || "0"}
+                    {formatDiasMensualesRegla(regla.diasMensuales)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -972,9 +971,10 @@ function AsignacionAntiguedadCard({
         </div>
 
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Asigna los días proporcionales del mes seleccionado a cada colaborador activo
-          con al menos 1 año de antigüedad. Si el mes ya fue asignado, se omite
-          (protección contra duplicados).
+          Asigna los días proporcionales del mes seleccionado a todos los colaboradores
+          activos con fecha de ingreso (incluido el primer año laboral). Si el mes ya fue
+          asignado, se omite (protección contra duplicados). El cron diario solo acredita
+          a quienes cumplen su día de ingreso ese día.
         </p>
       </CardContent>
     </Card>

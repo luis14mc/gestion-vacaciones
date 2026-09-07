@@ -26,7 +26,9 @@
     "db:init": "node scripts/init-prod.mjs",
     "db:create-admin": "tsx scripts/create-admin.ts",
     "db:setup": "node scripts/init-prod.mjs",
-    "db:reconciliar-balances": "node scripts/reconciliar-balances.mjs"
+    "db:reconciliar-balances": "node scripts/reconciliar-balances.mjs",
+    "cron:asignacion-mensual": "tsx scripts/asignar-vacaciones-mensuales.ts --modo=automatico --solo-aniversario",
+    "cron:asignacion-mensual:http": "tsx scripts/cron-http-asignacion-mensual.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

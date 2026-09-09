@@ -38,10 +38,10 @@ describe('contarDiasHabiles', () => {
     expect(contarDiasHabiles('2026-06-15T10:00:00Z', '2026-06-19T18:00:00Z')).toBe(5);
   });
 
-  it('excluye feriados nacionales de Honduras (con puente)', () => {
-    // 14 y 15 sep 2026: Independencia (mar) + puente lunes 14 → 0 días hábiles
-    expect(contarDiasHabiles('2026-09-14', '2026-09-15')).toBe(0);
-    // 16 sep 2026: miércoles hábil
-    expect(contarDiasHabiles('2026-09-16', '2026-09-16')).toBe(1);
+  it('no descuenta feriados hardcodeados si no están registrados en el sistema', () => {
+    // El 14 y 15 de septiembre de 2026 son lunes y martes: ambos cuentan.
+    expect(contarDiasHabiles('2026-09-14', '2026-09-14')).toBe(1);
+    expect(contarDiasHabiles('2026-09-15', '2026-09-15')).toBe(1);
+    expect(contarDiasHabiles('2026-09-14', '2026-09-15')).toBe(2);
   });
 });

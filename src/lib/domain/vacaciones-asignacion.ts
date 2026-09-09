@@ -31,6 +31,13 @@ export interface ResultadoAsignacionMensual {
   asignable: boolean;
 }
 
+export interface ReglaAsignacionMensualVacaciones {
+  aniosCumplidos: number;
+  diasAnuales: number;
+  diasMensuales: number;
+  nota?: string;
+}
+
 /** Redondea a 4 decimales (precisión para acumular 12 meses). */
 function redondearA4Decimales(n: number): number {
   return Math.round(n * 10000) / 10000;
@@ -167,7 +174,11 @@ export function calcularAntiguedadLaboral(
  * Reglas textuales de la Fase 5 (para mostrar en UI/Configuración).
  * Se exporta para que la UI no duplique la constante.
  */
-export const REGLAS_ASIGNACION_MENSUAL_VACACIONES = {
+export const REGLAS_ASIGNACION_MENSUAL_VACACIONES: {
+  titulo: string;
+  descripcion: string;
+  reglas: readonly ReglaAsignacionMensualVacaciones[];
+} = {
   titulo: 'Asignación mensual de vacaciones',
   descripcion:
     'La asignación de vacaciones se realiza mensualmente, de forma proporcional al tramo anual del año laboral en curso (1.er año: 10, 2.º: 12, 3.er: 15, 4.º en adelante: 20).',
@@ -193,4 +204,4 @@ export const REGLAS_ASIGNACION_MENSUAL_VACACIONES = {
       nota: '5.º año laboral en adelante',
     },
   ],
-} as const;
+};

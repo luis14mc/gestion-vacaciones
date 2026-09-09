@@ -1,15 +1,16 @@
 # Servicio cron de Railway — asignación mensual por día de ingreso.
 #
 # Crear un SEGUNDO servicio en el mismo proyecto Railway apuntando a este repo
-# y en Settings → Config file path: railway.cron.toml
+# y en Settings → Config file path: /railway.cron.toml
 #
-# Compartir las mismas variables que la app web: DATABASE_URL, CRON_SECRET, etc.
+# Compartir DATABASE_URL con el servicio Postgres de Railway.
 # Horario UTC 13:00 ≈ 07:00 America/Tegucigalpa (sin horario de verano en HN).
 
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.cron"
 
 [deploy]
-startCommand = "pnpm tsx scripts/asignar-vacaciones-mensuales.ts --modo=automatico --solo-aniversario"
+startCommand = "pnpm cron:asignacion-mensual"
 cronSchedule = "0 13 * * *"
 restartPolicyType = "NEVER"

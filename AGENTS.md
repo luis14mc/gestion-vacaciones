@@ -17,7 +17,15 @@ pnpm db:push          # Apply Drizzle schema to DB
 pnpm db:seed          # Seed base data (roles, departments, config)
 pnpm db:create-admin  # Create admin user
 pnpm db:studio        # Drizzle Studio (visual DB browser)
+pnpm cron:asignacion-mensual      # Devengo diario por día de ingreso (BD directa)
+pnpm cron:asignacion-mensual:http # Idem vía HTTP (APP_URL + CRON_SECRET)
 ```
+
+## Git y despliegue
+
+- **Rama de producción (Railway):** `production-railway` — es la que Railway despliega. Hacer **commit y push aquí** para cambios que deban ir a producción.
+- **`main`:** integración general; puede adelantarse o mergearse desde `production-railway`, pero no asumir que Railway la usa.
+- Cron mensual en Railway: servicio aparte con `railway.cron.toml` — ver `docs/railway-cron-asignacion-mensual.md`.
 
 ## Verification
 
@@ -71,7 +79,11 @@ Admin, RRHH, Jefe, Empleado — enforced in API routes via `src/services/rbac.se
 
 ## Deployment
 
-Primary: Docker on AWS EC2 (`docker-compose.yml`). Standalone Next.js output (~120MB). Nginx reverse proxy. Deploy scripts: `scripts/setup-ec2.sh` (first time), `scripts/deploy-ec2.sh` (updates).
+**Producción actual:** [Railway](https://railway.app) — rama `production-railway`, build standalone Next.js.
+
+**Legacy EC2:** Docker (`docker-compose.yml`), Nginx, scripts `scripts/setup-ec2.sh` y `scripts/deploy-ec2.sh`.
+
+Cron de asignación mensual: servicio cron Railway (`railway.cron.toml`, schedule `0 13 * * *` UTC ≈ 07:00 Honduras) o contenedor `cni-cron` en EC2.
 
 ## Key Gotchas
 
